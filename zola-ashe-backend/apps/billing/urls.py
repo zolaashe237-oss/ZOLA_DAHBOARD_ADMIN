@@ -1,0 +1,16 @@
+"""Routes billing (montées sous /api/billing/)."""
+from django.urls import path
+from rest_framework.routers import DefaultRouter
+
+from . import views
+
+router = DefaultRouter()
+router.register("payments", views.MyPaymentsViewSet, basename="payment")
+
+urlpatterns = [
+    path("subscription-types/", views.SubscriptionTypesView.as_view(), name="subscription-types"),
+    path("payments/initiate/", views.InitiatePaymentView.as_view(), name="payment-initiate"),
+    path("subscriptions/", views.MySubscriptionsView.as_view(), name="my-subscriptions"),
+    path("webhooks/swinmo/", views.SwinmoWebhookView.as_view(), name="swinmo-webhook"),
+    *router.urls,
+]
