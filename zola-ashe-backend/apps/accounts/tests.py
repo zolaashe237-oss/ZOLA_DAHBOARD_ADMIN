@@ -116,3 +116,49 @@ class AuthFlowTests(APITestCase):
         r = self.client.post("/api/auth/refresh/")
         self.assertEqual(r.status_code, 200)
         self.assertIn("access", r.data)
+
+
+@override_settings(**TEST_SETTINGS)
+class AccountDeletionTests(APITestCase):
+    """Suppression de compte RGPD (droit à l'effacement, art. 17)."""
+    def setUp(self):
+        self.user = User.objects.create_user("rgpd@zola.com", "Passw0rd!", full_name="Rg",
+                                              email_verified=True, status=UserStatus.ACTIF)
+        self.client.force_authenticate(self.user)
+
+    def test_delete_requires_correct_password(self):
+        r = self.client.delete("/api/me/", {"password": "FAUX"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)  # rien modifié
+
+    def test_delete_anonymizes_and_keeps_payments(self):
+        from apps.audit.models import AuditAction, AuditLog
+        from apps.billing.models import Payment, PaymentStatus, PaymentType, Subscription, SubscriptionType
+        sub = Subscription.objects.create(user=self.user, type=SubscriptionType.MEMBRE,
+                                          start=timezone.now().date(), active=True)
+        Payment.objects.create(user=self.user, subscription=sub, type=PaymentType.INSCRIPTION,
+                               status=PaymentStatus.VALIDE, amount=10000)
+        uid = self.user.id
+
+        r = self.client.delete("/api/me/", {"password": "Passw0rd!", "reason": "départ"}, format="json")
+        self.assertEqual(r.status_code, 200)
+
+        u = User.objects.get(id=uid)
+        self.assertEqual(u.email, f"deleted-{uid}@anonymized.invalid")  # e-mail anonymisé
+        self.assertEqual(u.full_name, "Compte supprimé")
+        self.assertFalse(u.is_active)
+        self.assertEqual(u.status, UserStatus.BLOQUE)
+        self.assertFalse(u.has_usable_password())
+        # Paiement conservé (rétention comptable), rattaché au compte anonymisé.
+        self.assertEqual(Payment.objects.filter(user_id=uid).count(), 1)
+        # Adhésion clôturée.
+        self.assertFalse(Subscription.objects.get(id=sub.id).active)
+        # Journalisé.
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_ACCOUNT,
+                        target_type="User", target_id=str(uid)).exists())
+
+    def test_delete_requires_auth(self):
+        self.client.force_authenticate(None)
+        r = self.client.delete("/api/me/", {"password": "x"}, format="json")
+        self.assertEqual(r.status_code, 401)

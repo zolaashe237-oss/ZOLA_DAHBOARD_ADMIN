@@ -15,6 +15,7 @@ class AuditAction(models.TextChoices):
     WARN_USER = "WARN_USER", "Avertissement membre"
     MANUAL_PAYMENT = "MANUAL_PAYMENT", "Validation paiement manuel"
     CLOSE_SUBSCRIPTION = "CLOSE_SUBSCRIPTION", "Clôture d'adhésion (membre)"
+    DELETE_ACCOUNT = "DELETE_ACCOUNT", "Suppression de compte (RGPD)"
     GRANT_BRANCH = "GRANT_BRANCH", "Attribution accès branche"
     REVOKE_BRANCH = "REVOKE_BRANCH", "Révocation accès branche"
     RESET_QUIZ = "RESET_QUIZ", "Réinitialisation quiz"

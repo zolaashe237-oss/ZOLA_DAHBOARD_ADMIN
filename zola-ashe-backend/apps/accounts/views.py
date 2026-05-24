@@ -19,6 +19,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .models import User, UserStatus
 from .serializers import (
+    DeleteAccountSerializer,
     LoginSerializer,
     PasswordChangeSerializer,
     PasswordForgotSerializer,
@@ -29,6 +30,7 @@ from .serializers import (
     VerifyOTPSerializer,
 )
 from .services import (
+    anonymize_account,
     generate_otp,
     is_locked,
     register_failed_login,
@@ -365,11 +367,43 @@ class PasswordChangeView(generics.GenericAPIView):
     put=extend_schema(tags=["Profil"], summary="Remplacer mon profil"),
     patch=extend_schema(tags=["Profil"], summary="Mettre à jour mon profil",
                         description="Met à jour les champs modifiables (ex. nom complet)."),
+    delete=extend_schema(
+        tags=["Profil"], summary="Supprimer mon compte (RGPD)",
+        description="**Droit à l'effacement** (RGPD art. 17). Anonymise irréversiblement le compte : "
+                    "e-mail, nom, photo et mot de passe sont effacés, le compte est désactivé, "
+                    "l'adhésion clôturée et les publications/commentaires masqués. Les **paiements "
+                    "sont conservés** (obligation comptable), dépersonnalisés. Confirmation par "
+                    "**mot de passe** requise ; les sessions sont révoquées. Opération journalisée.",
+        request=DeleteAccountSerializer,
+        responses={200: _DetailResponse,
+                   400: OpenApiResponse(_DetailResponse, description="Mot de passe incorrect ou manquant.")}),
 )
-class MeView(generics.RetrieveUpdateAPIView):
-    """Profil du membre connecté (GET / PATCH)."""
+class MeView(generics.RetrieveUpdateDestroyAPIView):
+    """Profil du membre connecté (GET / PATCH) + suppression RGPD (DELETE)."""
     permission_classes = [IsAuthenticated]
     serializer_class = UserSerializer
 
     def get_object(self):
         return self.request.user
+
+    def destroy(self, request, *args, **kwargs):
+        """Suppression RGPD : confirmation par mot de passe, anonymisation, révocation."""
+        serializer = DeleteAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(serializer.validated_data["password"]):
+            return Response({"detail": "Mot de passe incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Révoque tous les refresh tokens encore valides (déconnexion partout).
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import (
+                BlacklistedToken, OutstandingToken)
+            for token in OutstandingToken.objects.filter(user=user):
+                BlacklistedToken.objects.get_or_create(token=token)
+        except Exception:
+            pass
+
+        anonymize_account(user, reason=serializer.validated_data.get("reason", ""))
+        response = Response({"detail": "Votre compte a été supprimé."})
+        _clear_refresh_cookie(response)
+        return response

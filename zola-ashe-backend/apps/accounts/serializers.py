@@ -77,3 +77,9 @@ class PasswordChangeSerializer(serializers.Serializer):
     def validate_new_password(self, value):
         validate_password(value)
         return value
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, help_text="Mot de passe actuel (confirmation).")
+    reason = serializers.CharField(required=False, allow_blank=True,
+                                   help_text="Motif facultatif de la suppression.")

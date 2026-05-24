@@ -6,7 +6,50 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
 from django.utils import timezone
 
-from .models import EmailOTP, User
+from .models import EmailOTP, User, UserStatus
+
+
+# ─── Suppression de compte RGPD (droit à l'effacement, art. 17) ─────────────
+
+def anonymize_account(user: User, reason: str = "") -> None:
+    """Anonymise le compte du membre (droit à l'effacement, RGPD art. 17).
+
+    On **anonymise** plutôt qu'on ne supprime physiquement : les paiements sont
+    en rétention légale (comptabilité) et la FK est `PROTECT`. On efface donc les
+    données personnelles (e-mail, nom, photo, mot de passe), on désactive le
+    compte, on clôture l'adhésion et on masque les contenus communautaires. Les
+    paiements subsistent, dépersonnalisés. Opération journalisée à l'audit.
+    """
+    from apps.audit.models import AuditAction
+    from apps.audit.services import record
+    from apps.billing.services import close_subscription
+    from apps.community.models import Comment, Post
+
+    # Clôture de l'adhésion active (si présente) — ignore l'absence d'adhésion.
+    try:
+        close_subscription(user, reason="Suppression de compte (RGPD)")
+    except ValueError:
+        pass
+
+    # Masque les contenus personnels (publications, commentaires).
+    Post.objects.filter(author=user, active=True).update(active=False)
+    Comment.objects.filter(author=user, active=True).update(active=False)
+
+    # Trace d'audit AVANT anonymisation (réfère l'id, sans PII dans le payload).
+    record(user, AuditAction.DELETE_ACCOUNT, target_type="User", target_id=user.id, reason=reason)
+
+    # Anonymisation des données personnelles.
+    if user.photo:
+        user.photo.delete(save=False)
+    user.email = f"deleted-{user.id}@anonymized.invalid"
+    user.full_name = "Compte supprimé"
+    user.photo = None
+    user.email_verified = False
+    user.is_active = False
+    user.set_unusable_password()
+    user.status = UserStatus.BLOQUE
+    user.status_changed_at = timezone.now()
+    user.save()
 
 
 # ─── OTP de vérification email ──────────────────────────────────────────────
