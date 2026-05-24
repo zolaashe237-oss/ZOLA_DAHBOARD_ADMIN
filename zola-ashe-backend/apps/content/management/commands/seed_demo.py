@@ -10,6 +10,7 @@ programmée, des publications et des articles. Lancer :
 """
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -172,8 +173,10 @@ class Command(BaseCommand):
         # Adhésion propre et déterministe (on repart de zéro pour la démo).
         Payment.objects.filter(user=demo).delete()
         Subscription.objects.filter(user=demo).delete()
-        sub = Subscription.objects.create(user=demo, type=SubscriptionType.MEMBRE,
-                                          start=today, end=None, active=True)
+        # Échéance d'accès courante : cotisation à jour (30 jours restants).
+        sub = Subscription.objects.create(
+            user=demo, type=SubscriptionType.MEMBRE, start=today,
+            end=today + timedelta(days=settings.COTISATION_PERIOD_DAYS), active=True)
         Payment.objects.create(user=demo, subscription=sub, type=PaymentType.INSCRIPTION,
                                status=PaymentStatus.VALIDE, amount=10000, reason="Seed démo")
         Payment.objects.create(user=demo, type=PaymentType.COTISATION,

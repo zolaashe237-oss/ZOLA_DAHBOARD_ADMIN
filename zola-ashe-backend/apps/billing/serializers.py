@@ -7,10 +7,26 @@ PURCHASE_KINDS = ("INSCRIPTION", "COTISATION", "DON")
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):
+    days_remaining = serializers.SerializerMethodField(
+        help_text="Jours restants avant l'échéance d'accès (0 si échue).")
+    is_current = serializers.SerializerMethodField(
+        help_text="True si l'accès est encore couvert (échéance non dépassée).")
+
     class Meta:
         model = Subscription
-        fields = ("id", "type", "start", "end", "active", "in_tranches", "created_at")
+        fields = ("id", "type", "start", "end", "active", "in_tranches",
+                  "days_remaining", "is_current", "created_at")
         read_only_fields = fields
+
+    def get_days_remaining(self, obj) -> int:
+        from django.utils import timezone
+        if not obj.end:
+            return 0
+        return max(0, (obj.end - timezone.now().date()).days)
+
+    def get_is_current(self, obj) -> bool:
+        from django.utils import timezone
+        return bool(obj.end and obj.end >= timezone.now().date())
 
 
 class PaymentSerializer(serializers.ModelSerializer):

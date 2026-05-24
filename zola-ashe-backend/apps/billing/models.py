@@ -26,12 +26,14 @@ class PaymentStatus(models.TextChoices):
 
 
 class Subscription(models.Model):
-    """Adhésion d'un membre. `end=NULL` : l'adhésion est permanente une fois le
-    droit d'inscription réglé ; l'accès reste conditionné à la cotisation à jour."""
+    """Adhésion d'un membre. L'adhésion est permanente (`active=True`) une fois le
+    droit d'inscription réglé ; `end` porte l'**échéance d'accès** (date jusqu'à
+    laquelle l'accès est payé). Chaque cotisation mensuelle prolonge `end` ; une
+    fois `end` dépassée (+ délai de grâce), le cron rétrograde le membre RESTREINT."""
     user = models.ForeignKey("accounts.User", on_delete=models.CASCADE, related_name="subscriptions")
     type = models.CharField(max_length=20, choices=SubscriptionType.choices)
     start = models.DateField()
-    end = models.DateField(null=True, blank=True)  # NULL = adhésion permanente
+    end = models.DateField(null=True, blank=True)  # échéance d'accès (paid_until) ; NULL = legacy permanent
     active = models.BooleanField(default=True)
     in_tranches = models.BooleanField(default=False)  # conservé (dormant) — compat. historique
     created_at = models.DateTimeField(auto_now_add=True)

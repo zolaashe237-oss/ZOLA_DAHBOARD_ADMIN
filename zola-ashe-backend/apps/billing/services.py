@@ -125,6 +125,46 @@ def confirm_mock_payment(user, reference: str) -> str:
     return payment.type
 
 
+# ─── Échéance d'accès (durée mensuelle cumulable) ───────────────────────────
+
+def close_subscription(user, reason: str = "") -> Subscription:
+    """Clôture volontaire de l'adhésion du membre (résiliation immédiate, RG-02).
+
+    L'adhésion active est désactivée et son échéance figée à aujourd'hui ; le
+    membre repasse RESTREINT (les jours déjà réglés ne sont pas remboursés). Une
+    nouvelle inscription rouvre une adhésion. Action journalisée à l'audit.
+    """
+    from apps.audit.models import AuditAction
+    from apps.audit.services import record
+
+    sub = Subscription.objects.filter(
+        user=user, type=SubscriptionType.MEMBRE, active=True).first()
+    if sub is None:
+        raise ValueError("Aucune adhésion active à clôturer.")
+
+    sub.active = False
+    sub.end = timezone.now().date()        # échéance figée à aujourd'hui
+    sub.save(update_fields=["active", "end"])
+    if user.status == UserStatus.ACTIF:
+        user.set_status(UserStatus.RESTREINT)
+    record(user, AuditAction.CLOSE_SUBSCRIPTION, target_type="Subscription",
+           target_id=sub.id, reason=reason)
+    return sub
+
+
+def extend_subscription(sub: Subscription, days: int) -> None:
+    """Prolonge l'échéance d'accès de `days` jours, de façon **cumulable**.
+
+    Si l'abonnement est encore valide, on prolonge depuis l'échéance courante
+    (payer en avance ajoute du temps) ; sinon on repart d'aujourd'hui.
+    """
+    today = timezone.now().date()
+    base = sub.end if (sub.end and sub.end >= today) else today
+    sub.end = base + timedelta(days=days)
+    sub.active = True
+    sub.save(update_fields=["end", "active"])
+
+
 # ─── Activation après paiement confirmé ─────────────────────────────────────
 
 @transaction.atomic
@@ -132,20 +172,27 @@ def activate_paid_payment(payment: Payment, kind: str) -> None:
     """Marque le paiement VALIDE et applique les effets métier selon le `kind`."""
     payment.status = PaymentStatus.VALIDE
     user = payment.user
+    period = settings.COTISATION_PERIOD_DAYS
 
     if kind == "INSCRIPTION":
-        # Ouvre (ou réactive) l'adhésion permanente et passe le membre ACTIF.
+        # Ouvre (ou réactive) l'adhésion et inclut la 1ʳᵉ période d'accès.
         sub, _ = Subscription.objects.get_or_create(
             user=user, type=SubscriptionType.MEMBRE, active=True,
             defaults={"start": timezone.now().date(), "end": None},
         )
+        extend_subscription(sub, period)        # 1ʳᵉ période incluse
         payment.subscription = sub
         user.set_status(UserStatus.ACTIF)
 
     elif kind == "COTISATION":
-        # La cotisation à jour restaure l'accès d'un adhérent restreint.
-        if is_member(user) and user.status == UserStatus.RESTREINT:
-            user.set_status(UserStatus.ACTIF)
+        # La cotisation prolonge l'échéance d'un adhérent et (re)active l'accès.
+        if is_member(user):
+            sub = Subscription.objects.filter(
+                user=user, type=SubscriptionType.MEMBRE, active=True).first()
+            extend_subscription(sub, period)
+            payment.subscription = sub
+            if user.status == UserStatus.RESTREINT:
+                user.set_status(UserStatus.ACTIF)
 
     elif kind == "DON":
         pass  # facultatif, aucun effet sur l'accès
@@ -192,29 +239,19 @@ def process_webhook_event(event: str, data: dict) -> str:
 
 # ─── Cron quotidien des statuts (RG-02, RG-03) ──────────────────────────────
 
-def _last_contribution_date(user):
-    """Date de la dernière contribution validée (inscription ou cotisation)."""
-    last = (
-        Payment.objects.filter(
-            user=user,
-            type__in=[PaymentType.INSCRIPTION, PaymentType.COTISATION],
-            status=PaymentStatus.VALIDE,
-        )
-        .order_by("-paid_at").first()
-    )
-    if last:
-        return last.paid_at.date()
-    sub = Subscription.objects.filter(
-        user=user, type=SubscriptionType.MEMBRE, active=True).order_by("start").first()
-    return sub.start if sub else None
+def _membership(user):
+    """Adhésion MEMBRE active de l'utilisateur (porte l'échéance d'accès)."""
+    return Subscription.objects.filter(
+        user=user, type=SubscriptionType.MEMBRE, active=True).first()
 
 
 def run_daily_status_check() -> dict:
-    """Recalcule les statuts membres et déclenche les rappels (RG-02/03).
+    """Recalcule les statuts membres selon l'échéance d'accès et envoie les rappels.
 
-    Pour chaque adhérent ACTIF : si la dernière contribution dépasse le délai de
-    grâce → RESTREINT ; sinon rappels de cotisation à J1/J7/J15. Un ACTIF forcé
-    par l'admin dans les dernières 24h n'est pas modifié (exception RG-02).
+    Pour chaque adhérent ACTIF : si l'échéance (`Subscription.end`) est dépassée
+    au-delà du délai de grâce → RESTREINT ; sinon, à l'approche de l'échéance
+    (J-7/J-3/J-1), rappel de cotisation. Un ACTIF forcé par l'admin dans les
+    dernières 24h n'est pas modifié (exception RG-02).
     """
     from .tasks import send_payment_reminder
 
@@ -227,16 +264,20 @@ def run_daily_status_check() -> dict:
         # Exception RG-02 : ne pas écraser un ACTIF forcé manuellement < 24h.
         if user.status_changed_at >= now - timedelta(hours=24):
             continue
-        if not is_member(user):
+        sub = _membership(user)
+        if sub is None:
             continue  # pas d'adhésion : rien à recalculer
+        if sub.end is None:
+            continue  # adhésion legacy sans échéance : on ne touche pas
 
-        reference = _last_contribution_date(user) or today
-        days_late = (today - reference).days
-        if days_late > grace:
+        days_overdue = (today - sub.end).days       # > 0 si échéance passée
+        if days_overdue > grace:
             user.set_status(UserStatus.RESTREINT)
             restricted += 1
-        elif days_late in (1, 7, 15):
-            send_payment_reminder.delay(user.id)
-            reminders += 1
+        else:
+            days_left = (sub.end - today).days       # ≥ 0 avant échéance
+            if days_left in (7, 3, 1):
+                send_payment_reminder.delay(user.id)
+                reminders += 1
 
     return {"restricted": restricted, "reminders": reminders}

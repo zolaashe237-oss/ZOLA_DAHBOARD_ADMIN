@@ -21,7 +21,12 @@ from .serializers import (
     PaymentSerializer,
     SubscriptionSerializer,
 )
-from .services import confirm_mock_payment, initiate_payment, process_webhook_event
+from .services import (
+    close_subscription,
+    confirm_mock_payment,
+    initiate_payment,
+    process_webhook_event,
+)
 
 _TariffList = inline_serializer(
     name="TariffList", many=True,
@@ -41,6 +46,15 @@ _MockConfirmResponse = inline_serializer(
 _WebhookRequest = inline_serializer(
     name="SwinmoWebhookRequest",
     fields={"event": drf_serializers.CharField(), "data": drf_serializers.DictField()})
+_CloseRequest = inline_serializer(
+    name="CloseSubscriptionRequest",
+    fields={"reason": drf_serializers.CharField(required=False, allow_blank=True,
+                                                help_text="Motif facultatif de la clôture.")})
+_CloseResponse = inline_serializer(
+    name="CloseSubscriptionResponse",
+    fields={"closed": drf_serializers.BooleanField(),
+            "end": drf_serializers.DateField(help_text="Échéance figée (aujourd'hui)."),
+            "status": drf_serializers.CharField(help_text="Nouveau statut du membre (RESTREINT).")})
 
 
 @extend_schema(
@@ -70,7 +84,10 @@ class SubscriptionTypesView(APIView):
         "En mode réel, l'URL pointe vers **Swinmo**. En mode démo (`SWINMO_MOCK`), elle pointe vers "
         "la page de simulation interne et `mock=true` ; le paiement se confirme ensuite via "
         "`POST /billing/payments/mock-confirm/`.\n\n`kind` ∈ {INSCRIPTION, COTISATION, DON}. "
-        "Pour un don, `amount` est requis."
+        "Pour un don, `amount` est requis.\n\n"
+        "**Durée d'accès** : l'inscription ouvre l'adhésion et inclut une **1ʳᵉ période** de 30 jours ; "
+        "chaque **cotisation mensuelle** prolonge l'échéance de 30 jours, de façon **cumulable** "
+        "(payer en avance ajoute du temps). Passé l'échéance + délai de grâce, le membre devient RESTREINT."
     ),
     examples=[
         OpenApiExample("Droit d'inscription", request_only=True, value={"kind": "INSCRIPTION"}),
@@ -144,7 +161,8 @@ class MyPaymentsViewSet(viewsets.ReadOnlyModelViewSet):
 @extend_schema(
     tags=["Paiements & adhésion"],
     summary="Mes abonnements",
-    description="Abonnements du membre connecté (type, dates, statut actif).",
+    description="Abonnements du membre connecté. Chaque entrée expose l'**échéance d'accès** (`end`), "
+                "les **jours restants** (`days_remaining`) et `is_current` (accès encore couvert).",
 )
 class MySubscriptionsView(generics.ListAPIView):
     """Abonnements du membre connecté."""
@@ -153,6 +171,29 @@ class MySubscriptionsView(generics.ListAPIView):
 
     def get_queryset(self):
         return Subscription.objects.filter(user=self.request.user).order_by("-created_at")
+
+
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Clôturer mon adhésion",
+    description="Résiliation **volontaire et immédiate** de l'adhésion du membre connecté : "
+                "l'adhésion est désactivée, l'échéance figée à aujourd'hui, et le membre repasse "
+                "`RESTREINT`. Les jours déjà réglés ne sont pas remboursés. Une nouvelle inscription "
+                "rouvre une adhésion. Action journalisée à l'audit.",
+    request=_CloseRequest,
+    responses={200: OpenApiResponse(_CloseResponse, description="Adhésion clôturée."),
+               400: OpenApiResponse(description="Aucune adhésion active à clôturer.")},
+)
+class CloseSubscriptionView(APIView):
+    """Clôture volontaire de l'adhésion (résiliation immédiate) par le membre."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            sub = close_subscription(request.user, reason=request.data.get("reason", ""))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"closed": True, "end": sub.end, "status": request.user.status})
 
 
 @extend_schema(

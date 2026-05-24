@@ -270,7 +270,8 @@ LOGIN_MAX_ATTEMPTS = 5          # anti-brute-force (CDC §7.1)
 LOGIN_LOCKOUT_MINUTES = 15
 QUIZ_DEFAULT_THRESHOLD = 15     # seuil quiz /20 (CDC §4.4)
 SUBSCRIPTION_DURATION_DAYS = 365
-COTISATION_GRACE_DAYS = 30      # impayé > 30j → RESTREINT (RG-02, RG-03)
+COTISATION_PERIOD_DAYS = 30     # une cotisation mensuelle prolonge l'accès de 30 jours
+COTISATION_GRACE_DAYS = 7       # délai de grâce après l'échéance avant RESTREINT (RG-02, RG-03)
 
 # --- Paiements Swinmo -------------------------------------------------------
 # Doc : https://www.swinmo.shop/developers
