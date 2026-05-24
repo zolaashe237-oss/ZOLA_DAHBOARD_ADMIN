@@ -21,8 +21,9 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      await authApi.register(form);
-      router.push(`/verify-otp?email=${encodeURIComponent(form.email)}`);
+      const { data } = await authApi.register(form);
+      const codeParam = data.dev_code ? `&code=${data.dev_code}` : "";
+      router.push(`/verify-otp?email=${encodeURIComponent(form.email)}${codeParam}`);
     } catch (err) {
       setError(errorMessage(err));
     } finally {

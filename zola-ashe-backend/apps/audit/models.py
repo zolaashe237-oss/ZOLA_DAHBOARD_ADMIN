@@ -11,6 +11,7 @@ class AuditAction(models.TextChoices):
     UNBLOCK_USER = "UNBLOCK_USER", "Déblocage membre"
     DELETE_POST = "DELETE_POST", "Suppression publication"
     DELETE_COMMENT = "DELETE_COMMENT", "Suppression commentaire"
+    RESOLVE_REPORT = "RESOLVE_REPORT", "Traitement signalement"
     WARN_USER = "WARN_USER", "Avertissement membre"
     MANUAL_PAYMENT = "MANUAL_PAYMENT", "Validation paiement manuel"
     GRANT_BRANCH = "GRANT_BRANCH", "Attribution accès branche"

@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { billingApi } from "@/lib/endpoints";
-import type { Paginated, Subscription } from "@/lib/types";
+import { billingApi, formationApi } from "@/lib/endpoints";
+import type { FormationListItem, Paginated, Subscription } from "@/lib/types";
 import { Badge, Card } from "@/components/ui";
+import { FormationCard } from "@/components/FormationCard";
 import { IconLibrary, IconCommunity, IconUser } from "@/components/icons";
 import { SunWatermark } from "@/components/SunWatermark";
 
@@ -23,12 +24,17 @@ const SHORTCUTS = [
 export default function DashboardPage() {
   const { user } = useAuth();
   const [subs, setSubs] = useState<Subscription[]>([]);
+  const [formations, setFormations] = useState<FormationListItem[]>([]);
 
   useEffect(() => {
     billingApi
       .mySubscriptions()
       .then((r) => setSubs(Array.isArray(r.data) ? r.data : (r.data as Paginated<Subscription>).results))
       .catch(() => setSubs([]));
+    formationApi
+      .list()
+      .then((r) => setFormations(r.data.results.slice(0, 4)))
+      .catch(() => setFormations([]));
   }, []);
 
   if (!user) return null;
@@ -53,6 +59,11 @@ export default function DashboardPage() {
             Votre accès est restreint. Réglez votre cotisation pour débloquer les contenus.
           </p>
         )}
+        <div style={{ marginTop: "1rem", position: "relative" }}>
+          <Link href="/abonnement" className="btn btn-primary press">
+            {user.status === "ACTIF" ? "Gérer mon adhésion" : "Activer mon adhésion"}
+          </Link>
+        </div>
       </div>
 
       {/* Accès rapides */}
@@ -70,6 +81,19 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* Formations */}
+      {formations.length > 0 && (
+        <div style={{ marginBottom: "1.6rem" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "0.9rem" }}>
+            <h2 style={{ fontSize: "1.3rem", margin: 0 }}>Continuer mon apprentissage</h2>
+            <Link href="/contenu" style={{ fontSize: ".85rem", color: "var(--gold-2)" }}>Tout voir</Link>
+          </div>
+          <div className="media-grid">
+            {formations.map((f) => <FormationCard key={f.id} formation={f} />)}
+          </div>
+        </div>
+      )}
 
       {/* Abonnements */}
       <h2 style={{ fontSize: "1.3rem", marginBottom: "0.9rem" }}>Mon adhésion</h2>

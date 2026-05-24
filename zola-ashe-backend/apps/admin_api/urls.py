@@ -11,8 +11,11 @@ from . import views_moderation as vmod
 
 router = DefaultRouter()
 router.register("members", vm.MemberViewSet, basename="admin-member")
-router.register("content", vc.AdminContentViewSet, basename="admin-content")
-router.register("collections", vc.AdminCollectionViewSet, basename="admin-collection")
+router.register("formations", vc.AdminFormationViewSet, basename="admin-formation")
+router.register("modules", vc.AdminModuleViewSet, basename="admin-module")
+router.register("courses", vc.AdminCourseViewSet, basename="admin-course")
+router.register("resources", vc.AdminResourceViewSet, basename="admin-resource")
+router.register("quizzes", vc.AdminQuizViewSet, basename="admin-quiz")
 router.register("blog", AdminArticleViewSet, basename="admin-blog")
 
 urlpatterns = [
@@ -25,9 +28,9 @@ urlpatterns = [
     path("exports/payments.csv", vf.ExportPaymentsView.as_view(), name="admin-export-payments"),
     path("reminders/send/", vf.SendRemindersView.as_view(), name="admin-reminders"),
 
-    # Contenu & quiz (chemins explicites avant le router /content/)
+    # Contenu & quiz
     path("content/upload/", vc.ContentUploadView.as_view(), name="admin-content-upload"),
-    path("content/<int:pk>/quiz-score/", vc.QuizScoreView.as_view(), name="admin-quiz-score"),
+    path("quiz/score/", vc.QuizScoreView.as_view(), name="admin-quiz-score"),
     path("quiz/reset/", vc.ResetQuizView.as_view(), name="admin-quiz-reset"),
 
     # Communauté : annonces & modération

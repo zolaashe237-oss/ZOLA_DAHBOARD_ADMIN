@@ -60,13 +60,19 @@ Une fois les services démarrés :
 | **Site & espace membre** | http://localhost:3000 |
 | **Back-office (admin)** | http://localhost:3010 |
 | API | http://localhost:8010/api/ |
+| **Documentation API (Swagger)** | http://localhost:8010/api/docs/ |
+| Documentation API (Redoc) | http://localhost:8010/api/redoc/ |
 
-### Comptes de démonstration
+### Comptes de test par défaut
 
-| Rôle | Identifiant | Mot de passe |
-|------|-------------|--------------|
-| **Administrateur** | `admin@zola-ashe.com` | `Admin12345!` |
-| **Membre** | `demo@zola-ashe.com` | `Demo12345!` |
+Créés automatiquement par les données de démonstration au premier démarrage :
+
+| Rôle | Identifiant | Mot de passe | Se connecte sur |
+|------|-------------|--------------|-----------------|
+| **Administrateur** | `admin@zola-ashe.com` | `Admin12345!` | Back-office — http://localhost:3010 |
+| **Membre** (adhésion active) | `demo@zola-ashe.com` | `Demo12345!` | Site & espace membre — http://localhost:3000 |
+
+Console de stockage **MinIO** : http://localhost:9001 — identifiants `zolaminio` / `zolaminiosecret`.
 
 > Astuce : pour tester le site **et** le back-office en même temps, ouvrez l'un
 > des deux dans une fenêtre de navigation privée (la session est partagée sur
@@ -89,7 +95,49 @@ docker compose --env-file env/.env down -v
 
 ---
 
-## 5. Contenu du dossier
+## 5. Paiement & emails — mode démo vs réel
+
+Par défaut (sans clé renseignée), l'application fonctionne en **mode démonstration**,
+de façon **complète** et sans service externe :
+
+- **Paiement** : le bouton « Activer mon adhésion » mène à une page de
+  **paiement simulé** ; en confirmant, le membre devient immédiatement actif
+  (aucun débit réel).
+- **Emails** : aucun email n'est envoyé ; le **code de vérification (OTP)** est
+  affiché directement à l'écran lors de l'inscription.
+
+### Activer le paiement réel (Swinmo)
+
+1. Créer un compte sur **Swinmo** et récupérer la **clé secrète API** (`sk_…`).
+2. Renseigner dans `zola-ashe-infra/env/.env` :
+   ```env
+   SWINMO_SECRET_KEY=sk_votre_cle
+   SWINMO_WEBHOOK_SECRET=votre_secret_webhook
+   ```
+3. Côté Swinmo, configurer l'URL de **webhook** vers :
+   `https://VOTRE_DOMAINE/api/billing/webhooks/swinmo/`
+4. Redémarrer la stack. Le paiement passe automatiquement en mode réel
+   (la page de simulation est désactivée).
+
+### Activer les emails réels (Brevo)
+
+1. Créer un compte **Brevo** (ex-Sendinblue) et générer une **clé SMTP**.
+2. Renseigner dans `zola-ashe-infra/env/.env` :
+   ```env
+   BREVO_SMTP_USER=votre_identifiant_smtp
+   BREVO_SMTP_KEY=votre_cle_smtp
+   DEFAULT_FROM_EMAIL=no-reply@votre-domaine.com
+   ```
+3. Redémarrer la stack. Les emails (vérification, confirmations, rappels) sont
+   alors envoyés réellement (le code OTP n'est plus affiché à l'écran).
+
+> La bascule démo → réel est **automatique** : dès qu'une clé est présente, le
+> service correspondant passe en mode réel. Aucune autre modification n'est
+> nécessaire.
+
+---
+
+## 6. Contenu du dossier
 
 | Dossier | Rôle |
 |---------|------|

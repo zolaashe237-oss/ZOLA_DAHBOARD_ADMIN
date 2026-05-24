@@ -1,10 +1,11 @@
-"""Routes du contenu (montées sous /api/) → /api/content/ et /api/collections/."""
+"""Routes du contenu (montées sous /api/) → /api/formations/, /api/resources/, /api/quizzes/."""
 from rest_framework.routers import DefaultRouter
 
-from .views import CollectionViewSet, ContentViewSet
+from .views import FormationViewSet, QuizViewSet, ResourceViewSet
 
 router = DefaultRouter()
-router.register("content", ContentViewSet, basename="content")
-router.register("collections", CollectionViewSet, basename="collection")
+router.register("formations", FormationViewSet, basename="formation")
+router.register("resources", ResourceViewSet, basename="resource")
+router.register("quizzes", QuizViewSet, basename="quiz")
 
 urlpatterns = router.urls

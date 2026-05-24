@@ -7,7 +7,8 @@ blacklist via SimpleJWT).
 """
 from django.conf import settings
 from django.contrib.auth import authenticate
-from rest_framework import generics, status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -39,6 +40,21 @@ from .tasks import send_otp_email
 REFRESH_COOKIE = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth/"
 
+# Réponses réutilisables pour la doc Swagger.
+_DetailResponse = inline_serializer(
+    name="DetailMessage", fields={"detail": drf_serializers.CharField()})
+_OtpInitResponse = inline_serializer(
+    name="OtpInitResponse",
+    fields={"detail": drf_serializers.CharField(),
+            "dev_code": drf_serializers.CharField(
+                required=False, help_text="Code OTP exposé UNIQUEMENT en mode démo (EMAIL_MOCK).")})
+_LoginResponse = inline_serializer(
+    name="LoginResponse",
+    fields={"access": drf_serializers.CharField(help_text="JWT d'accès (à mettre en Bearer)."),
+            "user": UserSerializer()})
+_AccessResponse = inline_serializer(
+    name="AccessResponse", fields={"access": drf_serializers.CharField()})
+
 
 def _set_refresh_cookie(response: Response, refresh: str) -> None:
     response.set_cookie(
@@ -69,6 +85,16 @@ class _AuthThrottle(ScopedRateThrottle):
     scope = "auth"
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Inscription d'un membre",
+    description=(
+        "Crée un compte au statut **RESTREINT** (email non vérifié) puis envoie un code OTP "
+        "d'activation par email.\n\nEn mode démo (`EMAIL_MOCK`, aucune clé Brevo), le code est "
+        "renvoyé dans `dev_code` pour permettre de tester sans boîte mail. Anti-abus : throttle `auth`."
+    ),
+    responses={201: OpenApiResponse(_OtpInitResponse, description="Compte créé, OTP envoyé.")},
+)
 class RegisterView(generics.GenericAPIView):
     """Inscription → crée le compte (RESTREINT) puis envoie un OTP d'activation."""
     permission_classes = [AllowAny]
@@ -81,12 +107,21 @@ class RegisterView(generics.GenericAPIView):
         user = serializer.save()
         code = generate_otp(user)
         send_otp_email.delay(user.email, code, "verification")
-        return Response(
-            {"detail": "Compte créé. Un code de vérification a été envoyé par email."},
-            status=status.HTTP_201_CREATED,
-        )
+        body = {"detail": "Compte créé. Un code de vérification a été envoyé par email."}
+        if settings.EMAIL_MOCK:   # dev/local : pas d'email réel → on expose le code
+            body["dev_code"] = code
+        return Response(body, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Vérifier l'OTP (activer l'email)",
+    description="Valide le code OTP reçu et marque l'email du compte comme vérifié, "
+                "autorisant ensuite la connexion.",
+    responses={200: OpenApiResponse(_DetailResponse, description="Email vérifié."),
+               400: OpenApiResponse(_DetailResponse, description="Code invalide ou expiré."),
+               404: OpenApiResponse(_DetailResponse, description="Compte introuvable.")},
+)
 class VerifyOTPView(generics.GenericAPIView):
     """Valide l'OTP et active l'email du compte."""
     permission_classes = [AllowAny]
@@ -110,6 +145,13 @@ class VerifyOTPView(generics.GenericAPIView):
         return Response({"detail": "Email vérifié. Vous pouvez vous connecter."})
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Renvoyer un OTP de vérification",
+    description="Renvoie un nouveau code de vérification si un compte non vérifié existe. "
+                "Réponse volontairement neutre (pas d'énumération d'emails). `dev_code` en mode démo.",
+    responses={200: OpenApiResponse(_OtpInitResponse, description="Réponse neutre.")},
+)
 class ResendOTPView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     throttle_classes = [_AuthThrottle]
@@ -119,13 +161,30 @@ class ResendOTPView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = User.objects.filter(email__iexact=serializer.validated_data["email"]).first()
+        code = None
         if user and not user.email_verified:
             code = generate_otp(user)
             send_otp_email.delay(user.email, code, "verification")
         # Réponse neutre : ne révèle pas l'existence du compte.
-        return Response({"detail": "Si un compte non vérifié existe, un code a été renvoyé."})
+        body = {"detail": "Si un compte non vérifié existe, un code a été renvoyé."}
+        if settings.EMAIL_MOCK and code:
+            body["dev_code"] = code
+        return Response(body)
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Connexion",
+    description=(
+        "Authentifie le membre et émet les tokens. L'`access` est dans le corps ; le `refresh` est "
+        "posé en **cookie HttpOnly** (`refresh_token`).\n\nProtections : anti-brute-force (5 essais / "
+        "15 min → 429), email non vérifié → 403, compte bloqué → 403."
+    ),
+    responses={200: OpenApiResponse(_LoginResponse, description="Connecté, tokens émis."),
+               401: OpenApiResponse(_DetailResponse, description="Identifiants invalides."),
+               403: OpenApiResponse(_DetailResponse, description="Email non vérifié ou compte bloqué."),
+               429: OpenApiResponse(_DetailResponse, description="Trop de tentatives.")},
+)
 class LoginView(generics.GenericAPIView):
     """Connexion : anti-brute-force (5 essais / 15 min) puis émission des tokens."""
     permission_classes = [AllowAny]
@@ -163,6 +222,15 @@ class LoginView(generics.GenericAPIView):
         return response
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Rafraîchir l'access (via cookie)",
+    description="Lit le `refresh_token` dans le cookie HttpOnly et renvoie un nouvel `access`. "
+                "Le refresh tourne (rotation + blacklist) et le cookie est reposé. Aucun corps requis.",
+    request=None,
+    responses={200: OpenApiResponse(_AccessResponse, description="Nouvel access."),
+               401: OpenApiResponse(_DetailResponse, description="Refresh absent ou session expirée.")},
+)
 class CookieTokenRefreshView(TokenRefreshView):
     """Rafraîchit l'access en lisant le refresh dans le cookie HttpOnly."""
     permission_classes = [AllowAny]
@@ -190,6 +258,13 @@ class CookieTokenRefreshView(TokenRefreshView):
         return response
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Déconnexion",
+    description="Blackliste le refresh courant et efface le cookie. Nécessite d'être authentifié.",
+    request=None,
+    responses={200: OpenApiResponse(_DetailResponse, description="Déconnecté.")},
+)
 class LogoutView(APIView):
     """Déconnexion : blackliste le refresh courant et efface le cookie."""
     permission_classes = [IsAuthenticated]
@@ -206,6 +281,13 @@ class LogoutView(APIView):
         return response
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Mot de passe oublié",
+    description="Envoie un code OTP de réinitialisation si un compte existe (réponse neutre). "
+                "`dev_code` exposé en mode démo.",
+    responses={200: OpenApiResponse(_OtpInitResponse, description="Réponse neutre.")},
+)
 class PasswordForgotView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     throttle_classes = [_AuthThrottle]
@@ -215,13 +297,25 @@ class PasswordForgotView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = User.objects.filter(email__iexact=serializer.validated_data["email"]).first()
+        code = None
         if user:
             code = generate_otp(user)
             send_otp_email.delay(user.email, code, "reset")
         # Réponse neutre (pas d'énumération d'emails).
-        return Response({"detail": "Si un compte existe, un code de réinitialisation a été envoyé."})
+        body = {"detail": "Si un compte existe, un code de réinitialisation a été envoyé."}
+        if settings.EMAIL_MOCK and code:
+            body["dev_code"] = code
+        return Response(body)
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Réinitialiser le mot de passe (OTP)",
+    description="Vérifie le code OTP de réinitialisation et définit le nouveau mot de passe.",
+    responses={200: OpenApiResponse(_DetailResponse, description="Mot de passe réinitialisé."),
+               400: OpenApiResponse(_DetailResponse, description="Code invalide."),
+               404: OpenApiResponse(_DetailResponse, description="Compte introuvable.")},
+)
 class PasswordResetView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     throttle_classes = [_AuthThrottle]
@@ -243,6 +337,13 @@ class PasswordResetView(generics.GenericAPIView):
         return Response({"detail": "Mot de passe réinitialisé."})
 
 
+@extend_schema(
+    tags=["Authentification"],
+    summary="Changer son mot de passe",
+    description="Modifie le mot de passe du membre connecté (l'ancien mot de passe est requis).",
+    responses={200: OpenApiResponse(_DetailResponse, description="Mot de passe modifié."),
+               400: OpenApiResponse(_DetailResponse, description="Ancien mot de passe incorrect.")},
+)
 class PasswordChangeView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = PasswordChangeSerializer
@@ -258,6 +359,13 @@ class PasswordChangeView(generics.GenericAPIView):
         return Response({"detail": "Mot de passe modifié."})
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["Profil"], summary="Mon profil",
+                      description="Renvoie le profil du membre connecté."),
+    put=extend_schema(tags=["Profil"], summary="Remplacer mon profil"),
+    patch=extend_schema(tags=["Profil"], summary="Mettre à jour mon profil",
+                        description="Met à jour les champs modifiables (ex. nom complet)."),
+)
 class MeView(generics.RetrieveUpdateAPIView):
     """Profil du membre connecté (GET / PATCH)."""
     permission_classes = [IsAuthenticated]

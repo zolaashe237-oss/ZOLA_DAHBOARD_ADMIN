@@ -1,17 +1,33 @@
-"""Vues membre du contenu : catalogue, streaming signé et quiz (RG-16 à RG-28)."""
-from rest_framework import status, viewsets
+"""Vues membre du contenu : catalogue de formations, arbre modules→cours,
+streaming signé des ressources et passage des QCM (RG-16 à RG-28)."""
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Collection, Content, QuizResult
+from .models import Formation, Quiz, QuizResult, Resource
 from .serializers import (
-    CollectionSerializer,
-    ContentDetailSerializer,
-    ContentListSerializer,
+    FormationDetailSerializer,
+    FormationListSerializer,
+    QuizPublicSerializer,
     QuizResultSerializer,
     QuizSubmitSerializer,
 )
-from .services import access_state, generate_signed_url, submit_quiz_score
+from .services import (
+    course_unlocked,
+    final_exam_unlocked,
+    formation_accessible,
+    generate_signed_url,
+    grade_quiz,
+    record_quiz_result,
+    visible_formations_qs,
+)
 
 
 def _accessible_sub_types(user) -> set[str]:
@@ -21,92 +37,172 @@ def _accessible_sub_types(user) -> set[str]:
     return {t for t in SubscriptionType.values if has_subscription_access(user, t)}
 
 
-class ContentViewSet(viewsets.ReadOnlyModelViewSet):
-    """Catalogue des contenus actifs + actions streaming et quiz."""
+def _quiz_access(user, quiz: Quiz) -> dict:
+    """État d'accès d'un QCM : {locked, lock_reason} selon abonnement + progression."""
+    formation = quiz.formation if quiz.is_final else quiz.course.module.formation
+    if not formation_accessible(user, formation):
+        return {"locked": True, "lock_reason": "subscription"}
+    unlocked = (final_exam_unlocked(user, formation) if quiz.is_final
+                else course_unlocked(user, quiz.course))
+    if not unlocked:
+        return {"locked": True, "lock_reason": "quiz"}
+    return {"locked": False, "lock_reason": None}
+
+
+_StreamResponse = inline_serializer(
+    name="ResourceStreamResponse",
+    fields={"kind": drf_serializers.ChoiceField(choices=["youtube", "file"]),
+            "url": drf_serializers.CharField(help_text="Lien YouTube, ou URL signée (1h) du fichier."),
+            "expires_in": drf_serializers.IntegerField(required=False)})
+_QuizSubmitRequest = inline_serializer(
+    name="QuizSubmitRequest",
+    fields={"answers": drf_serializers.DictField(
+        child=drf_serializers.ListField(child=drf_serializers.IntegerField()),
+        help_text="Réponses : { \"<id_question>\": [<id_option>, ...] }.")})
+_QuizSubmitResponse = inline_serializer(
+    name="QuizSubmitResponse",
+    fields={"score": drf_serializers.IntegerField(help_text="Meilleur score conservé (/20)."),
+            "last_score": drf_serializers.IntegerField(help_text="Score de cette tentative (/20)."),
+            "correct": drf_serializers.IntegerField(), "total": drf_serializers.IntegerField(),
+            "attempts": drf_serializers.IntegerField(),
+            "validated": drf_serializers.BooleanField(),
+            "validated_at": drf_serializers.DateTimeField(allow_null=True),
+            "pass_threshold": drf_serializers.IntegerField()})
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Catalogue"], summary="Catalogue des formations",
+        description="Liste les formations visibles (publiées, ou programmées dont la date est échue). "
+                    "Chaque entrée indique si elle est `locked` (réservée et non accessible au membre).",
+        parameters=[OpenApiParameter("category", str, description="Filtre : FORMATION, LIVRE ou LIBRE.")]),
+    retrieve=extend_schema(
+        tags=["Catalogue"], summary="Détail d'une formation (arbre complet)",
+        description="Renvoie l'arbre **modules → sous-modules → cours → ressources**, avec l'état "
+                    "d'accès et d'achèvement de chaque nœud, plus l'examen final. Les liens YouTube et "
+                    "médias ne sont exposés que pour les cours déverrouillés."),
+)
+class FormationViewSet(viewsets.ReadOnlyModelViewSet):
+    """Catalogue des formations visibles (publiées ou programmées échues) + arbre détaillé."""
 
     def get_queryset(self):
-        qs = Content.objects.filter(active=True)
-        params = self.request.query_params
-        if category := params.get("category"):
+        qs = visible_formations_qs()
+        if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
-        if ctype := params.get("content_type"):
-            qs = qs.filter(content_type=ctype)
-        if collection := params.get("collection"):
-            qs = qs.filter(collection_id=collection)
-        return qs
+        if self.action == "retrieve":
+            qs = qs.prefetch_related(
+                "modules__courses__resources", "modules__courses__quiz__questions",
+                "modules__children__courses__resources", "modules__children__courses__quiz",
+                "final_exam__questions",
+            )
+        return qs.distinct()
 
     def get_serializer_class(self):
-        return ContentDetailSerializer if self.action == "retrieve" else ContentListSerializer
+        return FormationDetailSerializer if self.action == "retrieve" else FormationListSerializer
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         ctx["accessible_sub_types"] = _accessible_sub_types(self.request.user)
         return ctx
 
-    @action(detail=True, methods=["get"], url_path="stream")
-    def stream(self, request, pk=None):
-        """URL signée (1h) pour un média déverrouillé — vidéo, PDF ou audio (RG-17/19).
 
-        Toutes les ressources (vidéo comprise) sont servies depuis le stockage
-        objet via URL signée ; jamais d'URL publique ni de lien YouTube.
-        """
-        content = self.get_object()
-        if not content.bucket_key:
-            return Response(
-                {"detail": "Aucun média n'est rattaché à ce contenu."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        state = access_state(request.user, content)
-        if state["locked"]:
-            return Response(
-                {"detail": "Contenu verrouillé.", "lock_reason": state["lock_reason"]},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return Response({"url": generate_signed_url(content.bucket_key), "expires_in": 3600})
-
-    @action(detail=True, methods=["post"], url_path="quiz/submit")
-    def quiz_submit(self, request, pk=None):
-        """Soumet un score de quiz et applique RG-23 à RG-26."""
-        content = self.get_object()
-        if not content.quiz_active:
-            return Response({"detail": "Ce module n'a pas de quiz."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        state = access_state(request.user, content)
-        if state["locked"]:
-            return Response(
-                {"detail": "Contenu verrouillé.", "lock_reason": state["lock_reason"]},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        serializer = QuizSubmitSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        result = submit_quiz_score(request.user, content, serializer.validated_data["score"])
-        return Response(QuizResultSerializer(result).data)
-
-    @action(detail=True, methods=["get"], url_path="quiz/result")
-    def quiz_result(self, request, pk=None):
-        """Résultat de quiz du membre pour ce contenu (vide si aucune tentative)."""
-        content = self.get_object()
-        result = QuizResult.objects.filter(user=request.user, content=content).first()
-        if result is None:
-            return Response({})
-        return Response(QuizResultSerializer(result).data)
-
-
-class CollectionViewSet(viewsets.ReadOnlyModelViewSet):
-    """Collections actives + leurs contenus ordonnés (avec état d'accès)."""
-    serializer_class = CollectionSerializer
+@extend_schema_view(
+    list=extend_schema(exclude=True),
+    retrieve=extend_schema(exclude=True),
+)
+class ResourceViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lecture d'une ressource : URL signée (fichier) ou lien YouTube, si déverrouillée."""
 
     def get_queryset(self):
-        qs = Collection.objects.filter(active=True)
-        if category := self.request.query_params.get("category"):
-            qs = qs.filter(category=category)
-        return qs
+        return Resource.objects.select_related("course__module__formation").filter(
+            course__module__formation__in=visible_formations_qs()
+        )
+
+    @extend_schema(
+        tags=["Catalogue"], summary="Lire une ressource",
+        description="Renvoie le moyen de lecture d'une ressource **déverrouillée** : `kind=youtube` "
+                    "avec le lien, ou `kind=file` avec une URL signée valable 1h. 403 si la formation "
+                    "est réservée (non accessible) ou si le cours n'est pas encore débloqué.",
+        responses={200: OpenApiResponse(_StreamResponse, description="Lien de lecture."),
+                   400: OpenApiResponse(description="Aucun média rattaché."),
+                   403: OpenApiResponse(description="Formation réservée ou cours verrouillé.")},
+    )
+    @action(detail=True, methods=["get"], url_path="stream")
+    def stream(self, request, pk=None):
+        """URL de lecture d'une ressource déverrouillée (YouTube ou URL signée 1h)."""
+        resource = self.get_object()
+        course = resource.course
+        formation = course.module.formation
+        if not formation_accessible(request.user, formation):
+            return Response({"detail": "Formation réservée.", "lock_reason": "subscription"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not course_unlocked(request.user, course):
+            return Response({"detail": "Cours verrouillé.", "lock_reason": "quiz"},
+                            status=status.HTTP_403_FORBIDDEN)
+        if resource.is_youtube:
+            return Response({"kind": "youtube", "url": resource.youtube_url})
+        if not resource.bucket_key:
+            return Response({"detail": "Aucun média n'est rattaché à cette ressource."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({"kind": "file", "url": generate_signed_url(resource.bucket_key),
+                         "expires_in": 3600})
+
+
+@extend_schema_view(
+    list=extend_schema(exclude=True),
+    retrieve=extend_schema(
+        tags=["Catalogue"], summary="Énoncé d'un QCM",
+        description="Renvoie les questions et options d'un QCM **déverrouillé** (cours débloqué ou "
+                    "examen final ouvert). Les bonnes réponses ne sont jamais exposées. 403 si verrouillé."),
+)
+class QuizViewSet(viewsets.ReadOnlyModelViewSet):
+    """Passage des QCM (cours ou examen final) : énoncé, soumission, résultat."""
+    queryset = Quiz.objects.filter(active=True)
+    serializer_class = QuizPublicSerializer
 
     def retrieve(self, request, *args, **kwargs):
-        collection = self.get_object()
-        contents = Content.objects.filter(collection=collection, active=True)
-        ctx = {"request": request, "accessible_sub_types": _accessible_sub_types(request.user)}
+        quiz = self.get_object()
+        access = _quiz_access(request.user, quiz)
+        if access["locked"]:
+            return Response({"detail": "QCM verrouillé.", **access},
+                            status=status.HTTP_403_FORBIDDEN)
+        return Response(QuizPublicSerializer(quiz).data)
+
+    @extend_schema(
+        tags=["Catalogue"], summary="Soumettre un QCM",
+        description="Envoie les réponses du membre, **note côté serveur** (/20), conserve le meilleur "
+                    "score, valide si le seuil est atteint (jamais de rétrogradation). Valider le QCM "
+                    "d'un cours débloque le suivant ; valider tous les cours ouvre l'examen final.",
+        request=_QuizSubmitRequest,
+        responses={200: OpenApiResponse(_QuizSubmitResponse, description="Tentative enregistrée."),
+                   403: OpenApiResponse(description="QCM verrouillé.")},
+    )
+    @action(detail=True, methods=["post"], url_path="submit")
+    def submit(self, request, pk=None):
+        """Soumet les réponses, note côté serveur et applique RG-23 à RG-26."""
+        quiz = self.get_object()
+        access = _quiz_access(request.user, quiz)
+        if access["locked"]:
+            return Response({"detail": "QCM verrouillé.", **access},
+                            status=status.HTTP_403_FORBIDDEN)
+        serializer = QuizSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        score, correct, total = grade_quiz(quiz, serializer.validated_data["answers"])
+        result = record_quiz_result(request.user, quiz, score)
         return Response({
-            **CollectionSerializer(collection).data,
-            "contents": ContentListSerializer(contents, many=True, context=ctx).data,
+            "score": result.score, "last_score": score, "correct": correct, "total": total,
+            "attempts": result.attempts, "validated": result.validated,
+            "validated_at": result.validated_at, "pass_threshold": quiz.pass_threshold,
         })
+
+    @extend_schema(
+        tags=["Catalogue"], summary="Mon résultat à un QCM",
+        description="Renvoie le résultat du membre pour ce QCM (score, validation), ou un objet vide "
+                    "s'il n'a jamais tenté.",
+    )
+    @action(detail=True, methods=["get"], url_path="result")
+    def result(self, request, pk=None):
+        """Résultat du membre pour ce QCM (vide si aucune tentative)."""
+        quiz = self.get_object()
+        result = QuizResult.objects.filter(user=request.user, quiz=quiz).first()
+        return Response(QuizResultSerializer(result).data if result else {})

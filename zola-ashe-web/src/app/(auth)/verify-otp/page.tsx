@@ -10,7 +10,8 @@ function VerifyOtpForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState(params.get("email") ?? "");
-  const [code, setCode] = useState("");
+  const devCode = params.get("code") ?? "";
+  const [code, setCode] = useState(devCode);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,6 +49,12 @@ function VerifyOtpForm() {
       </p>
       <Alert>{error}</Alert>
       <Alert kind="success">{info}</Alert>
+      {devCode && (
+        <p style={{ fontSize: ".82rem", background: "rgba(184,144,31,.12)", border: "1px solid var(--line)",
+                    borderRadius: 10, padding: ".6rem .8rem", marginBottom: ".85rem", color: "var(--muted)" }}>
+          Mode démo (sans email réel) — code pré-rempli : <strong className="text-gold">{devCode}</strong>
+        </p>
+      )}
       <form onSubmit={onSubmit}>
         <Input label="Email" type="email" value={email} required onChange={(e) => setEmail(e.target.value)} />
         <Input label="Code" inputMode="numeric" maxLength={6} value={code} required

@@ -1,6 +1,7 @@
 """Back-office — modération du fil et consultation de l'audit (CDC §5.5, §7.6)."""
 from django.db.models import Count
-from rest_framework import generics, status
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,7 +12,22 @@ from apps.community.models import Comment, Like, Post, Report
 
 from .permissions import IsAdmin
 
+_TAG = "Admin · Modération & Audit"
+_ReasonRequest = inline_serializer(name="ModerationReasonRequest",
+                                   fields={"reason": drf_serializers.CharField(required=False)})
+_DetailResponse = inline_serializer(name="ModerationDetail",
+                                    fields={"detail": drf_serializers.CharField()})
+_ReportList = inline_serializer(
+    name="ReportQueueList", many=True,
+    fields={"id": drf_serializers.IntegerField(), "target_type": drf_serializers.CharField(),
+            "target_id": drf_serializers.IntegerField(), "reason": drf_serializers.CharField(),
+            "reporter": drf_serializers.CharField(), "signal_count": drf_serializers.IntegerField(),
+            "created_at": drf_serializers.DateTimeField()})
 
+
+@extend_schema(tags=[_TAG], summary="File de modération",
+               description="Signalements non traités, priorisés par nombre de signalements sur la même cible.",
+               responses={200: _ReportList})
 class ReportQueueView(APIView):
     """File de modération priorisée (CDC §5.5)."""
     permission_classes = [IsAdmin]
@@ -37,6 +53,10 @@ class ReportQueueView(APIView):
         return Response(items)
 
 
+@extend_schema(tags=[_TAG], summary="Traiter un signalement",
+               description="Marque un signalement comme traité (sans suppression de contenu). "
+                           "Le motif/décision du modérateur est journalisé à l'audit (RG-31).",
+               request=_ReasonRequest, responses={200: _DetailResponse})
 class HandleReportView(APIView):
     permission_classes = [IsAdmin]
 
@@ -46,9 +66,15 @@ class HandleReportView(APIView):
             return Response({"detail": "Signalement introuvable."}, status=status.HTTP_404_NOT_FOUND)
         report.handled = True
         report.save(update_fields=["handled"])
+        record(request.user, AuditAction.RESOLVE_REPORT, target_type="Report", target_id=report.id,
+               reason=request.data.get("reason", ""),
+               payload={"target_type": report.target_type, "target_id": report.target_id})
         return Response({"detail": "Signalement traité."})
 
 
+@extend_schema(tags=[_TAG], summary="Supprimer une publication (modération)",
+               description="Suppression logique d'un post + ses commentaires/likes (RG-33). Motif journalisé.",
+               request=_ReasonRequest, responses={200: _DetailResponse})
 class AdminDeletePostView(APIView):
     """Suppression d'un post par modération (RG-33) — cascade logique."""
     permission_classes = [IsAdmin]
@@ -68,6 +94,9 @@ class AdminDeletePostView(APIView):
         return Response({"detail": "Publication supprimée."})
 
 
+@extend_schema(tags=[_TAG], summary="Supprimer un commentaire (modération)",
+               description="Suppression logique d'un commentaire. Motif journalisé.",
+               request=_ReasonRequest, responses={200: _DetailResponse})
 class AdminDeleteCommentView(APIView):
     permission_classes = [IsAdmin]
 
@@ -83,6 +112,10 @@ class AdminDeleteCommentView(APIView):
         return Response({"detail": "Commentaire supprimé."})
 
 
+@extend_schema(tags=[_TAG], summary="Journal d'audit",
+               description="Consultation en lecture seule du journal d'audit (append-only), "
+                           "filtrable par `?action=` et `?actor=`.",
+               parameters=[OpenApiParameter("action", str), OpenApiParameter("actor", int)])
 class AuditLogListView(generics.ListAPIView):
     """Consultation du journal d'audit (lecture seule, filtrable)."""
     permission_classes = [IsAdmin]

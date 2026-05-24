@@ -9,7 +9,18 @@ from apps.accounts.models import Role, User, UserStatus
 from apps.audit.models import AuditAction, AuditLog
 from apps.billing.models import Payment, PaymentStatus, PaymentType, Subscription, SubscriptionType
 from apps.community.models import Audience, Comment, Like, Post
-from apps.content.models import Category, Collection, Content, ContentType, QuizResult
+from apps.content.models import (
+    Category,
+    Choice,
+    Course,
+    Formation,
+    FormationStatus,
+    Module,
+    Question,
+    Quiz,
+    QuizResult,
+    Resource,
+)
 
 TEST_SETTINGS = dict(
     CELERY_TASK_ALWAYS_EAGER=True,
@@ -96,41 +107,236 @@ class FinanceTests(AdminBase):
 
 
 class ContentAdminTests(AdminBase):
-    def test_collection_homogeneity_enforced(self):
-        col = Collection.objects.create(title="C", content_type=ContentType.VIDEO, category=Category.FORMATION)
-        r = self.client.post("/api/admin/content/", {
-            "content_type": "PDF", "title": "doc", "category": "FORMATION", "collection": col.id,
+    def test_create_formation_module_course_resource(self):
+        rf = self.client.post("/api/admin/formations/", {
+            "title": "Programme", "category": "FORMATION",
+            "access_subscription_types": ["MEMBRE"], "status": "PUBLISHED",
         }, format="json")
-        self.assertEqual(r.status_code, 400)                          # RG-15
+        self.assertEqual(rf.status_code, 201)
+        rm = self.client.post("/api/admin/modules/", {
+            "formation": rf.data["id"], "title": "Module 1", "order": 1,
+        }, format="json")
+        self.assertEqual(rm.status_code, 201)
+        rc = self.client.post("/api/admin/courses/", {
+            "module": rm.data["id"], "title": "Cours 1", "order": 1,
+        }, format="json")
+        self.assertEqual(rc.status_code, 201)
+        rr = self.client.post("/api/admin/resources/", {
+            "course": rc.data["id"], "resource_type": "VIDEO",
+            "video_source": "YOUTUBE", "youtube_url": "https://youtu.be/x", "title": "Intro",
+        }, format="json")
+        self.assertEqual(rr.status_code, 201)
 
-    def test_content_logical_delete(self):
-        c = Content.objects.create(content_type=ContentType.VIDEO, title="v", category=Category.FORMATION, active=True)
-        r = self.client.delete(f"/api/admin/content/{c.id}/")
+    def test_youtube_resource_requires_url(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION)
+        m = Module.objects.create(formation=f, title="M", order=1)
+        c = Course.objects.create(module=m, title="C", order=1)
+        r = self.client.post("/api/admin/resources/", {
+            "course": c.id, "resource_type": "VIDEO", "video_source": "YOUTUBE", "title": "x",
+        }, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_create_quiz_with_nested_questions(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION)
+        m = Module.objects.create(formation=f, title="M", order=1)
+        c = Course.objects.create(module=m, title="C", order=1)
+        r = self.client.post("/api/admin/quizzes/", {
+            "course": c.id, "title": "QCM", "pass_threshold": 15,
+            "questions": [{
+                "text": "Q1", "order": 1,
+                "choices": [{"text": "bonne", "is_correct": True, "order": 1},
+                            {"text": "mauvaise", "is_correct": False, "order": 2}],
+            }],
+        }, format="json")
+        self.assertEqual(r.status_code, 201)
+        quiz = Quiz.objects.get(id=r.data["id"])
+        self.assertEqual(quiz.questions.count(), 1)
+        self.assertEqual(Choice.objects.filter(question__quiz=quiz).count(), 2)
+
+    def test_quiz_requires_course_xor_formation(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION)
+        m = Module.objects.create(formation=f, title="M", order=1)
+        c = Course.objects.create(module=m, title="C", order=1)
+        r = self.client.post("/api/admin/quizzes/", {
+            "course": c.id, "formation": f.id, "title": "QCM",
+        }, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_formation_logical_delete_unpublishes(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION, status=FormationStatus.PUBLISHED)
+        r = self.client.delete(f"/api/admin/formations/{f.id}/")
         self.assertEqual(r.status_code, 204)
-        c.refresh_from_db()
-        self.assertFalse(c.active)                                    # RG-20
+        f.refresh_from_db()
+        self.assertEqual(f.status, FormationStatus.DRAFT)             # RG-20 (dépubliée)
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_CONTENT).exists())
 
-    def test_collection_delete_detaches_contents(self):
-        col = Collection.objects.create(title="C", content_type=ContentType.VIDEO, category=Category.FORMATION)
-        c = Content.objects.create(content_type=ContentType.VIDEO, title="v", category=Category.FORMATION, collection=col)
-        self.client.delete(f"/api/admin/collections/{col.id}/")
-        c.refresh_from_db()
-        self.assertIsNone(c.collection_id)                            # RG-21
-        col.refresh_from_db()
-        self.assertFalse(col.active)
+    def test_scheduled_formation_requires_publish_at(self):
+        r = self.client.post("/api/admin/formations/", {
+            "title": "Programmé", "category": "FORMATION", "status": "SCHEDULED",
+        }, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_publish_action_sets_published(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION, status=FormationStatus.DRAFT)
+        r = self.client.post(f"/api/admin/formations/{f.id}/publish/")
+        self.assertEqual(r.status_code, 200)
+        f.refresh_from_db()
+        self.assertEqual(f.status, FormationStatus.PUBLISHED)
 
     def test_reset_quiz_requires_reason_and_audits(self):
-        c = Content.objects.create(content_type=ContentType.VIDEO, title="v", category=Category.FORMATION,
-                                   quiz_active=True)
-        QuizResult.objects.create(user=self.member, content=c, score=18, validated=True, attempts=2)
+        f = Formation.objects.create(title="F", category=Category.FORMATION)
+        m = Module.objects.create(formation=f, title="M", order=1)
+        c = Course.objects.create(module=m, title="C", order=1)
+        quiz = Quiz.objects.create(course=c, title="QCM")
+        QuizResult.objects.create(user=self.member, quiz=quiz, score=18, validated=True, attempts=2)
         r = self.client.post("/api/admin/quiz/reset/",
-                             {"user_id": self.member.id, "content_id": c.id, "reason": "triche"}, format="json")
+                             {"user_id": self.member.id, "quiz_id": quiz.id, "reason": "triche"}, format="json")
         self.assertEqual(r.status_code, 200)
-        qr = QuizResult.objects.get(user=self.member, content=c)
+        qr = QuizResult.objects.get(user=self.member, quiz=quiz)
         self.assertFalse(qr.validated)
         self.assertEqual(qr.score, 0)                                 # RG-27
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.RESET_QUIZ).exists())
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CRUD RESSOURCES — mis en exergue (§5.4, RG-16/17)
+#  Cycle de vie complet d'une ressource de cours : création (lien YouTube ET
+#  fichier hébergé), listage filtré, détail, remplacement (PUT), modification
+#  partielle / réordonnancement (PATCH), prévisualisation, suppression — chaque
+#  écriture étant journalisée à l'audit.
+# ════════════════════════════════════════════════════════════════════════════
+class ResourceCrudTests(AdminBase):
+    def setUp(self):
+        super().setUp()
+        self.formation = Formation.objects.create(title="Programme", category=Category.FORMATION)
+        self.module = Module.objects.create(formation=self.formation, title="Module 1", order=1)
+        self.course = Course.objects.create(module=self.module, title="Cours 1", order=1)
+        self.url = "/api/admin/resources/"
+
+    def _create_youtube(self, title="Intro", order=1):
+        return self.client.post(self.url, {
+            "course": self.course.id, "resource_type": "VIDEO", "video_source": "YOUTUBE",
+            "youtube_url": "https://www.youtube.com/watch?v=ScMzIvxBSi4",
+            "title": title, "order": order,
+        }, format="json")
+
+    # ── CREATE ────────────────────────────────────────────────────────────────
+    def test_create_youtube_resource_and_audits(self):
+        r = self._create_youtube()
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data["video_source"], "YOUTUBE")
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.UPDATE_CONTENT,
+                        target_type="Resource", target_id=str(r.data["id"])).exists())
+
+    def test_create_hosted_file_resource(self):
+        r = self.client.post(self.url, {
+            "course": self.course.id, "resource_type": "PDF", "title": "Support",
+            "bucket_key": "pdfs/abc_support.pdf", "nb_pages": 24, "size_mo": 1.8, "order": 2,
+        }, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data["bucket_key"], "pdfs/abc_support.pdf")
+
+    def test_create_youtube_requires_url(self):
+        r = self.client.post(self.url, {
+            "course": self.course.id, "resource_type": "VIDEO", "video_source": "YOUTUBE", "title": "x",
+        }, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("youtube_url", r.data)
+
+    # ── READ (list filtré + détail) ─────────────────────────────────────────────
+    def test_list_filtered_by_course(self):
+        self._create_youtube(title="A", order=1)
+        self._create_youtube(title="B", order=2)
+        other = Course.objects.create(module=self.module, title="Autre", order=2)
+        Resource.objects.create(course=other, resource_type="VIDEO",
+                                video_source="YOUTUBE", youtube_url="https://youtu.be/z", title="Z")
+        r = self.client.get(f"{self.url}?course={self.course.id}")
+        self.assertEqual(r.status_code, 200)
+        titles = [x["title"] for x in (r.data["results"] if "results" in r.data else r.data)]
+        self.assertEqual(sorted(titles), ["A", "B"])
+
+    def test_retrieve_resource(self):
+        rid = self._create_youtube().data["id"]
+        r = self.client.get(f"{self.url}{rid}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["id"], rid)
+
+    # ── UPDATE (PUT complet + PATCH partiel) ────────────────────────────────────
+    def test_put_replaces_and_switches_media(self):
+        rid = self._create_youtube().data["id"]
+        r = self.client.put(f"{self.url}{rid}/", {
+            "course": self.course.id, "resource_type": "PDF", "title": "Devenu PDF",
+            "bucket_key": "pdfs/new.pdf", "order": 1,
+        }, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["resource_type"], "PDF")
+        self.assertEqual(r.data["bucket_key"], "pdfs/new.pdf")
+
+    def test_patch_reorders_resource(self):
+        rid = self._create_youtube(order=1).data["id"]
+        r = self.client.patch(f"{self.url}{rid}/", {"order": 5}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["order"], 5)
+        Resource.objects.get(id=rid).refresh_from_db()
+        self.assertEqual(Resource.objects.get(id=rid).order, 5)
+
+    # ── PREVIEW (média hébergé) ─────────────────────────────────────────────────
+    def test_preview_requires_hosted_file(self):
+        rid = self._create_youtube().data["id"]  # YouTube → pas de fichier hébergé
+        r = self.client.get(f"{self.url}{rid}/preview/")
+        self.assertEqual(r.status_code, 400)
+
+    # ── DELETE ──────────────────────────────────────────────────────────────────
+    def test_delete_resource_and_audits(self):
+        rid = self._create_youtube().data["id"]
+        r = self.client.delete(f"{self.url}{rid}/")
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(Resource.objects.filter(id=rid).exists())
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_CONTENT,
+                        target_type="Resource", target_id=str(rid)).exists())
+
+    # ── PERMISSION ───────────────────────────────────────────────────────────────
+    def test_member_cannot_crud_resources(self):
+        self.client.force_authenticate(self.member)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self._create_youtube().status_code, 403)
+
+
+class ContentAuditTests(AdminBase):
+    """La création/suppression de Module, Cours et QCM est journalisée (RG-21)."""
+    def setUp(self):
+        super().setUp()
+        self.f = Formation.objects.create(title="F", category=Category.FORMATION)
+        self.m = Module.objects.create(formation=self.f, title="M", order=1)
+        self.c = Course.objects.create(module=self.m, title="C", order=1)
+
+    def test_module_create_and_delete_audited(self):
+        r = self.client.post("/api/admin/modules/",
+                             {"formation": self.f.id, "title": "Mod", "order": 2}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.UPDATE_CONTENT,
+                        target_type="Module", target_id=str(r.data["id"])).exists())
+        self.client.delete(f"/api/admin/modules/{r.data['id']}/")
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_CONTENT,
+                        target_type="Module", target_id=str(r.data["id"])).exists())
+
+    def test_course_create_and_update_audited(self):
+        r = self.client.post("/api/admin/courses/",
+                             {"module": self.m.id, "title": "Crs", "order": 2}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.client.patch(f"/api/admin/courses/{r.data['id']}/", {"order": 5}, format="json")
+        self.assertEqual(AuditLog.objects.filter(action=AuditAction.UPDATE_CONTENT,
+                         target_type="Course", target_id=str(r.data["id"])).count(), 2)
+
+    def test_quiz_create_and_delete_audited(self):
+        r = self.client.post("/api/admin/quizzes/",
+                             {"course": self.c.id, "title": "QCM", "pass_threshold": 10}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.UPDATE_CONTENT,
+                        target_type="Quiz", target_id=str(r.data["id"])).exists())
+        self.client.delete(f"/api/admin/quizzes/{r.data['id']}/")
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_CONTENT,
+                        target_type="Quiz", target_id=str(r.data["id"])).exists())
 
 
 class ModerationTests(AdminBase):
@@ -148,6 +354,21 @@ class ModerationTests(AdminBase):
         self.assertFalse(Comment.objects.filter(post=post, active=True).exists())
         self.assertFalse(Like.objects.filter(post=post).exists())
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_POST).exists())
+
+    def test_handle_report_marks_handled_and_audits(self):
+        from apps.community.models import Report
+        author = User.objects.create_user("rep@z.com", "Passw0rd!", full_name="Rp",
+                                           email_verified=True, status=UserStatus.ACTIF)
+        post = Post.objects.create(author=author, text="x", audience=Audience.TOUS)
+        report = Report.objects.create(reporter=self.member, target_type=Report.TargetType.POST,
+                                       target_id=post.id, reason="abus")
+        r = self.client.post(f"/api/admin/reports/{report.id}/handle/",
+                             {"reason": "Vérifié, sans suite"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        report.refresh_from_db()
+        self.assertTrue(report.handled)
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.RESOLVE_REPORT,
+                        target_type="Report", target_id=str(report.id)).exists())
 
     def test_audit_log_is_append_only_via_orm(self):
         log = AuditLog.objects.create(actor=self.admin, action=AuditAction.WARN_USER)

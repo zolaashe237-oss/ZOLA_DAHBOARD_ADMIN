@@ -1,7 +1,8 @@
 """Back-office — gestion des membres (CDC §5.3). Chaque action est journalisée."""
 from uuid import uuid4
 
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
@@ -20,6 +21,12 @@ from .serializers import (
     ReasonSerializer,
 )
 
+_StatusResponse = inline_serializer(name="MemberStatusResponse",
+                                    fields={"status": drf_serializers.CharField()})
+_WarnResponse = inline_serializer(
+    name="WarnResponse",
+    fields={"nb_warnings": drf_serializers.IntegerField(), "recidive_alert": drf_serializers.BooleanField()})
+
 
 def _revoke_tokens(user):
     """Blackliste tous les refresh tokens du membre (révocation de session)."""
@@ -27,6 +34,15 @@ def _revoke_tokens(user):
         BlacklistedToken.objects.get_or_create(token=token)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["Admin · Membres"], summary="Lister les membres",
+                       description="Membres filtrables par `?status=` (ACTIF/RESTREINT/BLOQUE) et `?search=`.",
+                       parameters=[OpenApiParameter("status", str), OpenApiParameter("search", str)]),
+    retrieve=extend_schema(tags=["Admin · Membres"], summary="Fiche membre",
+                           description="Détail complet : abonnements, paiements, résultats de QCM."),
+    destroy=extend_schema(tags=["Admin · Membres"], summary="Anonymiser un membre (RGPD)",
+                          description="Purge RGPD par anonymisation (les paiements protégés interdisent la suppression dure)."),
+)
 class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                     mixins.DestroyModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAdmin]
@@ -45,6 +61,9 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 
     # — Actions —
 
+    @extend_schema(tags=["Admin · Membres"], summary="Bloquer un membre",
+                   description="Passe le membre en BLOQUE et révoque ses sessions. Motif journalisé.",
+                   request=ReasonSerializer, responses={200: _StatusResponse})
     @action(detail=True, methods=["post"])
     def block(self, request, pk=None):
         user = self.get_object()
@@ -54,6 +73,9 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         record(request.user, AuditAction.BLOCK_USER, target_type="User", target_id=user.id, reason=reason)
         return Response({"status": user.status})
 
+    @extend_schema(tags=["Admin · Membres"], summary="Débloquer un membre",
+                   description="Repasse le membre en ACTIF (si adhérent) ou RESTREINT.",
+                   request=None, responses={200: _StatusResponse})
     @action(detail=True, methods=["post"])
     def unblock(self, request, pk=None):
         user = self.get_object()
@@ -62,6 +84,9 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         record(request.user, AuditAction.UNBLOCK_USER, target_type="User", target_id=user.id)
         return Response({"status": user.status})
 
+    @extend_schema(tags=["Admin · Membres"], summary="Avertir un membre",
+                   description="Incrémente le compteur d'avertissements ; alerte récidive dès 3 (RG-32). Motif requis.",
+                   request=ReasonSerializer, responses={200: _WarnResponse})
     @action(detail=True, methods=["post"])
     def warn(self, request, pk=None):
         serializer = ReasonSerializer(data=request.data)
@@ -74,6 +99,8 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response({"nb_warnings": user.nb_warnings,
                          "recidive_alert": user.nb_warnings >= 3})  # RG-32
 
+    @extend_schema(tags=["Admin · Membres"], summary="Envoyer une réinitialisation de mot de passe",
+                   description="Génère et envoie un OTP de réinitialisation au membre.", request=None)
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
         user = self.get_object()

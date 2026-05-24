@@ -22,7 +22,7 @@ export interface MemberDetail extends User {
   status_changed_at: string;
   subscriptions: { id: number; type: string; start: string; end: string | null; active: boolean }[];
   payments: { id: number; type: string; status: string; amount: number; paid_at: string }[];
-  quiz_results: { content: number; title: string; score: number; validated: boolean }[];
+  quiz_results: { quiz: number; title: string; score: number; validated: boolean }[];
 }
 
 export interface DashboardKPIs {
@@ -36,22 +36,88 @@ export interface DashboardKPIs {
 }
 
 export type SubscriptionType = "MEMBRE";
+export type FormationStatus = "DRAFT" | "SCHEDULED" | "PUBLISHED";
+export type VideoSource = "YOUTUBE" | "UPLOAD";
 
-export interface ContentItem {
+export interface Formation {
   id: number;
-  content_type: ContentType;
   title: string;
   description: string;
   category: Category;
-  order: number;
-  active: boolean;
-  collection: number | null;
   access_subscription_types: SubscriptionType[];
+  cover_url: string;
+  cover_key: string;
+  status: FormationStatus;
+  publish_at: string | null;
+  order: number;
+  module_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModuleItem {
+  id: number;
+  formation: number;
+  parent: number | null;
+  title: string;
+  description: string;
+  order: number;
+  created_at: string;
+}
+
+export interface CourseItem {
+  id: number;
+  module: number;
+  title: string;
+  description: string;
+  order: number;
+  created_at: string;
+}
+
+export interface ResourceItem {
+  id: number;
+  course: number;
+  resource_type: ContentType;
+  title: string;
+  description: string;
+  order: number;
+  video_source: VideoSource;
+  youtube_url: string;
   bucket_key: string;
-  thumbnail_key: string;   // clé MinIO (écriture)
-  thumbnail: string;       // URL signée (lecture)
-  quiz_threshold: number;
-  quiz_active: boolean;
+  thumbnail_url: string;
+  thumbnail_key: string;
+  thumbnail: string;
+  nb_pages: number | null;
+  duration_sec: number | null;
+  size_mo: number | null;
+  audio_format: string;
+  created_at: string;
+}
+
+export interface QuizChoice {
+  id?: number;
+  text: string;
+  is_correct: boolean;
+  order: number;
+}
+
+export interface QuizQuestion {
+  id?: number;
+  text: string;
+  multiple: boolean;
+  order: number;
+  choices: QuizChoice[];
+}
+
+export interface QuizItem {
+  id: number;
+  course: number | null;
+  formation: number | null;
+  title: string;
+  pass_threshold: number;
+  active: boolean;
+  questions: QuizQuestion[];
+  created_at: string;
 }
 
 export interface ReportItem {

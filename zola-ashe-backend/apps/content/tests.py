@@ -1,27 +1,62 @@
-"""Tests du chantier Contenu : accès membre (RG-22/10), séquentiel (RG-16),
-quiz (RG-23 à RG-26), streaming signé (RG-17/19)."""
+"""Tests du chantier Contenu (Formation → Modules(arbre) → Cours → Ressources/QCM) :
+accès formation (RG-22/10), déblocage séquentiel et hiérarchique (RG-16), notation
+QCM serveur (RG-23 à RG-26), streaming signé / YouTube (RG-17/19), publication
+programmée (§5.4)."""
+from datetime import timedelta
+
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User, UserStatus
-from .models import Category, Collection, Content, ContentType
+
+from .models import (
+    Category,
+    Choice,
+    Course,
+    Formation,
+    FormationStatus,
+    Module,
+    Question,
+    Quiz,
+    Resource,
+    ResourceType,
+    VideoSource,
+)
+from .services import publish_due_formations
 
 TEST_SETTINGS = dict(
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
 
 
-def make_content(**kw):
-    """Contenu réservé aux membres (access=['MEMBRE']) par défaut."""
-    defaults = dict(content_type=ContentType.VIDEO, title="C", category=Category.FORMATION,
-                    active=True, order=0, quiz_active=False,
-                    access_subscription_types=["MEMBRE"])
+def make_formation(**kw) -> Formation:
+    defaults = dict(title="Formation", category=Category.FORMATION,
+                    status=FormationStatus.PUBLISHED, access_subscription_types=["MEMBRE"])
     defaults.update(kw)
-    return Content.objects.create(**defaults)
+    return Formation.objects.create(**defaults)
+
+
+def add_quiz(*, course=None, formation=None, threshold=15) -> Quiz:
+    """QCM à 2 questions (bonne réponse = choix 1)."""
+    quiz = Quiz.objects.create(course=course, formation=formation, pass_threshold=threshold)
+    for qi in range(1, 3):
+        q = Question.objects.create(quiz=quiz, text=f"Q{qi}", order=qi)
+        Choice.objects.create(question=q, text="bonne", is_correct=True, order=1)
+        Choice.objects.create(question=q, text="mauvaise", is_correct=False, order=2)
+    return quiz
+
+
+def good_answers(quiz: Quiz) -> dict:
+    return {str(q.id): [c.id for c in q.choices.filter(is_correct=True)] for q in quiz.questions.all()}
+
+
+def bad_answers(quiz: Quiz) -> dict:
+    return {str(q.id): [c.id for c in q.choices.filter(is_correct=False)] for q in quiz.questions.all()}
 
 
 @override_settings(**TEST_SETTINGS)
-class MemberAccessTests(APITestCase):
+class FormationAccessTests(APITestCase):
     def setUp(self):
         self.actif = User.objects.create_user("actif@z.com", "Passw0rd!", full_name="A",
                                                email_verified=True, status=UserStatus.ACTIF)
@@ -29,141 +64,175 @@ class MemberAccessTests(APITestCase):
                                                    email_verified=True, status=UserStatus.RESTREINT)
         self.bloque = User.objects.create_user("bloq@z.com", "Passw0rd!", full_name="B",
                                                 email_verified=True, status=UserStatus.BLOQUE)
-        self.reserve = make_content(title="Réservé")
-        self.libre = make_content(title="Libre", access_subscription_types=[])
+        self.reserve = make_formation(title="Réservé", access_subscription_types=["MEMBRE"])
+        self.public = make_formation(title="Public", access_subscription_types=[])
 
-    def _locked(self, user, content):
+    def _locked(self, user, formation):
         self.client.force_authenticate(user)
-        return self.client.get(f"/api/content/{content.id}/").data["access"]
+        return self.client.get(f"/api/formations/{formation.id}/").data["locked"]
 
-    def test_reserved_accessible_to_active_member_only(self):
-        self.assertFalse(self._locked(self.actif, self.reserve)["locked"])
-        state = self._locked(self.restreint, self.reserve)
-        self.assertTrue(state["locked"])
-        self.assertEqual(state["lock_reason"], "subscription")
+    def test_reserved_active_member_only(self):
+        self.assertFalse(self._locked(self.actif, self.reserve))
+        self.assertTrue(self._locked(self.restreint, self.reserve))
 
-    def test_blocked_member_has_no_access(self):
-        self.assertTrue(self._locked(self.bloque, self.reserve)["locked"])
-        self.assertTrue(self._locked(self.bloque, self.libre)["locked"])  # BLOQUÉ : rien (RG-10)
+    def test_public_open_to_any_non_blocked(self):
+        self.assertFalse(self._locked(self.actif, self.public))
+        self.assertFalse(self._locked(self.restreint, self.public))
 
-    def test_free_content_open_to_any_non_blocked(self):
-        self.assertFalse(self._locked(self.actif, self.libre)["locked"])
-        self.assertFalse(self._locked(self.restreint, self.libre)["locked"])
-
-    def test_locked_video_stream_forbidden_then_allowed(self):
-        self.reserve.content_type = ContentType.VIDEO
-        self.reserve.bucket_key = "videos/secret.mp4"
-        self.reserve.save()
-        self.client.force_authenticate(self.restreint)
-        r = self.client.get(f"/api/content/{self.reserve.id}/stream/")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.data["lock_reason"], "subscription")
-
-        self.client.force_authenticate(self.actif)
-        r = self.client.get(f"/api/content/{self.reserve.id}/stream/")
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("url", r.data)
+    def test_blocked_no_access(self):
+        self.assertTrue(self._locked(self.bloque, self.reserve))
+        self.assertTrue(self._locked(self.bloque, self.public))  # RG-10
 
 
 @override_settings(**TEST_SETTINGS)
-class SequentialAndQuizTests(APITestCase):
+class SequentialUnlockTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user("u@z.com", "Passw0rd!", full_name="U",
                                               email_verified=True, status=UserStatus.ACTIF)
-        self.col = Collection.objects.create(title="Parcours", content_type=ContentType.VIDEO,
-                                             category=Category.FORMATION)
-        self.m1 = make_content(collection=self.col, order=1, title="M1",
-                               quiz_active=True, quiz_threshold=15)
-        self.m2 = make_content(collection=self.col, order=2, title="M2", quiz_active=False)
+        self.formation = make_formation()
+        self.module = Module.objects.create(formation=self.formation, title="M1", order=1)
+        self.c1 = Course.objects.create(module=self.module, title="C1", order=1)
+        self.c2 = Course.objects.create(module=self.module, title="C2", order=2)
+        self.quiz1 = add_quiz(course=self.c1)
         self.client.force_authenticate(self.user)
 
-    def test_module2_locked_until_module1_validated(self):
-        r = self.client.get(f"/api/content/{self.m2.id}/")
-        self.assertTrue(r.data["access"]["locked"])
-        self.assertEqual(r.data["access"]["lock_reason"], "quiz")
+    def _course(self, course_id):
+        data = self.client.get(f"/api/formations/{self.formation.id}/").data
+        courses = {c["id"]: c for m in data["modules"] for c in m["courses"]}
+        return courses[course_id]
 
-    def test_quiz_submit_validates_and_unlocks_next(self):
-        r = self.client.post(f"/api/content/{self.m1.id}/quiz/submit/", {"score": 16}, format="json")
+    def test_second_course_locked_until_first_validated(self):
+        self.assertTrue(self._course(self.c2.id)["access"]["locked"])
+        self.assertEqual(self._course(self.c2.id)["access"]["lock_reason"], "quiz")
+
+    def test_quiz_validation_unlocks_next_course(self):
+        r = self.client.post(f"/api/quizzes/{self.quiz1.id}/submit/",
+                             {"answers": good_answers(self.quiz1)}, format="json")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.data["validated"])
-        self.assertIsNotNone(r.data["validated_at"])
-        r = self.client.get(f"/api/content/{self.m2.id}/")
-        self.assertFalse(r.data["access"]["locked"])
+        self.assertFalse(self._course(self.c2.id)["access"]["locked"])
 
-    def test_quiz_keeps_best_score_no_downgrade(self):
-        self.client.post(f"/api/content/{self.m1.id}/quiz/submit/", {"score": 16}, format="json")
-        r = self.client.post(f"/api/content/{self.m1.id}/quiz/submit/", {"score": 8}, format="json")
-        self.assertEqual(r.data["score"], 16)        # meilleur score conservé (RG-25)
-        self.assertTrue(r.data["validated"])          # pas de rétrogradation (RG-26)
-        self.assertEqual(r.data["attempts"], 2)       # tentatives illimitées (RG-24)
-
-    def test_quiz_below_threshold_not_validated(self):
-        r = self.client.post(f"/api/content/{self.m1.id}/quiz/submit/", {"score": 10}, format="json")
-        self.assertFalse(r.data["validated"])
-
-    def test_quiz_submit_on_module_without_quiz_400(self):
-        r = self.client.post(f"/api/content/{self.m2.id}/quiz/submit/", {"score": 20}, format="json")
-        self.assertEqual(r.status_code, 400)
+    def test_child_module_requires_parent_completed(self):
+        child = Module.objects.create(formation=self.formation, parent=self.module, title="M1.1", order=1)
+        Course.objects.create(module=child, title="C-child", order=1)
+        # c2 (sans quiz) reste, le module parent n'est pas terminé tant que quiz1 non validé
+        data = self.client.get(f"/api/formations/{self.formation.id}/").data
+        parent = next(m for m in data["modules"] if m["id"] == self.module.id)
+        self.assertTrue(parent["children"][0]["access"]["locked"])
+        # valide le quiz du cours 1 ; c2 n'a pas de quiz → module parent terminé
+        self.client.post(f"/api/quizzes/{self.quiz1.id}/submit/",
+                        {"answers": good_answers(self.quiz1)}, format="json")
+        data = self.client.get(f"/api/formations/{self.formation.id}/").data
+        parent = next(m for m in data["modules"] if m["id"] == self.module.id)
+        self.assertFalse(parent["children"][0]["access"]["locked"])
 
 
 @override_settings(**TEST_SETTINGS)
-class StreamTests(APITestCase):
+class QuizGradingTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("u@z.com", "Passw0rd!", full_name="U",
+                                              email_verified=True, status=UserStatus.ACTIF)
+        self.formation = make_formation()
+        self.module = Module.objects.create(formation=self.formation, title="M1", order=1)
+        self.c1 = Course.objects.create(module=self.module, title="C1", order=1)
+        self.quiz = add_quiz(course=self.c1)
+        self.client.force_authenticate(self.user)
+
+    def _submit(self, answers):
+        return self.client.post(f"/api/quizzes/{self.quiz.id}/submit/", {"answers": answers}, format="json")
+
+    def test_full_score_validates(self):
+        r = self._submit(good_answers(self.quiz))
+        self.assertEqual(r.data["score"], 20)
+        self.assertEqual(r.data["correct"], 2)
+        self.assertTrue(r.data["validated"])
+
+    def test_wrong_answers_not_validated(self):
+        r = self._submit(bad_answers(self.quiz))
+        self.assertEqual(r.data["score"], 0)
+        self.assertFalse(r.data["validated"])
+
+    def test_keeps_best_score_no_downgrade(self):
+        self._submit(good_answers(self.quiz))
+        r = self._submit(bad_answers(self.quiz))
+        self.assertEqual(r.data["score"], 20)      # RG-25
+        self.assertTrue(r.data["validated"])         # RG-26
+        self.assertEqual(r.data["attempts"], 2)      # RG-24
+
+    def test_choices_never_expose_correct_answer(self):
+        r = self.client.get(f"/api/quizzes/{self.quiz.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("is_correct", r.data["questions"][0]["choices"][0])
+
+    def test_locked_quiz_forbidden(self):
+        c2 = Course.objects.create(module=self.module, title="C2", order=2)
+        q2 = add_quiz(course=c2)
+        r = self.client.get(f"/api/quizzes/{q2.id}/")  # c2 verrouillé (c1 non validé)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.data["lock_reason"], "quiz")
+
+
+@override_settings(**TEST_SETTINGS)
+class ResourceStreamTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user("s@z.com", "Passw0rd!", full_name="S",
                                               email_verified=True, status=UserStatus.ACTIF)
-        self.pdf = make_content(content_type=ContentType.PDF, bucket_key="pdfs/livre.pdf", title="Livre")
-        self.video = make_content(content_type=ContentType.VIDEO, bucket_key="videos/cours.mp4", title="Vidéo")
-        self.no_media = make_content(content_type=ContentType.VIDEO, bucket_key="", title="Sans média")
+        self.restreint = User.objects.create_user("r@z.com", "Passw0rd!", full_name="R",
+                                                   email_verified=True, status=UserStatus.RESTREINT)
+        self.formation = make_formation(access_subscription_types=["MEMBRE"])
+        self.module = Module.objects.create(formation=self.formation, title="M1", order=1)
+        self.course = Course.objects.create(module=self.module, title="C1", order=1)
+        self.youtube = Resource.objects.create(
+            course=self.course, resource_type=ResourceType.VIDEO,
+            video_source=VideoSource.YOUTUBE, youtube_url="https://youtu.be/abc", title="YT")
+        self.pdf = Resource.objects.create(
+            course=self.course, resource_type=ResourceType.PDF, bucket_key="pdfs/livre.pdf", title="PDF")
+
+    def test_youtube_stream_returns_link(self):
         self.client.force_authenticate(self.user)
-
-    def test_pdf_stream_returns_signed_url(self):
-        r = self.client.get(f"/api/content/{self.pdf.id}/stream/")
+        r = self.client.get(f"/api/resources/{self.youtube.id}/stream/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("url", r.data)
-        self.assertEqual(r.data["expires_in"], 3600)
+        self.assertEqual(r.data["kind"], "youtube")
+        self.assertEqual(r.data["url"], "https://youtu.be/abc")
 
-    def test_video_stream_returns_signed_url(self):
-        r = self.client.get(f"/api/content/{self.video.id}/stream/")
+    def test_file_stream_returns_signed_url(self):
+        self.client.force_authenticate(self.user)
+        r = self.client.get(f"/api/resources/{self.pdf.id}/stream/")
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["kind"], "file")
         self.assertIn("url", r.data)
 
-    def test_stream_without_media_400(self):
-        r = self.client.get(f"/api/content/{self.no_media.id}/stream/")
-        self.assertEqual(r.status_code, 400)
-
-    def test_stream_locked_when_not_member(self):
-        restreint = User.objects.create_user("r2@z.com", "Passw0rd!", full_name="R2",
-                                              email_verified=True, status=UserStatus.RESTREINT)
-        self.client.force_authenticate(restreint)
-        r = self.client.get(f"/api/content/{self.pdf.id}/stream/")
+    def test_stream_forbidden_for_non_member(self):
+        self.client.force_authenticate(self.restreint)
+        r = self.client.get(f"/api/resources/{self.pdf.id}/stream/")
         self.assertEqual(r.status_code, 403)
         self.assertEqual(r.data["lock_reason"], "subscription")
 
 
 @override_settings(**TEST_SETTINGS)
-class ExplicitAccessTests(APITestCase):
-    """Modèle explicite : chaque contenu déclare les abonnements qui l'ouvrent."""
-
+class ScheduledPublicationTests(APITestCase):
     def setUp(self):
-        self.actif = User.objects.create_user("a@z.com", "Passw0rd!", full_name="A",
-                                               email_verified=True, status=UserStatus.ACTIF)
-        self.restreint = User.objects.create_user("r@z.com", "Passw0rd!", full_name="R",
-                                                   email_verified=True, status=UserStatus.RESTREINT)
-        self.bloque = User.objects.create_user("b@z.com", "Passw0rd!", full_name="B",
-                                                email_verified=True, status=UserStatus.BLOQUE)
+        self.user = User.objects.create_user("u@z.com", "Passw0rd!", full_name="U",
+                                              email_verified=True, status=UserStatus.ACTIF)
+        self.client.force_authenticate(self.user)
 
-    def _locked(self, user, content):
-        self.client.force_authenticate(user)
-        return self.client.get(f"/api/content/{content.id}/").data["access"]["locked"]
+    def test_future_scheduled_not_visible(self):
+        f = make_formation(status=FormationStatus.SCHEDULED, publish_at=timezone.now() + timedelta(days=3))
+        self.assertEqual(self.client.get(f"/api/formations/{f.id}/").status_code, 404)
 
-    def test_membre_content_requires_active_member(self):
-        c = make_content(access_subscription_types=["MEMBRE"])
-        self.assertFalse(self._locked(self.actif, c))     # membre actif
-        self.assertTrue(self._locked(self.restreint, c))  # adhésion non à jour
-        self.assertTrue(self._locked(self.bloque, c))     # bloqué
+    def test_past_scheduled_visible(self):
+        f = make_formation(status=FormationStatus.SCHEDULED, publish_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(self.client.get(f"/api/formations/{f.id}/").status_code, 200)
 
-    def test_empty_list_is_free_for_authenticated_but_not_blocked(self):
-        c = make_content(access_subscription_types=[])
-        self.assertFalse(self._locked(self.restreint, c))  # contenu libre
-        self.assertFalse(self._locked(self.actif, c))
-        self.assertTrue(self._locked(self.bloque, c))      # bloqué : aucun accès
+    def test_draft_not_visible(self):
+        f = make_formation(status=FormationStatus.DRAFT)
+        self.assertEqual(self.client.get(f"/api/formations/{f.id}/").status_code, 404)
+
+    def test_publish_due_flips_status(self):
+        due = make_formation(status=FormationStatus.SCHEDULED, publish_at=timezone.now() - timedelta(minutes=1))
+        future = make_formation(status=FormationStatus.SCHEDULED, publish_at=timezone.now() + timedelta(days=1))
+        self.assertEqual(publish_due_formations(), 1)
+        due.refresh_from_db(); future.refresh_from_db()
+        self.assertEqual(due.status, FormationStatus.PUBLISHED)
+        self.assertIsNone(due.publish_at)
+        self.assertEqual(future.status, FormationStatus.SCHEDULED)

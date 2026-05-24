@@ -5,7 +5,9 @@ from datetime import timedelta
 from django.db.models import Sum
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,11 +22,25 @@ from apps.content.models import QuizResult
 from .permissions import IsAdmin
 from .serializers import ExonerationSerializer, ManualPaymentSerializer, RefundSerializer
 
+_TAG = "Admin · Finance"
+_PaymentCreatedResponse = inline_serializer(
+    name="PaymentCreatedResponse",
+    fields={"payment_id": drf_serializers.IntegerField(), "status": drf_serializers.CharField(required=False)})
+_DashboardResponse = inline_serializer(
+    name="DashboardKPIs",
+    fields={k: drf_serializers.IntegerField() for k in (
+        "members_active", "members_restricted", "revenue_month", "cotisations_late",
+        "reports_pending", "new_members_month", "modules_validated_month")})
+
 
 def _month_start():
     return timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+@extend_schema(tags=[_TAG], summary="Tableau de bord (KPIs)",
+               description="Indicateurs temps réel : membres actifs/restreints, revenus du mois, "
+                           "cotisations en retard, signalements en attente, nouveaux membres, modules validés.",
+               responses={200: _DashboardResponse})
 class DashboardView(APIView):
     """KPIs temps réel du back-office (CDC §5.2)."""
     permission_classes = [IsAdmin]
@@ -58,6 +74,10 @@ class DashboardView(APIView):
         })
 
 
+@extend_schema(tags=[_TAG], summary="Paiement manuel (hors Swinmo)",
+               description="Enregistre et valide un paiement saisi par l'admin (espèces, virement…), "
+                           "et active l'adhésion/cotisation correspondante (RG-06). `swinmo_ref` reste nul.",
+               request=ManualPaymentSerializer, responses={201: _PaymentCreatedResponse})
 class ManualPaymentView(APIView):
     """Validation manuelle d'un paiement hors Swinmo (RG-06)."""
     permission_classes = [IsAdmin]
@@ -83,6 +103,9 @@ class ManualPaymentView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=[_TAG], summary="Rembourser (trace comptable)",
+               description="Crée une écriture de remboursement (RG-39) : montant stocké négatif, append-only.",
+               request=RefundSerializer, responses={201: _PaymentCreatedResponse})
 class RefundView(APIView):
     """Trace comptable d'un remboursement (RG-39) — montant négatif, append-only."""
     permission_classes = [IsAdmin]
@@ -102,6 +125,9 @@ class RefundView(APIView):
         return Response({"payment_id": payment.id}, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=[_TAG], summary="Exonérer de cotisation",
+               description="Crée une cotisation VALIDE à montant 0 (RG-40), pour les cas sociaux.",
+               request=ExonerationSerializer, responses={201: _PaymentCreatedResponse})
 class ExonerationView(APIView):
     """Exonération de cotisation (RG-40) — paiement VALIDE montant 0."""
     permission_classes = [IsAdmin]
@@ -121,6 +147,9 @@ class ExonerationView(APIView):
         return Response({"payment_id": payment.id}, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=[_TAG], summary="Exporter les membres (CSV)",
+               description="Télécharge la liste des membres au format CSV. Action journalisée.",
+               responses={200: OpenApiResponse(OpenApiTypes.BINARY, description="Fichier CSV.")})
 class ExportMembersView(APIView):
     """Export CSV de la liste des membres (CDC §5.3) — journalisé."""
     permission_classes = [IsAdmin]
@@ -137,6 +166,9 @@ class ExportMembersView(APIView):
         return response
 
 
+@extend_schema(tags=[_TAG], summary="Exporter les paiements (CSV)",
+               description="Télécharge l'ensemble des paiements au format CSV. Action journalisée.",
+               responses={200: OpenApiResponse(OpenApiTypes.BINARY, description="Fichier CSV.")})
 class ExportPaymentsView(APIView):
     """Export CSV des paiements (CDC §5.7) — journalisé."""
     permission_classes = [IsAdmin]
@@ -153,6 +185,12 @@ class ExportPaymentsView(APIView):
         return response
 
 
+@extend_schema(tags=[_TAG], summary="Relancer les cotisations en retard",
+               description="Envoie un email de relance à chaque membre ACTIF dont la dernière cotisation "
+                           "validée date de plus de 30 jours. Renvoie le nombre de relances.",
+               request=None,
+               responses={200: inline_serializer(name="RemindersResponse",
+                                                  fields={"reminded": drf_serializers.IntegerField()})})
 class SendRemindersView(APIView):
     """Relance email groupée des membres en retard de cotisation (CDC §5.7)."""
     permission_classes = [IsAdmin]

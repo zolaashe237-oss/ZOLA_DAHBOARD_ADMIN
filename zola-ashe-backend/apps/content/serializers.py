@@ -1,89 +1,194 @@
-"""Serializers du contenu (lecture membre). `bucket_key` n'est jamais exposé :
-les fichiers PDF/audio passent par l'endpoint de streaming signé (RG-17/19).
+"""Serializers du contenu (lecture membre).
+
+`bucket_key` n'est jamais exposé : les fichiers hébergés passent par l'endpoint
+de streaming signé (RG-17/19). Les bonnes réponses d'un QCM ne sont jamais
+exposées : la notation est faite côté serveur.
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import Collection, Content, QuizResult
-from .services import content_accessible, generate_signed_url, is_unlocked
+from .models import Choice, Course, Formation, Module, Question, Quiz, QuizResult, Resource
+from .services import (
+    course_state,
+    final_exam_unlocked,
+    formation_accessible,
+    generate_signed_url,
+    module_state,
+)
 
 
 def _thumbnail(obj) -> str:
     """URL signée de la miniature (MinIO) ou miniature externe en repli."""
-    if obj.thumbnail_key:
+    if getattr(obj, "thumbnail_key", ""):
         return generate_signed_url(obj.thumbnail_key)
-    return obj.thumbnail_url
+    return getattr(obj, "thumbnail_url", "") or ""
 
 
-class CollectionSerializer(serializers.ModelSerializer):
+# ─── Arbre : ressources, cours, modules ─────────────────────────────────────
+
+def serialize_resource(resource: Resource, *, unlocked: bool) -> dict:
+    """Ressource pour un membre. Le lien YouTube/le média n'est exposé que si le
+    cours est déverrouillé ; sinon on n'envoie que les métadonnées d'aperçu."""
+    return {
+        "id": resource.id,
+        "resource_type": resource.resource_type,
+        "title": resource.title,
+        "description": resource.description,
+        "order": resource.order,
+        "is_youtube": resource.is_youtube,
+        "thumbnail": _thumbnail(resource),
+        "nb_pages": resource.nb_pages,
+        "duration_sec": resource.duration_sec,
+        "stream_available": bool(resource.bucket_key),
+        # YouTube : lien public, mais on respecte le déblocage par progression.
+        "youtube_url": resource.youtube_url if (unlocked and resource.is_youtube) else "",
+    }
+
+
+def serialize_course(course: Course, *, user, accessible: bool) -> dict:
+    """Cours + ses ressources + son QCM (résumé)."""
+    state = course_state(user, course, accessible)
+    unlocked = not state["locked"]
+    quiz = getattr(course, "quiz", None)
+    return {
+        "id": course.id,
+        "title": course.title,
+        "description": course.description,
+        "order": course.order,
+        "access": {"locked": state["locked"], "lock_reason": state["lock_reason"]},
+        "completed": state["completed"],
+        "resources": [serialize_resource(r, unlocked=unlocked) for r in course.resources.all()],
+        "quiz": ({"id": quiz.id, "title": quiz.title, "question_count": quiz.questions.count(),
+                  "pass_threshold": quiz.pass_threshold}
+                 if quiz and quiz.active else None),
+    }
+
+
+def serialize_module(module: Module, *, user, accessible: bool) -> dict:
+    """Module + ses cours + ses sous-modules (récursif)."""
+    state = module_state(user, module, accessible)
+    return {
+        "id": module.id,
+        "title": module.title,
+        "description": module.description,
+        "order": module.order,
+        "access": {"locked": state["locked"], "lock_reason": state["lock_reason"]},
+        "completed": state["completed"],
+        "courses": [serialize_course(c, user=user, accessible=accessible)
+                    for c in module.courses.all()],
+        "children": [serialize_module(child, user=user, accessible=accessible)
+                     for child in module.children.all()],
+    }
+
+
+# ─── Formations ──────────────────────────────────────────────────────────────
+
+class FormationListSerializer(serializers.ModelSerializer):
+    cover = serializers.SerializerMethodField()
+    is_reserved = serializers.BooleanField(read_only=True)
+    locked = serializers.SerializerMethodField()
+    module_count = serializers.SerializerMethodField()
+
     class Meta:
-        model = Collection
-        fields = ("id", "title", "description", "content_type", "category", "order")
+        model = Formation
+        fields = ("id", "title", "description", "category", "cover",
+                  "is_reserved", "locked", "module_count")
 
+    def get_cover(self, obj) -> str:
+        return generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
 
-class _AccessMixin(serializers.Serializer):
-    """Ajoute l'état d'accès (verrouillage abonnement/quiz) calculé par membre."""
-    access = serializers.SerializerMethodField()
-
-    def _access_state(self, obj) -> dict:
-        """État de verrouillage (abonnement puis quiz) pour le membre courant."""
-        user = self.context["request"].user
-        # `accessible_sub_types` (optionnel) : ensemble pré-calculé pour la liste.
+    def get_locked(self, obj) -> bool:
         types = self.context.get("accessible_sub_types")
-        if not content_accessible(user, obj, accessible_types=types):
-            return {"locked": True, "lock_reason": "subscription"}
-        if not is_unlocked(user, obj):
-            return {"locked": True, "lock_reason": "quiz"}
-        return {"locked": False, "lock_reason": None}
+        return not formation_accessible(self.context["request"].user, obj, accessible_types=types)
 
-    def get_access(self, obj) -> dict:
-        return self._access_state(obj)
+    def get_module_count(self, obj) -> int:
+        return obj.modules.count()
 
 
-class ContentListSerializer(_AccessMixin, serializers.ModelSerializer):
-    thumbnail = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Content
-        fields = ("id", "content_type", "title", "description", "category", "order",
-                  "collection", "thumbnail", "quiz_active",
-                  "access_subscription_types", "access")
-
-    def get_thumbnail(self, obj) -> str:
-        return _thumbnail(obj)
-
-
-class ContentDetailSerializer(_AccessMixin, serializers.ModelSerializer):
-    stream_available = serializers.SerializerMethodField()
-    thumbnail = serializers.SerializerMethodField()
-    # quiz_url est une ressource protégée : exposée seulement si le module est
-    # déverrouillé. La vidéo, elle, ne s'expose JAMAIS en clair : elle passe par
-    # l'endpoint /stream/ qui renvoie une URL signée (comme PDF/audio, RG-17/19).
-    quiz_url = serializers.SerializerMethodField()
+class FormationDetailSerializer(serializers.ModelSerializer):
+    cover = serializers.SerializerMethodField()
+    is_reserved = serializers.BooleanField(read_only=True)
+    locked = serializers.SerializerMethodField()
+    modules = serializers.SerializerMethodField()
+    final_exam = serializers.SerializerMethodField()
 
     class Meta:
-        model = Content
-        fields = ("id", "content_type", "title", "description", "category", "order",
-                  "collection", "thumbnail", "quiz_active", "quiz_threshold",
-                  "quiz_url", "nb_pages", "duration_sec", "size_mo",
-                  "audio_format", "stream_available", "access_subscription_types", "access")
+        model = Formation
+        fields = ("id", "title", "description", "category", "cover",
+                  "is_reserved", "locked", "modules", "final_exam")
 
-    def get_stream_available(self, obj) -> bool:
-        # Tout média (vidéo, PDF, audio) stocké se lit via /stream/ (URL signée).
-        return bool(obj.bucket_key)
+    def _accessible(self, obj) -> bool:
+        types = self.context.get("accessible_sub_types")
+        return formation_accessible(self.context["request"].user, obj, accessible_types=types)
 
-    def get_thumbnail(self, obj) -> str:
-        return _thumbnail(obj)
+    def get_cover(self, obj) -> str:
+        return generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
 
-    def get_quiz_url(self, obj) -> str:
-        return "" if self._access_state(obj)["locked"] else obj.quiz_url
+    def get_locked(self, obj) -> bool:
+        return not self._accessible(obj)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_modules(self, obj):
+        user = self.context["request"].user
+        accessible = self._accessible(obj)
+        roots = obj.modules.filter(parent__isnull=True)
+        return [serialize_module(m, user=user, accessible=accessible) for m in roots]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_final_exam(self, obj):
+        exam = getattr(obj, "final_exam", None)
+        if not exam or not exam.active:
+            return None
+        user = self.context["request"].user
+        accessible = self._accessible(obj)
+        unlocked = accessible and final_exam_unlocked(user, obj)
+        result = QuizResult.objects.filter(user=user, quiz=exam).first()
+        return {
+            "id": exam.id,
+            "title": exam.title,
+            "question_count": exam.questions.count(),
+            "pass_threshold": exam.pass_threshold,
+            "locked": not unlocked,
+            "lock_reason": None if unlocked else ("subscription" if not accessible else "quiz"),
+            "validated": bool(result and result.validated),
+            "score": result.score if result else None,
+        }
+
+
+# ─── QCM (passage) ───────────────────────────────────────────────────────────
+
+class ChoicePublicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Choice
+        fields = ("id", "text")  # is_correct jamais exposé
+
+
+class QuestionPublicSerializer(serializers.ModelSerializer):
+    choices = ChoicePublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Question
+        fields = ("id", "text", "multiple", "choices")
+
+
+class QuizPublicSerializer(serializers.ModelSerializer):
+    questions = QuestionPublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Quiz
+        fields = ("id", "title", "pass_threshold", "is_final", "questions")
 
 
 class QuizResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuizResult
-        fields = ("content", "score", "attempts", "validated", "validated_at")
+        fields = ("quiz", "score", "attempts", "validated", "validated_at")
         read_only_fields = fields
 
 
 class QuizSubmitSerializer(serializers.Serializer):
-    score = serializers.IntegerField(min_value=0, max_value=20)
+    """Réponses du membre : {question_id: [choice_id, ...]}."""
+    answers = serializers.DictField(
+        child=serializers.ListField(child=serializers.IntegerField(), allow_empty=True),
+    )

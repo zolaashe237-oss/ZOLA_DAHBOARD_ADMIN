@@ -3,9 +3,12 @@
 import { api } from "./api";
 import type {
   Article,
-  ContentItem,
+  FormationDetail,
+  FormationListItem,
   Paginated,
   Post,
+  QuizPublic,
+  QuizSubmitResult,
   Subscription,
   User,
 } from "./types";
@@ -13,12 +16,12 @@ import type {
 // ─── Auth ───────────────────────────────────────────────────────────────────
 export const authApi = {
   register: (data: { email: string; full_name: string; password: string; password2: string }) =>
-    api.post("/auth/register/", data),
+    api.post<{ detail: string; dev_code?: string }>("/auth/register/", data),
 
   verifyOtp: (data: { email: string; code: string }) =>
     api.post("/auth/verify-otp/", data),
 
-  resendOtp: (email: string) => api.post("/auth/resend-otp/", { email }),
+  resendOtp: (email: string) => api.post<{ detail: string; dev_code?: string }>("/auth/resend-otp/", { email }),
 
   login: (data: { email: string; password: string }) =>
     api.post<{ access: string; user: User }>("/auth/login/", data),
@@ -27,7 +30,8 @@ export const authApi = {
 
   logout: () => api.post("/auth/logout/"),
 
-  passwordForgot: (email: string) => api.post("/auth/password/forgot/", { email }),
+  passwordForgot: (email: string) =>
+    api.post<{ detail: string; dev_code?: string }>("/auth/password/forgot/", { email }),
 
   passwordReset: (data: { email: string; code: string; new_password: string }) =>
     api.post("/auth/password/reset/", data),
@@ -39,17 +43,31 @@ export const meApi = {
   update: (data: Partial<Pick<User, "full_name">>) => api.patch<User>("/me/", data),
 };
 
-// ─── Contenu ────────────────────────────────────────────────────────────────
-export const contentApi = {
-  list: (params?: { category?: string; content_type?: string; collection?: number }) =>
-    api.get<Paginated<ContentItem>>("/content/", { params }),
+// ─── Formations (catalogue + arbre modules → cours) ───────────────────────────
+export const formationApi = {
+  list: (params?: { category?: string }) =>
+    api.get<Paginated<FormationListItem>>("/formations/", { params }),
 
-  detail: (id: number) => api.get<ContentItem>(`/content/${id}/`),
+  detail: (id: number) => api.get<FormationDetail>(`/formations/${id}/`),
+};
 
-  stream: (id: number) => api.get<{ url: string; expires_in: number }>(`/content/${id}/stream/`),
+// ─── Ressources (lecture : lien YouTube ou URL signée) ────────────────────────
+export const resourceApi = {
+  stream: (id: number) =>
+    api.get<{ kind: "youtube" | "file"; url: string; expires_in?: number }>(
+      `/resources/${id}/stream/`,
+    ),
+};
 
-  submitQuiz: (id: number, score: number) =>
-    api.post(`/content/${id}/quiz/submit/`, { score }),
+// ─── QCM (passage + notation serveur) ─────────────────────────────────────────
+export const quizApi = {
+  get: (id: number) => api.get<QuizPublic>(`/quizzes/${id}/`),
+
+  submit: (id: number, answers: Record<string, number[]>) =>
+    api.post<QuizSubmitResult>(`/quizzes/${id}/submit/`, { answers }),
+
+  result: (id: number) =>
+    api.get<{ quiz?: number; score?: number; validated?: boolean }>(`/quizzes/${id}/result/`),
 };
 
 // ─── Billing ──────────────────────────────────────────────────────────────────
@@ -58,10 +76,13 @@ export const billingApi = {
     api.get<{ kind: string; label: string; amount: number }[]>("/billing/subscription-types/"),
 
   initiate: (kind: string, amount?: number) =>
-    api.post<{ checkout_url: string; reference: string; amount: number }>(
+    api.post<{ checkout_url: string; reference: string; amount: number; mock?: boolean }>(
       "/billing/payments/initiate/",
       { kind, ...(amount ? { amount } : {}) },
     ),
+
+  mockConfirm: (reference: string) =>
+    api.post<{ confirmed: boolean; kind: string }>("/billing/payments/mock-confirm/", { reference }),
 
   mySubscriptions: () =>
     api.get<Subscription[] | Paginated<Subscription>>("/billing/subscriptions/"),

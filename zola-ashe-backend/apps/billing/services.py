@@ -93,6 +93,14 @@ def initiate_payment(user, kind: str, amount: int | None = None) -> dict:
         swinmo_ref=reference,
     )
 
+    # Mode MOCK (aucune clé Swinmo) : on renvoie une page de paiement simulé du
+    # front au lieu d'appeler l'API externe → le parcours reste complet en local.
+    if settings.SWINMO_MOCK:
+        checkout_url = (f"{settings.WEB_BASE_URL}/paiement/simulation"
+                        f"?ref={reference}&kind={kind}&amount={effective_amount}")
+        return {"payment_id": payment.id, "reference": reference,
+                "amount": effective_amount, "checkout_url": checkout_url, "mock": True}
+
     metadata = {"reference": reference, "user_id": user.id, "kind": kind}
     response = swinmo.create_checkout_link(plan.product_id, effective_amount, user.email, metadata)
     return {
@@ -101,6 +109,20 @@ def initiate_payment(user, kind: str, amount: int | None = None) -> dict:
         "amount": effective_amount,
         "checkout_url": swinmo.extract_checkout_url(response),
     }
+
+
+def confirm_mock_payment(user, reference: str) -> str:
+    """Confirme un paiement simulé (mode MOCK uniquement). Active le paiement
+    en attente de l'utilisateur, comme le ferait le webhook Swinmo."""
+    if not settings.SWINMO_MOCK:
+        raise ValueError("Confirmation simulée indisponible (Swinmo configuré).")
+    payment = Payment.objects.filter(
+        user=user, swinmo_ref=reference, status=PaymentStatus.EN_ATTENTE).first()
+    if payment is None:
+        raise ValueError("Paiement introuvable ou déjà traité.")
+    # kind == type (INSCRIPTION / COTISATION / DON) dans le modèle du livret.
+    activate_paid_payment(payment, payment.type)
+    return payment.type
 
 
 # ─── Activation après paiement confirmé ─────────────────────────────────────

@@ -20,6 +20,7 @@ TEST_SETTINGS = dict(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
     SWINMO_WEBHOOK_SECRET=SECRET,
+    SWINMO_MOCK=False,   # teste le vrai chemin Swinmo (create_checkout_link mocké)
     PRICE_INSCRIPTION=10000,
     PRICE_COTISATION=2000,
 )

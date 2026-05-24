@@ -1,7 +1,8 @@
 """Vues membre de la communauté : fil, posts, likes, partage, commentaires, signalements."""
 from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
-from rest_framework import generics, status, viewsets
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import generics, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -11,11 +12,28 @@ from .models import Audience, Comment, Like, Post, Report
 from .serializers import CommentSerializer, PostSerializer, ReportSerializer
 from .services import accessible_audiences, can_access_audience, share_post, toggle_like
 
+_LikeResponse = inline_serializer(
+    name="LikeResponse",
+    fields={"liked": drf_serializers.BooleanField(), "likes_count": drf_serializers.IntegerField()})
 
+
+@extend_schema_view(
+    list=extend_schema(tags=["Communauté"], summary="Fil communautaire",
+                       description="Publications actives accessibles au membre (selon l'audience, RG-30), "
+                                   "épinglées en tête puis anti-chronologiques. Les posts programmés "
+                                   "n'apparaissent qu'une fois leur date atteinte."),
+    create=extend_schema(tags=["Communauté"], summary="Publier"),
+    retrieve=extend_schema(tags=["Communauté"], summary="Détail d'une publication"),
+    update=extend_schema(tags=["Communauté"], summary="Modifier ma publication"),
+    partial_update=extend_schema(tags=["Communauté"], summary="Modifier ma publication (partiel)"),
+    destroy=extend_schema(tags=["Communauté"], summary="Supprimer ma publication",
+                          description="Suppression logique, réservée à l'auteur (RG-33)."),
+)
 class PostViewSet(viewsets.ModelViewSet):
     """Fil communautaire filtré par audience (RG-30) + actions like/partage/commentaires."""
     serializer_class = PostSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Post.objects.none()  # repli pour l'introspection du type de `id` (schéma)
 
     def get_queryset(self):
         user = self.request.user
@@ -50,12 +68,16 @@ class PostViewSet(viewsets.ModelViewSet):
         post.save(update_fields=["active"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(tags=["Communauté"], summary="Aimer / ne plus aimer", request=None,
+                   responses={200: OpenApiResponse(_LikeResponse, description="Nouvel état du like.")})
     @action(detail=True, methods=["post"])
     def like(self, request, pk=None):
         post = self.get_object()
         liked, count = toggle_like(request.user, post)
         return Response({"liked": liked, "likes_count": count})
 
+    @extend_schema(tags=["Communauté"], summary="Partager une publication", request=None,
+                   responses={201: PostSerializer})
     @action(detail=True, methods=["post"])
     def share(self, request, pk=None):
         post = self.get_object()
@@ -63,6 +85,9 @@ class PostViewSet(viewsets.ModelViewSet):
         ctx = self.get_serializer_context()
         return Response(PostSerializer(shared, context=ctx).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(tags=["Communauté"], summary="Commentaires d'une publication",
+                   description="GET : liste les commentaires actifs. POST : ajoute un commentaire.",
+                   request=CommentSerializer, responses={200: CommentSerializer(many=True)})
     @action(detail=True, methods=["get", "post"])
     def comments(self, request, pk=None):
         post = self.get_object()
@@ -75,9 +100,13 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=["Communauté"], summary="Supprimer mon commentaire",
+               description="Suppression logique d'un commentaire, réservée à son auteur.",
+               responses={204: OpenApiResponse(description="Commentaire supprimé.")})
 class CommentDeleteView(generics.DestroyAPIView):
     """Suppression logique d'un commentaire par son auteur."""
     permission_classes = [IsAuthenticated]
+    serializer_class = CommentSerializer
 
     def get_queryset(self):
         return Comment.objects.filter(author=self.request.user, active=True)
@@ -87,6 +116,9 @@ class CommentDeleteView(generics.DestroyAPIView):
         instance.save(update_fields=["active"])
 
 
+@extend_schema(tags=["Communauté"], summary="Signaler un contenu",
+               description="Signale un post ou un commentaire (RG-31). Un même contenu ne peut être "
+                           "signalé qu'une fois par membre ; la cible doit être active et accessible.")
 class ReportCreateView(generics.CreateAPIView):
     """Signalement d'un post ou commentaire (RG-31)."""
     serializer_class = ReportSerializer

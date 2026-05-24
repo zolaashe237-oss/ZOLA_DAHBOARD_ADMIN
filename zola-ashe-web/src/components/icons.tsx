@@ -25,6 +25,9 @@ export function IconPlay({ className = "" }: P) {
 export function IconLock({ className = "" }: P) {
   return (<svg {...base} className={className}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>);
 }
+export function IconCheck({ className = "" }: P) {
+  return (<svg {...base} className={className}><path d="M5 12.5l4.5 4.5L19 7" /></svg>);
+}
 export function IconHeart({ className = "", filled = false }: P & { filled?: boolean }) {
   return (<svg {...base} className={className} fill={filled ? "currentColor" : "none"}>
     <path d="M20.8 7.6a5 5 0 0 0-8.8-2.1A5 5 0 0 0 3.2 7.6c0 4 4.5 7 8.8 10.9 4.3-3.9 8.8-6.9 8.8-10.9z" /></svg>);

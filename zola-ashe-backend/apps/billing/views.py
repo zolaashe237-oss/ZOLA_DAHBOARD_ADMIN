@@ -2,7 +2,14 @@
 import json
 
 from django.conf import settings
-from rest_framework import generics, status, viewsets
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import generics, serializers as drf_serializers, status, viewsets
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,9 +21,35 @@ from .serializers import (
     PaymentSerializer,
     SubscriptionSerializer,
 )
-from .services import initiate_payment, process_webhook_event
+from .services import confirm_mock_payment, initiate_payment, process_webhook_event
+
+_TariffList = inline_serializer(
+    name="TariffList", many=True,
+    fields={"kind": drf_serializers.CharField(), "label": drf_serializers.CharField(),
+            "amount": drf_serializers.IntegerField(help_text="Montant en FCFA (0 = libre, ex. don).")})
+_InitiateResponse = inline_serializer(
+    name="InitiatePaymentResponse",
+    fields={"checkout_url": drf_serializers.CharField(help_text="URL de paiement (Swinmo ou page de simulation en mode mock)."),
+            "reference": drf_serializers.CharField(),
+            "amount": drf_serializers.IntegerField(),
+            "mock": drf_serializers.BooleanField(required=False, help_text="True si paiement simulé (mode démo).")})
+_MockConfirmRequest = inline_serializer(
+    name="MockConfirmRequest", fields={"reference": drf_serializers.CharField()})
+_MockConfirmResponse = inline_serializer(
+    name="MockConfirmResponse",
+    fields={"confirmed": drf_serializers.BooleanField(), "kind": drf_serializers.CharField()})
+_WebhookRequest = inline_serializer(
+    name="SwinmoWebhookRequest",
+    fields={"event": drf_serializers.CharField(), "data": drf_serializers.DictField()})
 
 
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Tarifs publics",
+    description="Liste les tarifs affichables sur la vitrine (droit d'inscription, cotisation, don). "
+                "Aucun secret n'est exposé. Accès libre.",
+    responses={200: OpenApiResponse(_TariffList, description="Tarifs courants.")},
+)
 class SubscriptionTypesView(APIView):
     """Tarifs publics (vitrine) — aucun secret exposé."""
     permission_classes = [AllowAny]
@@ -29,6 +62,27 @@ class SubscriptionTypesView(APIView):
         ])
 
 
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Initier un paiement",
+    description=(
+        "Crée un paiement en attente et renvoie une URL de paiement.\n\n"
+        "En mode réel, l'URL pointe vers **Swinmo**. En mode démo (`SWINMO_MOCK`), elle pointe vers "
+        "la page de simulation interne et `mock=true` ; le paiement se confirme ensuite via "
+        "`POST /billing/payments/mock-confirm/`.\n\n`kind` ∈ {INSCRIPTION, COTISATION, DON}. "
+        "Pour un don, `amount` est requis."
+    ),
+    examples=[
+        OpenApiExample("Droit d'inscription", request_only=True, value={"kind": "INSCRIPTION"}),
+        OpenApiExample("Cotisation mensuelle", request_only=True, value={"kind": "COTISATION"}),
+        OpenApiExample("Don libre", request_only=True, value={"kind": "DON", "amount": 10000}),
+        OpenApiExample("Réponse (mode démo)", response_only=True, value={
+            "payment_id": 42, "reference": "9f2c…", "amount": 5000, "mock": True,
+            "checkout_url": "http://localhost:3002/paiement/simulation?ref=9f2c…&kind=INSCRIPTION&amount=5000"}),
+    ],
+    responses={201: OpenApiResponse(_InitiateResponse, description="Paiement initié."),
+               502: OpenApiResponse(description="Service de paiement indisponible.")},
+)
 class InitiatePaymentView(generics.GenericAPIView):
     """Crée un lien de paiement Swinmo pour le membre connecté."""
     permission_classes = [IsAuthenticated]
@@ -46,15 +100,52 @@ class InitiatePaymentView(generics.GenericAPIView):
         return Response(result, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Confirmer un paiement simulé (démo)",
+    description="Confirme un paiement en attente **en mode démo uniquement** (sans Swinmo), pour le "
+                "membre connecté. Active l'adhésion/cotisation correspondante. La `reference` est celle "
+                "renvoyée par l'initiation.",
+    request=_MockConfirmRequest,
+    examples=[OpenApiExample("Confirmer", request_only=True, value={"reference": "9f2c…"}),
+              OpenApiExample("Confirmé", response_only=True, value={"confirmed": True, "kind": "INSCRIPTION"})],
+    responses={200: OpenApiResponse(_MockConfirmResponse, description="Paiement confirmé."),
+               400: OpenApiResponse(description="Référence inconnue ou déjà traitée.")},
+)
+class MockConfirmView(APIView):
+    """Confirme un paiement simulé (mode MOCK, sans Swinmo). Réservé au membre
+    connecté pour son propre paiement en attente."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        reference = request.data.get("reference", "")
+        try:
+            kind = confirm_mock_payment(request.user, reference)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"confirmed": True, "kind": kind})
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["Paiements & adhésion"], summary="Mes paiements",
+                       description="Historique des paiements du membre connecté (anti-chronologique)."),
+    retrieve=extend_schema(tags=["Paiements & adhésion"], summary="Détail d'un de mes paiements"),
+)
 class MyPaymentsViewSet(viewsets.ReadOnlyModelViewSet):
     """Historique des paiements du membre connecté."""
     serializer_class = PaymentSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Payment.objects.none()  # repli pour l'introspection du type de `id` (schéma)
 
     def get_queryset(self):
         return Payment.objects.filter(user=self.request.user).order_by("-paid_at")
 
 
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Mes abonnements",
+    description="Abonnements du membre connecté (type, dates, statut actif).",
+)
 class MySubscriptionsView(generics.ListAPIView):
     """Abonnements du membre connecté."""
     serializer_class = SubscriptionSerializer
@@ -64,6 +155,18 @@ class MySubscriptionsView(generics.ListAPIView):
         return Subscription.objects.filter(user=self.request.user).order_by("-created_at")
 
 
+@extend_schema(
+    tags=["Paiements & adhésion"],
+    summary="Webhook Swinmo",
+    description=(
+        "Endpoint appelé par **Swinmo** lors d'un événement de paiement (RG-08). "
+        "Authentifié par **signature HMAC** (en-tête `x-swinmo-signature`), pas par JWT. "
+        "Répond toujours 200 si la signature est valide, pour éviter les re-livraisons."
+    ),
+    request=_WebhookRequest,
+    responses={200: OpenApiResponse(description="Événement reçu."),
+               401: OpenApiResponse(description="Signature invalide.")},
+)
 class SwinmoWebhookView(APIView):
     """Webhook Swinmo (RG-08). Authentifié par signature HMAC, pas par JWT."""
     permission_classes = [AllowAny]

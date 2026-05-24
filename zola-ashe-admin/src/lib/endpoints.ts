@@ -3,11 +3,15 @@ import { api } from "./api";
 import type {
   Article,
   AuditEntry,
-  ContentItem,
+  CourseItem,
   DashboardKPIs,
+  Formation,
   MemberDetail,
+  ModuleItem,
   Paginated,
+  QuizItem,
   ReportItem,
+  ResourceItem,
   User,
 } from "./types";
 
@@ -34,11 +38,39 @@ export const membersApi = {
   resetPassword: (id: number) => api.post(`/admin/members/${id}/reset-password/`),
 };
 
-export const contentApi = {
-  list: () => api.get<ContentItem[] | Paginated<ContentItem>>("/admin/content/"),
-  create: (data: Partial<ContentItem>) => api.post<ContentItem>("/admin/content/", data),
-  update: (id: number, data: Partial<ContentItem>) => api.patch(`/admin/content/${id}/`, data),
-  remove: (id: number) => api.delete(`/admin/content/${id}/`),
+type List<T> = T[] | Paginated<T>;
+
+export const formationApi = {
+  list: () => api.get<List<Formation>>("/admin/formations/"),
+  detail: (id: number) => api.get<Formation>(`/admin/formations/${id}/`),
+  create: (data: Partial<Formation>) => api.post<Formation>("/admin/formations/", data),
+  update: (id: number, data: Partial<Formation>) => api.patch<Formation>(`/admin/formations/${id}/`, data),
+  remove: (id: number) => api.delete(`/admin/formations/${id}/`),
+  publish: (id: number) => api.post<Formation>(`/admin/formations/${id}/publish/`),
+};
+
+export const moduleApi = {
+  list: (formationId: number) =>
+    api.get<List<ModuleItem>>("/admin/modules/", { params: { formation: formationId } }),
+  create: (data: Partial<ModuleItem>) => api.post<ModuleItem>("/admin/modules/", data),
+  update: (id: number, data: Partial<ModuleItem>) => api.patch<ModuleItem>(`/admin/modules/${id}/`, data),
+  remove: (id: number) => api.delete(`/admin/modules/${id}/`),
+};
+
+export const courseApi = {
+  list: (moduleId: number) =>
+    api.get<List<CourseItem>>("/admin/courses/", { params: { module: moduleId } }),
+  create: (data: Partial<CourseItem>) => api.post<CourseItem>("/admin/courses/", data),
+  update: (id: number, data: Partial<CourseItem>) => api.patch<CourseItem>(`/admin/courses/${id}/`, data),
+  remove: (id: number) => api.delete(`/admin/courses/${id}/`),
+};
+
+export const resourceApi = {
+  list: (courseId: number) =>
+    api.get<List<ResourceItem>>("/admin/resources/", { params: { course: courseId } }),
+  create: (data: Partial<ResourceItem>) => api.post<ResourceItem>("/admin/resources/", data),
+  update: (id: number, data: Partial<ResourceItem>) => api.patch<ResourceItem>(`/admin/resources/${id}/`, data),
+  remove: (id: number) => api.delete(`/admin/resources/${id}/`),
   // Upload du média (vidéo/PDF/audio) vers MinIO → renvoie la clé bucket.
   upload: (file: File, contentType: string) => {
     const fd = new FormData();
@@ -46,12 +78,25 @@ export const contentApi = {
     fd.append("content_type", contentType);
     return api.post<{ bucket_key: string; size_mo: number }>("/admin/content/upload/", fd);
   },
-  // Prévisualisation admin : URL signée du média (sans contrôle d'abonnement).
   preview: (id: number) =>
-    api.get<{ url: string; content_type: string }>(`/admin/content/${id}/preview/`),
-  resetQuiz: (data: { user_id: number; content_id: number; reason: string }) =>
-    api.post("/admin/quiz/reset/", data),
+    api.get<{ url: string; resource_type: string }>(`/admin/resources/${id}/preview/`),
 };
+
+export const quizApi = {
+  list: (formationId: number) =>
+    api.get<List<QuizItem>>("/admin/quizzes/", { params: { formation: formationId } }),
+  create: (data: Partial<QuizItem>) => api.post<QuizItem>("/admin/quizzes/", data),
+  update: (id: number, data: Partial<QuizItem>) => api.patch<QuizItem>(`/admin/quizzes/${id}/`, data),
+  remove: (id: number) => api.delete(`/admin/quizzes/${id}/`),
+};
+
+export const resetQuizApi = (data: { user_id: number; quiz_id: number; reason: string }) =>
+  api.post("/admin/quiz/reset/", data);
+
+/** Normalise une réponse liste paginée ou non en tableau. */
+export function asList<T>(data: T[] | Paginated<T>): T[] {
+  return Array.isArray(data) ? data : data.results;
+}
 
 export const financeApi = {
   manual: (data: { user_id: number; kind: string; amount?: number; reason: string }) =>

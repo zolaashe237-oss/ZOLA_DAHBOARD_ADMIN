@@ -24,4 +24,9 @@ app.conf.beat_schedule = {
         "task": "apps.admin_api.tasks.monthly_financial_report",
         "schedule": crontab(hour=6, minute=0, day_of_month=1),
     },
+    # Publication des formations programmées — toutes les minutes (§5.4).
+    "publish-scheduled-formations": {
+        "task": "apps.content.tasks.publish_scheduled_formations",
+        "schedule": crontab(minute="*"),
+    },
 }

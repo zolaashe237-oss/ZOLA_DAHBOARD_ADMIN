@@ -37,6 +37,7 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "django_celery_beat",
     "storages",
+    "drf_spectacular",
 ]
 
 LOCAL_APPS = [
@@ -150,6 +151,57 @@ REST_FRAMEWORK = {
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,            # CDC §8.4 : 20 éléments / page
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# --- Documentation OpenAPI / Swagger (drf-spectacular) ----------------------
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ZOLA ASHÉ — API",
+    "DESCRIPTION": (
+        "API REST de la plateforme **ZOLA ASHÉ** (spiritualité, culture, éducation).\n\n"
+        "## Authentification\n"
+        "JWT (SimpleJWT). Le `access` est renvoyé dans le corps de `POST /auth/login/` "
+        "et doit être envoyé en en-tête `Authorization: Bearer <access>`. Le `refresh` est "
+        "déposé dans un **cookie HttpOnly** (`refresh_token`, chemin `/api/auth/`) et n'est "
+        "jamais accessible au JavaScript ; `POST /auth/refresh/` le lit pour réémettre un access.\n\n"
+        "## Statuts membre\n"
+        "`ACTIF` (adhésion + cotisation à jour → accès complet), `RESTREINT` (cotisation non à jour "
+        "→ accès limité), `BLOQUE` (aucun accès).\n\n"
+        "## Accès au contenu\n"
+        "Hiérarchie **Formation → Module (arbre) → Cours → Ressources** + QCM par cours et examen "
+        "final. Une formation est *publique* (accessible à tout membre non bloqué) ou *réservée* "
+        "(`access_subscription_types = [\"MEMBRE\"]`, membre ACTIF requis). La progression débloque "
+        "les cours/modules au fil des QCM validés.\n\n"
+        "## Mode démonstration (local)\n"
+        "Sans clés Swinmo/Brevo, le paiement et l'email tournent en **mock** : le code OTP est "
+        "renvoyé dans `dev_code`, et le paiement se confirme via `POST /billing/payments/mock-confirm/`."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Plusieurs champs homonymes (`status`, `kind`) portent des jeux de choix
+    # distincts → on nomme explicitement chaque enum pour éviter les collisions.
+    "ENUM_NAME_OVERRIDES": {
+        "UserStatusEnum": "apps.accounts.models.UserStatus",
+        "PaymentStatusEnum": "apps.billing.models.PaymentStatus",
+        "FormationStatusEnum": "apps.content.models.FormationStatus",
+        "PaymentKindEnum": "apps.billing.serializers.PURCHASE_KINDS",
+        "ResourceStreamKindEnum": ["youtube", "file"],
+    },
+    "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "docExpansion": "none", "filter": True},
+    "TAGS": [
+        {"name": "Authentification", "description": "Inscription, OTP, connexion, tokens, mot de passe."},
+        {"name": "Profil", "description": "Profil du membre connecté."},
+        {"name": "Catalogue", "description": "Formations, modules, cours, ressources et QCM côté membre."},
+        {"name": "Paiements & adhésion", "description": "Tarifs, paiements Swinmo, abonnements, webhook."},
+        {"name": "Communauté", "description": "Fil, publications, likes, commentaires, signalements."},
+        {"name": "Blog", "description": "Articles publiés (lecture publique)."},
+        {"name": "Admin · Membres", "description": "Back-office : gestion et modération des membres."},
+        {"name": "Admin · Finance", "description": "Back-office : KPIs, paiements manuels, exports, relances."},
+        {"name": "Admin · Contenu", "description": "Back-office : formations, modules, cours, ressources, QCM."},
+        {"name": "Admin · Modération & Audit", "description": "Back-office : file de signalements, suppression, journal d'audit."},
+        {"name": "Système", "description": "Santé et documentation."},
+    ],
 }
 
 SIMPLE_JWT = {
@@ -206,6 +258,11 @@ EMAIL_HOST_PASSWORD = env("BREVO_SMTP_KEY", default="")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@zola-ashe.com")
 BREVO_API_KEY = env("BREVO_API_KEY", default="")
 
+# Mode MOCK email : sans clé Brevo (dev/local), aucun email réel n'est envoyé
+# → on renvoie le code OTP dans la réponse API pour que le parcours d'inscription
+# / réinitialisation reste complet. Désactivé dès qu'une clé Brevo est fournie.
+EMAIL_MOCK = env.bool("EMAIL_MOCK", default=not env("BREVO_SMTP_KEY", default=""))
+
 # --- Règles métier ZOLA ASHÉ (centralisées) ---------------------------------
 OTP_TTL_MINUTES = 15            # CDC §3.3
 OTP_MAX_ATTEMPTS = 3
@@ -232,6 +289,14 @@ DON_MIN_AMOUNT = env.int("DON_MIN_AMOUNT", default=500)           # plancher d'u
 SWINMO_PRODUCT_INSCRIPTION = env("SWINMO_PRODUCT_INSCRIPTION", default="")
 SWINMO_PRODUCT_COTISATION = env("SWINMO_PRODUCT_COTISATION", default="")
 SWINMO_PRODUCT_DON = env("SWINMO_PRODUCT_DON", default="")
+
+# URL publique du front (pour rediriger vers la page de paiement).
+WEB_BASE_URL = env("WEB_BASE_URL", default="http://localhost:3000")
+
+# Mode MOCK : si aucune clé Swinmo/Brevo n'est fournie, on simule le service
+# externe pour que les parcours restent complets en local (paiement simulé,
+# code OTP renvoyé dans la réponse). Jamais actif si une vraie clé est posée.
+SWINMO_MOCK = env.bool("SWINMO_MOCK", default=not SWINMO_SECRET_KEY)
 
 # --- Internationalisation ---------------------------------------------------
 LANGUAGE_CODE = "fr-fr"
