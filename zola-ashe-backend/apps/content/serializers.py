@@ -8,7 +8,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import Choice, Course, Formation, Module, Question, Quiz, QuizResult, Resource
+from .models import Choice, Course, Formation, LiveSession, Module, Question, Quiz, QuizResult, Resource
 from .services import (
     course_state,
     final_exam_unlocked,
@@ -192,3 +192,11 @@ class QuizSubmitSerializer(serializers.Serializer):
     answers = serializers.DictField(
         child=serializers.ListField(child=serializers.IntegerField(), allow_empty=True),
     )
+
+
+class LiveSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LiveSession
+        fields = ("id", "title", "description", "start_at", "duration_minutes",
+                  "trainer", "platform", "status", "link", "tags", "created_at")
+        read_only_fields = fields

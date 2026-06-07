@@ -111,8 +111,8 @@ class InitiatePaymentView(generics.GenericAPIView):
         data = serializer.validated_data
         try:
             result = initiate_payment(request.user, data["kind"], data.get("amount"))
-        except swinmo.SwinmoError:
-            return Response({"detail": "Service de paiement indisponible. Réessayez plus tard."},
+        except swinmo.SwinmoError as exc:
+            return Response({"detail": f"Service de paiement indisponible. Réessayez plus tard. {exc}"},
                             status=status.HTTP_502_BAD_GATEWAY)
         return Response(result, status=status.HTTP_201_CREATED)
 

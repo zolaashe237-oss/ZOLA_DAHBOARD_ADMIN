@@ -11,13 +11,16 @@ from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Formation, Quiz, QuizResult, Resource
+from rest_framework.permissions import IsAuthenticated
+
+from .models import Formation, LiveSession, Quiz, QuizResult, Resource
 from .serializers import (
     FormationDetailSerializer,
     FormationListSerializer,
     QuizPublicSerializer,
     QuizResultSerializer,
     QuizSubmitSerializer,
+    LiveSessionSerializer,
 )
 from .services import (
     course_unlocked,
@@ -206,3 +209,10 @@ class QuizViewSet(viewsets.ReadOnlyModelViewSet):
         quiz = self.get_object()
         result = QuizResult.objects.filter(user=request.user, quiz=quiz).first()
         return Response(QuizResultSerializer(result).data if result else {})
+
+
+class LiveSessionViewSet(viewsets.ReadOnlyModelViewSet):
+    """Vues membre pour les sessions en direct et replays."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = LiveSessionSerializer
+    queryset = LiveSession.objects.all().order_by("status", "-start_at")

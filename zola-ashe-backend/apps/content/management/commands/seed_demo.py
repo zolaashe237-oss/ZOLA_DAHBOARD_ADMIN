@@ -36,6 +36,7 @@ from apps.content.models import (
     Resource,
     ResourceType,
     VideoSource,
+    LiveSession,
 )
 
 MEMBRE = ["MEMBRE"]  # accès réservé aux membres actifs
@@ -184,6 +185,7 @@ class Command(BaseCommand):
 
         # --- Catalogue : on reconstruit l'arborescence à chaque seed ---
         Formation.objects.all().delete()  # cascade modules / cours / ressources / quizzes
+        LiveSession.objects.all().delete()
 
         # 1) Programme phare — formation réservée, modules hiérarchiques + examen final
         programme = Formation.objects.create(
@@ -281,10 +283,68 @@ class Command(BaseCommand):
                 art.published = True
                 art.save()
 
+        # --- Sessions en direct ---
+        LiveSession.objects.create(
+            title="Session hebdomadaire — Méditation collective",
+            description="Méditation guidée pour aligner votre énergie et vous connecter à la communauté ZOLA ASHÉ.",
+            start_at=timezone.now() + timedelta(days=4),
+            duration_minutes=60,
+            trainer="Coach Rodrigue DOUANLA",
+            platform=LiveSession.Platform.YOUTUBE,
+            status=LiveSession.Status.UPCOMING,
+            link="https://www.youtube.com/watch?v=ScMzIvxBSi4",
+            tags=["Méditation", "Général"],
+        )
+        LiveSession.objects.create(
+            title="Cercle féminin — La Femme Lumière",
+            description="Espace de parole et de transmission dédié aux femmes de la communauté.",
+            start_at=timezone.now() + timedelta(days=6),
+            duration_minutes=90,
+            trainer="Responsable Branche Femme",
+            platform=LiveSession.Platform.ZOOM,
+            status=LiveSession.Status.UPCOMING,
+            link="https://zoom.us/j/demo12345",
+            tags=["Branche Femme", "Cercle"],
+        )
+        LiveSession.objects.create(
+            title="Questions-Réponses — Les 7 Principes",
+            description="Session interactive autour des sept principes fondamentaux de l'Ashé.",
+            start_at=timezone.now() - timedelta(days=24),
+            duration_minutes=45,
+            trainer="Coach Rodrigue DOUANLA",
+            platform=LiveSession.Platform.YOUTUBE,
+            status=LiveSession.Status.REPLAY,
+            link="https://www.youtube.com/watch?v=ScMzIvxBSi4",
+            tags=["Q&R", "Général"],
+        )
+        LiveSession.objects.create(
+            title="Initiation — Comprendre l'Ashé",
+            description="Introduction aux fondements spirituels africains pour les nouveaux membres.",
+            start_at=timezone.now() - timedelta(days=31),
+            duration_minutes=75,
+            trainer="Coach Rodrigue DOUANLA",
+            platform=LiveSession.Platform.YOUTUBE,
+            status=LiveSession.Status.REPLAY,
+            link="https://www.youtube.com/watch?v=ScMzIvxBSi4",
+            tags=["Initiation", "Général"],
+        )
+        LiveSession.objects.create(
+            title="Branche Enfant — Contes sacrés d'Afrique",
+            description="Session de contes africains animée pour les parents et leurs enfants.",
+            start_at=timezone.now() - timedelta(days=41),
+            duration_minutes=50,
+            trainer="Équipe Branche Enfant",
+            platform=LiveSession.Platform.ZOOM,
+            status=LiveSession.Status.REPLAY,
+            link="https://zoom.us/j/demo12345",
+            tags=["Branche Enfant", "Conte"],
+        )
+
         self.stdout.write(self.style.SUCCESS(
             f"Seed OK — admin admin@zola-ashe.com / Admin12345!, "
             f"membre demo@zola-ashe.com / Demo12345!, "
             f"{Formation.objects.count()} formations, {Module.objects.count()} modules, "
             f"{Course.objects.count()} cours, {Resource.objects.count()} ressources, "
-            f"{Quiz.objects.count()} QCM, {Post.objects.count()} posts, {Article.objects.count()} articles."
+            f"{Quiz.objects.count()} QCM, {Post.objects.count()} posts, {Article.objects.count()} articles, "
+            f"{LiveSession.objects.count()} lives."
         ))
