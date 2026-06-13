@@ -183,9 +183,23 @@ export const financeApi = {
     api.post("/admin/payments/refund/", data),
   exonerate: (data: { user_id: number; reason: string }) =>
     api.post("/admin/payments/exonerate/", data),
-  sendReminders: () => api.post<{ reminded: number }>("/admin/reminders/send/"),
-  exportMembers: () => api.get("/admin/exports/members.csv", { responseType: "blob" }),
-  exportPayments: () => api.get("/admin/exports/payments.csv", { responseType: "blob" }),
+  sendReminders: (data?: { user_id?: number }) =>
+    api.post<{ reminded: number }>("/admin/reminders/send/", data ?? {}),
+  exportMembers: (params?: { date_from?: string; date_to?: string }) =>
+    api.get("/admin/exports/members.csv", { params, responseType: "blob" }),
+  exportPayments: (params?: { date_from?: string; date_to?: string }) =>
+    api.get("/admin/exports/payments.csv", { params, responseType: "blob" }),
+};
+
+export const billingPaymentsApi = {
+  list: (params?: {
+    page?: number;
+    page_size?: number;
+    kind?: string;
+    status?: string;
+    date_from?: string;
+    date_to?: string;
+  }) => api.get<Transaction[] | Paginated<Transaction>>("/billing/payments/", { params }),
 };
 
 /** Déclenche le téléchargement d'un blob renvoyé par l'API (CSV authentifié). */
@@ -210,12 +224,10 @@ export const moderationApi = {
   handle: (id: number) => api.post(`/admin/reports/${id}/handle/`),
   deletePost: (id: number, reason: string) => api.post(`/admin/posts/${id}/delete/`, { reason }),
   deleteComment: (id: number, reason: string) => api.post(`/admin/comments/${id}/delete/`, { reason }),
-  createAdminPost: (data: { title: string; body: string; type: "ANNONCE"; is_admin_post: boolean; is_pinned?: boolean }) =>
-  api.post<CommunityPost>("/admin/posts/", data),
 };
 
 export const auditApi = {
-  list: (params?: { action?: string }) =>
+  list: (params?: { action?: string; page?: number; page_size?: number }) =>
     api.get<Paginated<AuditEntry>>("/admin/audit/", { params }),
 };
 
