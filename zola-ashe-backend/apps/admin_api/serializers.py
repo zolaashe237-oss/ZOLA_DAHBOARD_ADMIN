@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 from apps.billing.serializers import PaymentSerializer, SubscriptionSerializer
+from apps.billing.models import Payment, PaymentType, PaymentStatus
 from apps.content.models import (
     Choice,
     Course,
@@ -13,6 +14,7 @@ from apps.content.models import (
     Question,
     Quiz,
     Resource,
+    QuizResult,
 )
 
 
@@ -22,19 +24,23 @@ class MemberListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "email", "full_name", "role", "status",
-                  "email_verified", "nb_warnings", "created_at", "last_login")
+                  "email_verified", "nb_warnings", "created_at", "last_login",
+                  "phone", "country", "access_levels")
 
 
 class MemberDetailSerializer(serializers.ModelSerializer):
     subscriptions = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
     quiz_results = serializers.SerializerMethodField()
+    password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
         fields = ("id", "email", "full_name", "photo", "role", "status",
                   "status_changed_at", "email_verified", "nb_warnings",
-                  "created_at", "last_login", "subscriptions", "payments", "quiz_results")
+                  "created_at", "last_login", "subscriptions", "payments", "quiz_results",
+                  "phone", "country", "access_levels", "password")
+        read_only_fields = ("id", "status_changed_at", "created_at", "last_login", "nb_warnings")
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_subscriptions(self, obj):
@@ -49,6 +55,24 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         qs = obj.quiz_results.select_related("quiz")
         return [{"quiz": q.quiz_id, "title": q.quiz.title, "score": q.score,
                  "validated": q.validated} for q in qs]
+
+    def create(self, validated_data):
+        password = validated_data.pop("password", None)
+        user = User.objects.create(**validated_data)
+        if password:
+            user.set_password(password)
+            user.save(update_fields=["password"])
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
+        return instance
 
 
 # ─── Actions sur les membres ─────────────────────────────────────────────────
@@ -258,3 +282,71 @@ class AdminPostSerializer(serializers.Serializer):
     is_pinned = serializers.BooleanField(default=False)
     is_announcement = serializers.BooleanField(default=False)
     scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+# ─── Transactions ────────────────────────────────────────────────────────────
+
+class TransactionSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    kind = serializers.CharField(source="type", read_only=True)
+    status = serializers.SerializerMethodField()
+    amount = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    payment_method = serializers.SerializerMethodField()
+    reference = serializers.CharField(source="swinmo_ref", read_only=True)
+    created_at = serializers.DateTimeField(source="paid_at", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = (
+            "id", "user_id", "user_name", "user_email", "kind", "status",
+            "amount", "currency", "payment_method", "reference", "reason",
+            "paid_at", "created_at"
+        )
+
+    def get_status(self, obj) -> str:
+        if obj.status == PaymentStatus.VALIDE:
+            if obj.type == PaymentType.REMBOURSEMENT:
+                return "REMBOURSE"
+            elif obj.type == PaymentType.COTISATION and obj.amount == 0:
+                return "EXONERE"
+            return "REUSSI"
+        elif obj.status == PaymentStatus.EN_ATTENTE:
+            return "EN_ATTENTE"
+        elif obj.status == PaymentStatus.ECHOUE:
+            return "ECHOUE"
+        return obj.status
+
+    def get_amount(self, obj) -> int:
+        return abs(obj.amount)
+
+    def get_currency(self, obj) -> str:
+        return "XAF"
+
+    def get_payment_method(self, obj) -> str:
+        return "MANUEL" if not obj.swinmo_ref else "MTN_MOBILE_MONEY"
+
+
+# ─── Résultats QCM ────────────────────────────────────────────────────────────
+
+class AdminQuizResultSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    quiz_id = serializers.IntegerField(source="quiz.id", read_only=True)
+    quiz_title = serializers.CharField(source="quiz.title", read_only=True)
+    max_score = serializers.SerializerMethodField()
+    passed_at = serializers.DateTimeField(source="validated_at", read_only=True)
+    created_at = serializers.DateTimeField(source="validated_at", read_only=True)
+
+    class Meta:
+        model = QuizResult
+        fields = (
+            "id", "user_id", "user_name", "user_email", "quiz_id", "quiz_title",
+            "score", "max_score", "validated", "attempts", "passed_at", "created_at"
+        )
+
+    def get_max_score(self, obj) -> int:
+        return 20

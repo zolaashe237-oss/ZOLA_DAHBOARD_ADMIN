@@ -1,4 +1,6 @@
 """Back-office — gestion des membres (CDC §5.3). Chaque action est journalisée."""
+from datetime import timedelta
+from django.utils import timezone
 from uuid import uuid4
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
@@ -12,6 +14,7 @@ from apps.accounts.services import generate_otp
 from apps.accounts.tasks import send_otp_email
 from apps.audit.models import AuditAction
 from apps.audit.services import record
+from apps.billing.models import Payment, PaymentStatus, PaymentType
 from apps.billing.services import is_member
 
 from .permissions import IsAdmin
@@ -44,11 +47,14 @@ def _revoke_tokens(user):
                           description="Purge RGPD par anonymisation (les paiements protégés interdisent la suppression dure)."),
 )
 class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                    mixins.CreateModelMixin, mixins.UpdateModelMixin,
                     mixins.DestroyModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAdmin]
 
     def get_serializer_class(self):
-        return MemberDetailSerializer if self.action == "retrieve" else MemberListSerializer
+        if self.action in ["retrieve", "create", "update", "partial_update"]:
+            return MemberDetailSerializer
+        return MemberListSerializer
 
     def get_queryset(self):
         qs = User.objects.filter(role=Role.MEMBER).order_by("-created_at")
@@ -99,14 +105,37 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         return Response({"nb_warnings": user.nb_warnings,
                          "recidive_alert": user.nb_warnings >= 3})  # RG-32
 
-    @extend_schema(tags=["Admin · Membres"], summary="Envoyer une réinitialisation de mot de passe",
-                   description="Génère et envoie un OTP de réinitialisation au membre.", request=None)
+    @extend_schema(tags=["Admin · Membres"], summary="Réinitialiser le mot de passe d'un membre",
+                   description="Génère un mot de passe temporaire pour le membre et le renvoie.", request=None)
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
         user = self.get_object()
-        code = generate_otp(user)
-        send_otp_email.delay(user.email, code, "reset")
-        return Response({"detail": "Email de réinitialisation envoyé."})
+        from django.utils.crypto import get_random_string
+        temp_pwd = get_random_string(length=10)
+        user.set_password(temp_pwd)
+        user.save(update_fields=["password"])
+        record(request.user, AuditAction.UPDATE_CONTENT, target_type="User", target_id=user.id,
+               reason="Réinitialisation mot de passe par l'administrateur")
+        return Response({"temp_password": temp_pwd})
+
+    @extend_schema(tags=["Admin · Membres"], summary="Lister les membres en retard de cotisation",
+                   description="Membres actifs dont la dernière cotisation date de plus de 30 jours (ou sans cotisation).")
+    @action(detail=False, methods=["get"])
+    def late(self, request):
+        late_threshold = timezone.now() - timedelta(days=30)
+        users = []
+        for user in User.objects.filter(role=Role.MEMBER, status=UserStatus.ACTIF):
+            last = Payment.objects.filter(user=user, type=PaymentType.COTISATION, status=PaymentStatus.VALIDE).order_by("-paid_at").first()
+            if last is None or last.paid_at < late_threshold:
+                users.append(user)
+        
+        page = self.paginate_queryset(users)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(users, many=True)
+        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         """Purge RGPD : anonymisation (les paiements protégés interdisent la suppression dure)."""

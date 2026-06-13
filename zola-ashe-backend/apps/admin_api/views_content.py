@@ -16,6 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 
 _TAG = "Admin · Contenu"
 _DetailResponse = inline_serializer(name="AdminContentDetail", fields={"detail": drf_serializers.CharField()})
@@ -55,6 +56,7 @@ from .serializers import (
     QuizScoreSerializer,
     ResetQuizSerializer,
     UploadSerializer,
+    AdminQuizResultSerializer,
 )
 
 # Limites d'upload (§5.4) : PDF 50 Mo, audio 100 Mo, vidéo 500 Mo, miniature 5 Mo.
@@ -579,3 +581,40 @@ class AdminPostCreateView(APIView):
             scheduled_at=data.get("scheduled_at"),
         )
         return Response({"id": post.id}, status=status.HTTP_201_CREATED)
+
+
+class AdminQuizResultPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class AdminQuizResultListView(APIView):
+    permission_classes = [IsAdmin]
+    pagination_class = AdminQuizResultPagination
+
+    def get(self, request):
+        params = request.query_params
+        qs = QuizResult.objects.select_related("user", "quiz").order_by("-validated_at")
+        
+        quiz_id = params.get("quiz_id")
+        if quiz_id:
+            qs = qs.filter(quiz_id=quiz_id)
+            
+        search = params.get("search")
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(user__email__icontains=search) |
+                Q(user__full_name__icontains=search) |
+                Q(quiz__title__icontains=search)
+            )
+            
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        if page is not None:
+            serializer = AdminQuizResultSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+            
+        serializer = AdminQuizResultSerializer(qs, many=True)
+        return Response(serializer.data)

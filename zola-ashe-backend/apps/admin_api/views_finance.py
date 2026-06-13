@@ -2,7 +2,7 @@
 import csv
 from datetime import timedelta
 
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_seriali
 from rest_framework import serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 
 from apps.accounts.models import Role, User, UserStatus
 from apps.audit.models import AuditAction
@@ -20,7 +21,13 @@ from apps.community.models import Report
 from apps.content.models import QuizResult
 
 from .permissions import IsAdmin
-from .serializers import ExonerationSerializer, ManualPaymentSerializer, RefundSerializer
+from .serializers import (
+    ExonerationSerializer,
+    ManualPaymentSerializer,
+    RefundSerializer,
+    MemberListSerializer,
+    TransactionSerializer,
+)
 
 _TAG = "Admin · Finance"
 _PaymentCreatedResponse = inline_serializer(
@@ -209,3 +216,172 @@ class SendRemindersView(APIView):
         record(request.user, AuditAction.SEND_REMINDER, reason="Relance groupée cotisations",
                payload={"count": len(targets)})
         return Response({"reminded": len(targets)})
+
+
+class MonthlyRevenueView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        now = timezone.now()
+        current_year = now.year
+        current_month = now.month
+        months_fr = [
+            "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+            "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+        ]
+        results = []
+        for i in range(12):
+            y = current_year
+            m = current_month - i
+            while m <= 0:
+                m += 12
+                y -= 1
+            
+            start_date = timezone.datetime(y, m, 1, 0, 0, 0, tzinfo=timezone.get_current_timezone())
+            if m == 12:
+                end_date = timezone.datetime(y + 1, 1, 1, 0, 0, 0, tzinfo=timezone.get_current_timezone())
+            else:
+                end_date = timezone.datetime(y, m + 1, 1, 0, 0, 0, tzinfo=timezone.get_current_timezone())
+            
+            total_amount = Payment.objects.filter(
+                status=PaymentStatus.VALIDE,
+                paid_at__gte=start_date,
+                paid_at__lt=end_date
+            ).aggregate(total=Sum("amount"))["total"] or 0
+            
+            results.append({
+                "label": f"{months_fr[m]} {y}",
+                "amount": total_amount
+            })
+            
+        return Response(list(reversed(results)))
+
+
+class PaymentBreakdownView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        start = _month_start()
+        qs = Payment.objects.filter(status=PaymentStatus.VALIDE, paid_at__gte=start)
+        
+        inscription = qs.filter(type=PaymentType.INSCRIPTION).aggregate(total=Sum("amount"))["total"] or 0
+        cotisation = qs.filter(type=PaymentType.COTISATION).aggregate(total=Sum("amount"))["total"] or 0
+        don = qs.filter(type=PaymentType.DON).aggregate(total=Sum("amount"))["total"] or 0
+        remboursement = abs(qs.filter(type=PaymentType.REMBOURSEMENT).aggregate(total=Sum("amount"))["total"] or 0)
+        
+        return Response({
+            "INSCRIPTION": inscription,
+            "COTISATION": cotisation,
+            "DON": don,
+            "REMBOURSEMENT": remboursement,
+            "inscription": inscription,
+            "cotisation": cotisation,
+            "don": don,
+            "remboursement": remboursement
+        })
+
+
+class LateCotisationsView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        late_threshold = timezone.now() - timedelta(days=30)
+        users = []
+        for user in User.objects.filter(role=Role.MEMBER, status=UserStatus.ACTIF):
+            last = Payment.objects.filter(user=user, type=PaymentType.COTISATION, status=PaymentStatus.VALIDE).order_by("-paid_at").first()
+            if last is None or last.paid_at < late_threshold:
+                users.append(user)
+        serializer = MemberListSerializer(users, many=True)
+        return Response(serializer.data)
+
+
+class TransactionKpisView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        month_start = _month_start()
+        
+        revenue_total = Payment.objects.filter(status=PaymentStatus.VALIDE).aggregate(total=Sum("amount"))["total"] or 0
+        revenue_month = Payment.objects.filter(status=PaymentStatus.VALIDE, paid_at__gte=month_start).aggregate(total=Sum("amount"))["total"] or 0
+        
+        count_pending = Payment.objects.filter(status=PaymentStatus.EN_ATTENTE).count()
+        count_refunded = Payment.objects.filter(status=PaymentStatus.VALIDE, type=PaymentType.REMBOURSEMENT).count()
+        count_failed = Payment.objects.filter(status=PaymentStatus.ECHOUE).count()
+        count_total = Payment.objects.count()
+        
+        return Response({
+            "revenue_total": revenue_total,
+            "revenue_month": revenue_month,
+            "count_pending": count_pending,
+            "count_refunded": count_refunded,
+            "count_failed": count_failed,
+            "count_total": count_total
+        })
+
+
+class TransactionPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class TransactionListView(APIView):
+    permission_classes = [IsAdmin]
+    pagination_class = TransactionPagination
+
+    def get(self, request):
+        params = request.query_params
+        qs = Payment.objects.select_related("user").order_by("-paid_at")
+        
+        # Apply filters
+        status_param = params.get("status")
+        if status_param:
+            if status_param == "REUSSI":
+                qs = qs.filter(status=PaymentStatus.VALIDE).exclude(type=PaymentType.REMBOURSEMENT).exclude(type=PaymentType.COTISATION, amount=0)
+            elif status_param == "REMBOURSE":
+                qs = qs.filter(status=PaymentStatus.VALIDE, type=PaymentType.REMBOURSEMENT)
+            elif status_param == "EXONERE":
+                qs = qs.filter(status=PaymentStatus.VALIDE, type=PaymentType.COTISATION, amount=0)
+            elif status_param == "VALIDE":
+                qs = qs.filter(status=PaymentStatus.VALIDE)
+            elif status_param in [PaymentStatus.EN_ATTENTE, PaymentStatus.ECHOUE]:
+                qs = qs.filter(status=status_param)
+            else:
+                qs = qs.filter(status=status_param)
+                
+        kind_param = params.get("kind")
+        if kind_param:
+            qs = qs.filter(type=kind_param)
+            
+        method_param = params.get("method")
+        if method_param:
+            if method_param == "MANUEL":
+                qs = qs.filter(swinmo_ref__isnull=True)
+            elif method_param == "MTN_MOBILE_MONEY":
+                qs = qs.filter(swinmo_ref__isnull=False)
+                
+        date_from = params.get("date_from")
+        if date_from:
+            qs = qs.filter(paid_at__date__gte=date_from)
+            
+        date_to = params.get("date_to")
+        if date_to:
+            qs = qs.filter(paid_at__date__lte=date_to)
+            
+        search = params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(user__email__icontains=search) |
+                Q(user__full_name__icontains=search) |
+                Q(swinmo_ref__icontains=search) |
+                Q(reason__icontains=search)
+            )
+            
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        if page is not None:
+            serializer = TransactionSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+            
+        serializer = TransactionSerializer(qs, many=True)
+        return Response(serializer.data)

@@ -21,6 +21,11 @@ router.register("blog", AdminArticleViewSet, basename="admin-blog")
 urlpatterns = [
     # Dashboard & finance
     path("dashboard/", vf.DashboardView.as_view(), name="admin-dashboard"),
+    path("finance/monthly/", vf.MonthlyRevenueView.as_view(), name="admin-finance-monthly"),
+    path("finance/late/", vf.LateCotisationsView.as_view(), name="admin-finance-late"),
+    path("finance/breakdown/", vf.PaymentBreakdownView.as_view(), name="admin-finance-breakdown"),
+    path("transactions/kpis/", vf.TransactionKpisView.as_view(), name="admin-transactions-kpis"),
+    path("transactions/", vf.TransactionListView.as_view(), name="admin-transactions-list"),
     path("payments/manual/", vf.ManualPaymentView.as_view(), name="admin-payment-manual"),
     path("payments/refund/", vf.RefundView.as_view(), name="admin-payment-refund"),
     path("payments/exonerate/", vf.ExonerationView.as_view(), name="admin-payment-exonerate"),
@@ -30,6 +35,7 @@ urlpatterns = [
 
     # Contenu & quiz
     path("content/upload/", vc.ContentUploadView.as_view(), name="admin-content-upload"),
+    path("quiz/results/", vc.AdminQuizResultListView.as_view(), name="admin-quiz-results"),
     path("quiz/score/", vc.QuizScoreView.as_view(), name="admin-quiz-score"),
     path("quiz/reset/", vc.ResetQuizView.as_view(), name="admin-quiz-reset"),
 

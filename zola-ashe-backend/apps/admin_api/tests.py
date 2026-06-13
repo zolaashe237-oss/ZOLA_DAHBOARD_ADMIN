@@ -1,6 +1,7 @@
 """Tests du chantier Admin : permission, journalisation, et règles
 RG-06/13/15/20/21/27/33/39/40."""
 from datetime import date
+from django.utils import timezone
 
 from django.test import override_settings
 from rest_framework.test import APITestCase
@@ -65,6 +66,22 @@ class MemberManagementTests(AdminBase):
         self.assertTrue(r.data["recidive_alert"])
         self.assertEqual(AuditLog.objects.filter(action=AuditAction.WARN_USER).count(), 3)
 
+    def test_reset_password_returns_temp_password(self):
+        r = self.client.post(f"/api/admin/members/{self.member.id}/reset-password/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("temp_password", r.data)
+        temp_pwd = r.data["temp_password"]
+        self.assertEqual(len(temp_pwd), 10)
+        self.assertTrue(User.objects.get(id=self.member.id).check_password(temp_pwd))
+
+    def test_late_action_in_members_viewset(self):
+        self.member.status = UserStatus.ACTIF
+        self.member.save()
+        r = self.client.get("/api/admin/members/late/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("results", r.data)
+        self.assertEqual(len(r.data["results"]), 1)
+
 class FinanceTests(AdminBase):
     def test_manual_inscription_activates_membership_and_audits(self):
         r = self.client.post("/api/admin/payments/manual/",
@@ -104,6 +121,73 @@ class FinanceTests(AdminBase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "text/csv")
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.EXPORT_DATA).exists())
+
+    def test_monthly_revenue(self):
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.COTISATION,
+            amount=5000,
+            status=PaymentStatus.VALIDE,
+            paid_at=timezone.now()
+        )
+        r = self.client.get("/api/admin/finance/monthly/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 12)
+        self.assertEqual(r.data[-1]["amount"], 5000)
+
+    def test_payment_breakdown(self):
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.INSCRIPTION,
+            amount=10000,
+            status=PaymentStatus.VALIDE,
+            paid_at=timezone.now()
+        )
+        r = self.client.get("/api/admin/finance/breakdown/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["INSCRIPTION"], 10000)
+        self.assertEqual(r.data["inscription"], 10000)
+
+    def test_late_cotisations_view(self):
+        self.member.status = UserStatus.ACTIF
+        self.member.save()
+        r = self.client.get("/api/admin/finance/late/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(r.data[0]["email"], self.member.email)
+
+    def test_transaction_kpis(self):
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.INSCRIPTION,
+            amount=10000,
+            status=PaymentStatus.VALIDE,
+            paid_at=timezone.now()
+        )
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.COTISATION,
+            amount=0,
+            status=PaymentStatus.EN_ATTENTE,
+            paid_at=timezone.now()
+        )
+        r = self.client.get("/api/admin/transactions/kpis/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["revenue_total"], 10000)
+        self.assertEqual(r.data["count_pending"], 1)
+
+    def test_transaction_list(self):
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.INSCRIPTION,
+            amount=10000,
+            status=PaymentStatus.VALIDE,
+            paid_at=timezone.now()
+        )
+        r = self.client.get("/api/admin/transactions/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("results", r.data)
+        self.assertEqual(len(r.data["results"]), 1)
 
 
 class ContentAdminTests(AdminBase):
@@ -196,6 +280,18 @@ class ContentAdminTests(AdminBase):
         self.assertFalse(qr.validated)
         self.assertEqual(qr.score, 0)                                 # RG-27
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.RESET_QUIZ).exists())
+
+    def test_quiz_results_list(self):
+        f = Formation.objects.create(title="F", category=Category.FORMATION)
+        m = Module.objects.create(formation=f, title="M", order=1)
+        c = Course.objects.create(module=m, title="C", order=1)
+        quiz = Quiz.objects.create(course=c, title="Q1")
+        QuizResult.objects.create(user=self.member, quiz=quiz, score=15, attempts=1)
+        
+        r = self.client.get("/api/admin/quiz/results/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("results", r.data)
+        self.assertEqual(len(r.data["results"]), 1)
 
 
 # ════════════════════════════════════════════════════════════════════════════
