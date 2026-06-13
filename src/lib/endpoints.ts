@@ -210,6 +210,8 @@ export const moderationApi = {
   handle: (id: number) => api.post(`/admin/reports/${id}/handle/`),
   deletePost: (id: number, reason: string) => api.post(`/admin/posts/${id}/delete/`, { reason }),
   deleteComment: (id: number, reason: string) => api.post(`/admin/comments/${id}/delete/`, { reason }),
+  createAdminPost: (data: { title: string; body: string; type: "ANNONCE"; is_admin_post: boolean; is_pinned?: boolean }) =>
+  api.post<CommunityPost>("/admin/posts/", data),
 };
 
 export const auditApi = {
