@@ -1,0 +1,72 @@
+# nginx — PRODUCTION (TLS via Let's Encrypt).
+# Template appliqué par l'image nginx au démarrage : ${API_DOMAIN} est
+# substitué via envsubst (variable injectée par le compose).
+#
+# Cert init  :  `make prod-init-cert` (certbot --standalone, port 80).
+# Renouvellement : assuré par le service `certbot` (boucle 12 h, webroot).
+
+upstream backend {
+    server backend:8000;
+}
+
+# ── HTTP : ACME challenge + redirection vers HTTPS ─────────────────────
+server {
+    listen 80;
+    server_name ${API_DOMAIN};
+
+    # Webroot servi à certbot pour les renouvellements (challenge HTTP-01).
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        access_log off;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS : API + admin + statiques ─────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${API_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # En-têtes de sécurité (équivalent traefik secure-headers).
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header X-Frame-Options           "DENY"   always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+
+    client_max_body_size 50M;
+    access_log /dev/stdout;
+    error_log  /dev/stderr;
+
+    # Statiques Django (admin, Swagger UI) — volume partagé avec backend.
+    location /static/ {
+        alias /staticfiles/;
+        access_log off;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+    }
+
+    # API + admin + tout le reste → Gunicorn.
+    location / {
+        proxy_pass         http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Host               $host;
+        proxy_set_header   X-Real-IP          $remote_addr;
+        proxy_set_header   X-Forwarded-For    $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto  https;
+        proxy_set_header   X-Forwarded-Host   $host;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout    60s;
+        proxy_send_timeout    60s;
+    }
+}
