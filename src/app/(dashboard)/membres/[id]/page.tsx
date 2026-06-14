@@ -257,6 +257,7 @@ export default function MemberDetailPage() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showEditBranch,  setShowEditBranch]  = useState(false);
   const [showPayment,     setShowPayment]     = useState(false);
+  const [showDeleteDlg,   setShowDeleteDlg]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -373,6 +374,10 @@ export default function MemberDetailPage() {
                 Bloquer
               </Button>
             )}
+            <Button style={{ fontSize: ".78rem", padding: ".3rem .65rem" }} variant="danger"
+              onClick={() => setShowDeleteDlg(true)}>
+              🗑 RGPD
+            </Button>
           </div>
         </div>
       </Card>
@@ -645,7 +650,11 @@ export default function MemberDetailPage() {
           onClose={() => setShowWarnDlg(false)}
           onConfirm={async (reason) => {
             const { data } = await membersApi.warn(userId, reason);
-            setInfo(`Avertissement envoyé. Total : ${data.nb_warnings}.`);
+            let msg = `Avertissement envoyé. Total : ${data.nb_warnings}.`;
+            if (data.recidive_alert) {
+              msg += " ⚠ Alerte récidive : ce membre a atteint 3 avertissements ou plus.";
+            }
+            setInfo(msg);
             setShowWarnDlg(false); await load();
           }}
         />
@@ -661,6 +670,20 @@ export default function MemberDetailPage() {
             const { data } = await membersApi.resetPassword(userId);
             setInfo(`MDP temporaire : ${data.temp_password}`);
             setShowResetDlg(false);
+          }}
+        />
+      )}
+
+      {showDeleteDlg && (
+        <ConfirmModal
+          title={`Purge RGPD - ${member.full_name}`}
+          message="Cette action anonymisera définitivement les données personnelles du membre conformément au RGPD. Les paiements et résultats de quiz seront préservés de façon anonyme."
+          confirmLabel="Anonymiser le compte" variant="danger"
+          onClose={() => setShowDeleteDlg(false)}
+          onConfirm={async () => {
+            await membersApi.delete(userId);
+            setShowDeleteDlg(false);
+            router.push("/membres");
           }}
         />
       )}

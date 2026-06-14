@@ -119,7 +119,13 @@ function KpiTile({ label, value, unit, sub, accent, trendPct, trendLabel }: {
 // ── Graphique courbe + aire (SVG) ─────────────────────────────────────────────
 
 function LineAreaChart({ data }: { data: MonthlyRevenue[] }) {
-  if (data.length < 2) return null;
+  if (!data || data.length < 2) {
+    return (
+      <div style={{ height: 210, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
+        Données insuffisantes pour tracer la courbe de revenus
+      </div>
+    );
+  }
 
   const W = 700, H = 210;
   const ML = 58, MR = 22, MT = 22, MB = 32;
@@ -229,9 +235,14 @@ function LineAreaChart({ data }: { data: MonthlyRevenue[] }) {
 // ── Diagramme donut répartition (SVG) ────────────────────────────────────────
 
 function DonutChart({ data }: { data: PaymentBreakdown[] }) {
-  if (data.length === 0) return null;
-  const total = data.reduce((s, d) => s + d.amount, 0);
-  if (total === 0) return null;
+  const total = data ? data.reduce((s, d) => s + d.amount, 0) : 0;
+  if (!data || data.length === 0 || total === 0) {
+    return (
+      <div style={{ height: 168, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
+        Aucune donnée de répartition disponible ce mois
+      </div>
+    );
+  }
 
   const R = 64, CX = 100, CY = 100;
   const C = 2 * Math.PI * R;
@@ -474,11 +485,11 @@ function LateCotisations({ items, onReminder, onReminderOne }: {
 export default function FinancePage() {
   const [error,     setError]     = useState("");
   const [info,      setInfo]      = useState("");
-  const [revenue,   setRevenue]   = useState<MonthlyRevenue[]>(MOCK_MONTHLY_REVENUE);
-  const [late,      setLate]      = useState<LateMember[]>(MOCK_LATE_COTISATIONS);
-  const [breakdown, setBreakdown] = useState<PaymentBreakdown[]>(MOCK_PAYMENT_BREAKDOWN);
+  const [revenue,   setRevenue]   = useState<MonthlyRevenue[]>([]);
+  const [late,      setLate]      = useState<LateMember[]>([]);
+  const [breakdown, setBreakdown] = useState<PaymentBreakdown[]>([]);
   const [dashboard, setDashboard] = useState<DashboardKPIs | null>(null);
-  const [kpis,      setKpis]      = useState<TransactionKPIs>(MOCK_TRANSACTION_KPIS);
+  const [kpis,      setKpis]      = useState<TransactionKPIs | null>(null);
   const [payments,  setPayments]  = useState<Transaction[]>([]);
   const [paymentsTotal, setPaymentsTotal] = useState(0);
   const [paymentsPage,  setPaymentsPage]  = useState(1);
@@ -488,12 +499,10 @@ export default function FinancePage() {
     kind: "ALL", status: "ALL", date_from: "", date_to: "",
   });
   const [exportPeriod, setExportPeriod] = useState({ date_from: "", date_to: "" });
-  const [manual, setManual] = useState({ user_id: "", kind: "COTISATION", reason: "" });
-
-  const wrap = async (fn: () => Promise<unknown>, ok: string) => {
-    setError(""); setInfo("");
-    try { await fn(); setInfo(ok); } catch (e) { setError(errorMessage(e)); }
-  };
+  const [activeTab, setActiveTab] = useState<"manual" | "refund" | "exonerate">("manual");
+  const [manual, setManual] = useState({ user_id: "", kind: "COTISATION", amount: "", reason: "" });
+  const [refund, setRefund] = useState({ user_id: "", amount: "", reason: "" });
+  const [exonerate, setExonerate] = useState({ user_id: "", reason: "" });
 
   const load = useCallback(async () => {
     const [dashboardRes, revRes, membersRes, lateRes, bdRes, kpisRes] = await Promise.allSettled([
@@ -542,7 +551,7 @@ export default function FinancePage() {
     if (paymentFilters.date_to) params.date_to = paymentFilters.date_to;
 
     try {
-      const { data } = await billingPaymentsApi.list(params);
+      const { data } = await transactionsApi.list(params);
       if (Array.isArray(data)) {
         setPayments(data);
         setPaymentsTotal(data.length);
@@ -556,13 +565,25 @@ export default function FinancePage() {
     }
   }, [paymentFilters, paymentsPage, paymentsPageSize]);
 
+  const wrap = async (fn: () => Promise<unknown>, ok: string) => {
+    setError(""); setInfo("");
+    try {
+      await fn();
+      setInfo(ok);
+      load();
+      loadPayments();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadPayments(); }, [loadPayments]);
 
   // Métriques dérivées
   const revenueMonth  = dashboard?.revenue_month ?? revenue.at(-1)?.amount ?? 0;
   const revenuePrev   = revenue.at(-2)?.amount ?? 0;
-  const revenueTotal  = dashboard?.revenue_total ?? kpis.revenue_total;
+  const revenueTotal  = dashboard?.revenue_total ?? kpis?.revenue_total ?? 0;
   const collectionRate = dashboard?.collection_rate;
   const unpaidAmount  = dashboard?.unpaid_amount;
   const growthPct     = revenuePrev > 0 ? ((revenueMonth - revenuePrev) / revenuePrev) * 100 : 0;
@@ -726,28 +747,122 @@ export default function FinancePage() {
         />
       </Card>
 
-      {/* ── Paiement manuel + Exports ─────────────────────────────────────── */}
+      {/* ── Opérations administratives + Exports ─────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
         <Card>
-          <h2 style={{ fontSize: "1rem", marginBottom: "0.85rem" }}>Paiement manuel</h2>
-          <Input label="ID membre" value={manual.user_id}
-            onChange={(e) => setManual({ ...manual, user_id: e.target.value })} />
-          <Select label="Type" value={manual.kind}
-            onChange={(e) => setManual({ ...manual, kind: e.target.value })}>
-            <option value="INSCRIPTION">Droit d&apos;inscription</option>
-            <option value="COTISATION">Cotisation mensuelle</option>
-            <option value="DON">Don volontaire</option>
-          </Select>
-          <Input label="Motif" value={manual.reason}
-            onChange={(e) => setManual({ ...manual, reason: e.target.value })} />
-          <Button
-            onClick={() => wrap(
-              () => financeApi.manual({ user_id: Number(manual.user_id), kind: manual.kind, reason: manual.reason }),
-              "Paiement enregistré.",
-            )}
-          >
-            Valider le paiement
-          </Button>
+          <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", marginBottom: "1rem", gap: "1rem" }}>
+            <button
+              onClick={() => setActiveTab("manual")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "manual" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "manual" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "manual" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Paiement manuel
+            </button>
+            <button
+              onClick={() => setActiveTab("refund")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "refund" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "refund" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "refund" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Remboursement
+            </button>
+            <button
+              onClick={() => setActiveTab("exonerate")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "exonerate" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "exonerate" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "exonerate" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Exonération
+            </button>
+          </div>
+
+          {activeTab === "manual" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={manual.user_id}
+                onChange={(e) => setManual({ ...manual, user_id: e.target.value })} />
+              <Select label="Type" value={manual.kind}
+                onChange={(e) => setManual({ ...manual, kind: e.target.value })}>
+                <option value="INSCRIPTION">Droit d&apos;inscription</option>
+                <option value="COTISATION">Cotisation mensuelle</option>
+                <option value="DON">Don volontaire</option>
+              </Select>
+              <Input type="number" label="Montant (FCFA, optionnel)" value={manual.amount}
+                placeholder="Montant par défaut si vide"
+                onChange={(e) => setManual({ ...manual, amount: e.target.value })} />
+              <Input label="Motif" value={manual.reason}
+                onChange={(e) => setManual({ ...manual, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.manual({
+                    user_id: Number(manual.user_id),
+                    kind: manual.kind,
+                    amount: manual.amount ? Number(manual.amount) : undefined,
+                    reason: manual.reason
+                  }),
+                  "Paiement manuel enregistré.",
+                )}
+              >
+                Valider le paiement
+              </Button>
+            </div>
+          )}
+
+          {activeTab === "refund" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={refund.user_id}
+                onChange={(e) => setRefund({ ...refund, user_id: e.target.value })} />
+              <Input type="number" label="Montant (FCFA)" value={refund.amount}
+                placeholder="Montant à rembourser"
+                onChange={(e) => setRefund({ ...refund, amount: e.target.value })} />
+              <Input label="Motif" value={refund.reason}
+                onChange={(e) => setRefund({ ...refund, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.refund({
+                    user_id: Number(refund.user_id),
+                    amount: Number(refund.amount),
+                    reason: refund.reason
+                  }),
+                  "Remboursement enregistré.",
+                )}
+              >
+                Enregistrer le remboursement
+              </Button>
+            </div>
+          )}
+
+          {activeTab === "exonerate" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={exonerate.user_id}
+                onChange={(e) => setExonerate({ ...exonerate, user_id: e.target.value })} />
+              <Input label="Motif" value={exonerate.reason}
+                onChange={(e) => setExonerate({ ...exonerate, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.exonerate({
+                    user_id: Number(exonerate.user_id),
+                    reason: exonerate.reason
+                  }),
+                  "Exonération accordée.",
+                )}
+              >
+                Accorder l&apos;exonération
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card>

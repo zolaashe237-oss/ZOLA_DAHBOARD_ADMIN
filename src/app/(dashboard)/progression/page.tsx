@@ -60,10 +60,12 @@ function KpiTile({ label, value, sub }: { label: string; value: string; sub?: st
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
+import { BrandLoader } from "@/components/BrandLoader";
+
 export default function ProgressionPage() {
-  const [kpis,       setKpis]       = useState<ProgressionKPIs | null>(MOCK_PROGRESSION_KPIS);
-  const [formations, setFormations] = useState<FormationProgressStat[]>(MOCK_FORMATION_STATS);
-  const [members,    setMembers]    = useState<MemberProgressEntry[]>(MOCK_MEMBER_PROGRESS);
+  const [kpis,       setKpis]       = useState<ProgressionKPIs | null>(null);
+  const [formations, setFormations] = useState<FormationProgressStat[]>([]);
+  const [members,    setMembers]    = useState<MemberProgressEntry[]>([]);
 
   const [filterFormation, setFilterFormation] = useState<number | "ALL">("ALL");
   const [filterCompleted, setFilterCompleted] = useState<"ALL" | "true" | "false">("ALL");
@@ -73,21 +75,28 @@ export default function ProgressionPage() {
   const [error,       setError]       = useState("");
   const [info,        setInfo]        = useState("");
   const [resetTarget, setResetTarget] = useState<MemberProgressEntry | null>(null);
+  const [loading,     setLoading]     = useState(true);
 
   // ── Chargements ──────────────────────────────────────────────────────────
 
-  const loadKpis = useCallback(async () => {
-    try {
-      const { data } = await progressionApi.kpis();
-      setKpis(data);
-    } catch { /* garde les mocks */ }
-  }, []);
-
-  const loadFormations = useCallback(async () => {
-    try {
-      const { data } = await progressionApi.formationStats();
-      setFormations(Array.isArray(data) ? data : (data as Paginated<FormationProgressStat>).results);
-    } catch { /* garde les mocks */ }
+  useEffect(() => {
+    const loadAll = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const [kData, fData] = await Promise.all([
+          progressionApi.kpis(),
+          progressionApi.formationStats(),
+        ]);
+        setKpis(kData.data);
+        setFormations(Array.isArray(fData.data) ? fData.data : (fData.data as Paginated<FormationProgressStat>).results);
+      } catch (e) {
+        setError("Impossible de charger les KPIs et statistiques de progression.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAll();
   }, []);
 
   const loadMembers = useCallback(async () => {
@@ -98,10 +107,11 @@ export default function ProgressionPage() {
       if (filterSearch)              params.search       = filterSearch;
       const { data } = await progressionApi.memberProgress(params);
       setMembers(Array.isArray(data) ? data : (data as Paginated<MemberProgressEntry>).results);
-    } catch { /* garde les mocks */ }
+    } catch (e) {
+      setError("Impossible de charger l'avancement des membres.");
+    }
   }, [filterFormation, filterCompleted, filterSearch]);
 
-  useEffect(() => { loadKpis(); loadFormations(); }, [loadKpis, loadFormations]);
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
   // ── Reset progression ────────────────────────────────────────────────────
@@ -133,6 +143,10 @@ export default function ProgressionPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return <BrandLoader label="Chargement de la progression..." />;
+  }
 
   return (
     <div className="fade-up">

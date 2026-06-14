@@ -95,6 +95,7 @@ export const membersApi = {
     api.post<{ nb_warnings: number; recidive_alert: boolean }>(`/admin/members/${id}/warn/`, { reason }),
   resetPassword: (id: number) =>
     api.post<{ temp_password: string }>(`/admin/members/${id}/reset-password/`),
+  delete: (id: number) => api.delete(`/admin/members/${id}/`),
   lateCotisations: () => api.get<LateMember[] | Paginated<LateMember>>("/admin/members/late/"),
 };
 
@@ -160,6 +161,9 @@ export const quizApi = {
 export const resetQuizApi = (data: { user_id: number; quiz_id: number; reason: string }) =>
   api.post("/admin/quiz/reset/", data);
 
+export const setQuizScoreApi = (data: { user_id: number; quiz_id: number; score: number }) =>
+  api.post("/admin/quiz/score/", data);
+
 export const quizResultsApi = {
   list: (params?: { quiz_id?: number; formation_id?: number; search?: string }) =>
     api.get<QuizResult[] | Paginated<QuizResult>>("/admin/quiz/results/", { params }),
@@ -224,6 +228,8 @@ export const moderationApi = {
   handle: (id: number) => api.post(`/admin/reports/${id}/handle/`),
   deletePost: (id: number, reason: string) => api.post(`/admin/posts/${id}/delete/`, { reason }),
   deleteComment: (id: number, reason: string) => api.post(`/admin/comments/${id}/delete/`, { reason }),
+  createAdminPost: (data: { title: string; body: string; type: string; is_admin_post: boolean; is_pinned: boolean }) =>
+    api.post("/admin/posts/", data),
 };
 
 export const auditApi = {
@@ -265,6 +271,8 @@ export const transactionsApi = {
     search?:  string;
     date_from?: string;
     date_to?:   string;
+    page?:      number;
+    page_size?: number;
   }) =>
     api.get<Transaction[] | Paginated<Transaction>>("/admin/transactions/", { params }),
   detail: (id: number) =>

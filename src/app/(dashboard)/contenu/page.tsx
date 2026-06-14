@@ -185,7 +185,8 @@ function CoverPicker({ previewUrl, onFile }: {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function ContenuPage() {
-  const [items,        setItems]        = useState<Formation[]>(MOCK_FORMATIONS);
+  const [items,        setItems]        = useState<Formation[]>([]);
+  const [loading,      setLoading]      = useState(true);
   const [form,         setForm]         = useState({ ...EMPTY });
   const [coverFile,    setCoverFile]    = useState<File | null>(null);
   const [coverUrl,     setCoverUrl]     = useState("");
@@ -212,9 +213,11 @@ export default function ContenuPage() {
   };
 
   const load = useCallback(() => {
+    setLoading(true);
     formationApi.list()
       .then((r) => setItems(asList(r.data)))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -426,65 +429,76 @@ export default function ContenuPage() {
       )}
 
       {/* ── Catalogue — sections par branche (horizontal → vertical) ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-        {BRANCH_COLS.map((col) => {
-          const colItems = filtered.filter((f) => (f.branche ?? "GENERALE") === col.key);
-          return (
-            <section key={col.key}>
-              {/* ── En-tête de section ── */}
-              <div style={{
-                display: "flex", alignItems: "center", gap: "0.7rem",
-                padding: "0.6rem 1rem",
-                background: `${col.color}0e`,
-                border: `1px solid ${col.color}28`,
-                borderLeft: `4px solid ${col.color}`,
-                borderRadius: "var(--radius)",
-                marginBottom: "0.9rem",
-              }}>
-                <span style={{ fontSize: "1.15rem", lineHeight: 1 }}>{col.emoji}</span>
-                <span style={{ fontSize: "0.90rem", fontWeight: 800, color: col.color, flex: 1, letterSpacing: "0.02em" }}>
-                  {col.label}
-                </span>
-                <span style={{
-                  fontSize: "0.70rem", fontWeight: 700,
-                  background: `${col.color}1a`, color: col.color,
-                  border: `1px solid ${col.color}38`,
-                  padding: "0.10rem 0.52rem", borderRadius: 99,
+      {loading && items.length === 0 ? (
+        <div style={{
+          padding: "3rem", textAlign: "center",
+          color: "var(--muted)", fontSize: "0.88rem",
+          background: "var(--bg-1)", border: "1px solid var(--line-soft)",
+          borderRadius: "var(--radius)",
+        }}>
+          Chargement du catalogue...
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+          {BRANCH_COLS.map((col) => {
+            const colItems = filtered.filter((f) => (f.branche ?? "GENERALE") === col.key);
+            return (
+              <section key={col.key}>
+                {/* ── En-tête de section ── */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "0.7rem",
+                  padding: "0.6rem 1rem",
+                  background: `${col.color}0e`,
+                  border: `1px solid ${col.color}28`,
+                  borderLeft: `4px solid ${col.color}`,
+                  borderRadius: "var(--radius)",
+                  marginBottom: "0.9rem",
                 }}>
-                  {colItems.length} formation{colItems.length !== 1 ? "s" : ""}
-                </span>
-              </div>
+                  <span style={{ fontSize: "1.15rem", lineHeight: 1 }}>{col.emoji}</span>
+                  <span style={{ fontSize: "0.90rem", fontWeight: 800, color: col.color, flex: 1, letterSpacing: "0.02em" }}>
+                    {col.label}
+                  </span>
+                  <span style={{
+                    fontSize: "0.70rem", fontWeight: 700,
+                    background: `${col.color}1a`, color: col.color,
+                    border: `1px solid ${col.color}38`,
+                    padding: "0.10rem 0.52rem", borderRadius: 99,
+                  }}>
+                    {colItems.length} formation{colItems.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
 
-              {/* ── Grille de cartes ── */}
-              {colItems.length === 0 ? (
-                <div style={{
-                  padding: "1.6rem", textAlign: "center",
-                  color: "var(--muted)", fontSize: "0.82rem",
-                  border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)",
-                }}>
-                  Aucune formation dans cette section.
-                </div>
-              ) : (
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(295px, 1fr))",
-                  gap: "1rem",
-                }}>
-                  {colItems.map((f) => (
-                    <FormationCard
-                      key={f.id}
-                      formation={f}
-                      onPublish={publish}
-                      onUnpublish={unpublish}
-                      onRemove={setRemoveTarget}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
+                {/* ── Grille de cartes ── */}
+                {colItems.length === 0 ? (
+                  <div style={{
+                    padding: "1.6rem", textAlign: "center",
+                    color: "var(--muted)", fontSize: "0.82rem",
+                    border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)",
+                  }}>
+                    Aucune formation dans cette section.
+                  </div>
+                ) : (
+                  <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(295px, 1fr))",
+                    gap: "1rem",
+                  }}>
+                    {colItems.map((f) => (
+                      <FormationCard
+                        key={f.id}
+                        formation={f}
+                        onPublish={publish}
+                        onUnpublish={unpublish}
+                        onRemove={setRemoveTarget}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Confirmation suppression définitive ── */}
       {removeTarget && (
