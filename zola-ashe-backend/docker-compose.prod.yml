@@ -136,13 +136,16 @@ services:
     entrypoint:
       - /bin/sh
       - -c
+      # NB : les `$$VAR` du shell sont échappés en `$$$$VAR` ici parce que
+      # Docker Compose interpole `$VAR` ET `${VAR}` lors de la lecture du YAML.
+      # Seul `${API_DOMAIN}` et `${ACME_EMAIL}` doivent venir de l'env Compose.
       - |
         LIVE=/etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem
         RENEW=/etc/letsencrypt/renewal/${API_DOMAIN}.conf
         # Skip seulement si un VRAI cert Let's Encrypt est en place.
         # On distingue de l'auto-signé du bootstrap-tls via l'issuer du cert.
-        if [ -f "$RENEW" ] && [ -f "$LIVE" ] && \
-           openssl x509 -in "$LIVE" -noout -issuer 2>/dev/null | grep -qi "let's encrypt"; then
+        if [ -f "$$RENEW" ] && [ -f "$$LIVE" ] && \
+           openssl x509 -in "$$LIVE" -noout -issuer 2>/dev/null | grep -qi "let's encrypt"; then
           echo "[certbot-init] cert Let's Encrypt déjà en place — rien à faire."
           exit 0
         fi
@@ -150,11 +153,11 @@ services:
         # certbot avortée. Certbot refuse d'écraser un live/ non géré par lui,
         # et un renewal/.conf orphelin lui ferait croire à un cert valide.
         # On nettoie tout pour pouvoir partir sur un certbot certonly propre.
-        if [ -d /etc/letsencrypt/live/${API_DOMAIN} ] || [ -f "$RENEW" ]; then
+        if [ -d /etc/letsencrypt/live/${API_DOMAIN} ] || [ -f "$$RENEW" ]; then
           echo "[certbot-init] nettoyage des résidus (auto-signé + renewals orphelins)..."
           rm -rf /etc/letsencrypt/live/${API_DOMAIN} \
                  /etc/letsencrypt/archive/${API_DOMAIN} \
-                 "$RENEW"
+                 "$$RENEW"
         fi
         echo "[certbot-init] Attente de nginx (port 80)..."
         sleep 10
