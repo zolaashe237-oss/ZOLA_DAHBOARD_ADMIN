@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { blogApi } from "@/lib/endpoints";
+import { getMediaUrl } from "@/lib/api";
 import type { Article, Paginated } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -152,7 +153,7 @@ export default function BlogPage() {
                   width: 64, height: 44, borderRadius: 8, flexShrink: 0,
                   border: "1px solid var(--line-soft)",
                   background: a.cover_url
-                    ? `center/cover no-repeat url(${a.cover_url})`
+                    ? `center/cover no-repeat url(${getMediaUrl(a.cover_url)})`
                     : "var(--bg-2)",
                 }} />
                 <div style={{ minWidth: 0 }}>

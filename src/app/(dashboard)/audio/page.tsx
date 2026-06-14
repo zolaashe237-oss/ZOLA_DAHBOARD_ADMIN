@@ -60,7 +60,7 @@ function AudioThumb({ item, size = 54 }: { item: AudioItem; size?: number }) {
       overflow: "hidden", position: "relative",
     }}>
       {item.cover_url ? (
-        <img src={item.cover_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <img src={getMediaUrl(item.cover_url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       ) : (
         <>
           <span style={{ fontSize: size > 60 ? "1.4rem" : "0.9rem", color: text, lineHeight: 1, zIndex: 1 }}>♪</span>
@@ -317,7 +317,7 @@ function AudioPreviewModal({ item, previewUrl, onClose, onEdit, onToggle }: {
   item: AudioItem; previewUrl?: string | null;
   onClose: () => void; onEdit: () => void; onToggle: () => void;
 }) {
-  const src = previewUrl || item.file_url || undefined;
+  const src = getMediaUrl(previewUrl || item.file_url);
   const { bg, line, text, wave } = AUDIO_ACCENT[item.branche];
   const bars = [0.35, 0.7, 0.9, 1, 0.6, 0.8, 0.45, 0.75, 0.55, 0.85, 0.5, 0.65, 0.9, 0.4, 0.7];
 
@@ -729,5 +729,8 @@ export default function AudioPage() {
         />
       )}
     </div>
+  );
+}
+v>
   );
 }

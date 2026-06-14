@@ -397,26 +397,19 @@ function AccesSelector({ value, onChange }: {
 
 // ── Paramètres de la formation ────────────────────────────────────────────────
 
-function FormationMeta({ formation, onSaved, onError, onInfo }: {
+function FormationMeta({
+  formation, meta, setMeta, coverFile, setCoverFile, onSaved, onError, onInfo,
+}: {
   formation: Formation;
+  meta: any;
+  setMeta: (m: any) => void;
+  coverFile: File | null;
+  setCoverFile: (f: File | null) => void;
   onSaved: () => void;
   onError: (s: string) => void;
   onInfo:  (s: string) => void;
 }) {
-  const [f, setF] = useState({
-    title:       formation.title,
-    description: formation.description,
-    category:    formation.category,
-    niveau:      (formation.niveau  ?? "") as FormationNiveau | "",
-    branche:     (formation.branche ?? "") as Branche | "",
-    acces:       (formation.access_subscription_types.length > 0 ? "PAYANTE" : "LIBRE") as FormationAcces,
-    status:      formation.status,
-    publish_at:  formation.publish_at ? formation.publish_at.slice(0, 16) : "",
-  });
-  const [coverFile,       setCoverFile]       = useState<File | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [ok,     setOk]     = useState("");
   const coverRef = useRef<HTMLInputElement>(null);
 
   const pickCover = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -430,54 +423,30 @@ function FormationMeta({ formation, onSaved, onError, onInfo }: {
 
   const displayCoverUrl = coverPreviewUrl || formation.cover_url;
 
-  const save = async () => {
-    setSaving(true); setOk(""); onError("");
-    try {
-      await formationApi.update(formation.id, {
-        title: f.title, description: f.description, category: f.category,
-        ...accesToApi(f.acces),
-        status: f.status,
-        publish_at: f.status === "SCHEDULED" && f.publish_at
-          ? new Date(f.publish_at).toISOString() : null,
-        ...(f.niveau  ? { niveau: f.niveau }   : {}),
-        ...(f.branche ? { branche: f.branche } : {}),
-      });
-      if (coverFile) {
-        await formationApi.uploadCover(formation.id, coverFile);
-        setCoverFile(null);
-      }
-      setOk("Modifications enregistrées."); onSaved();
-    } catch (e) { onError(errorMessage(e)); }
-    finally { setSaving(false); }
-  };
-
   const publish = async () => {
-    setSaving(true); onError("");
+    onError("");
     try { await formationApi.publish(formation.id); onInfo("Formation publiée."); onSaved(); }
     catch (e) { onError(errorMessage(e)); }
-    finally { setSaving(false); }
   };
 
   const preview: Formation = {
     ...formation,
-    title:       f.title.trim() || "Titre de la formation",
-    description: f.description.trim(),
-    category:    f.category,
-    access_subscription_types: accesToApi(f.acces).access_subscription_types as ("MEMBRE")[],
-    is_payant:   accesToApi(f.acces).is_payant,
+    title:       meta.title.trim() || "Titre de la formation",
+    description: meta.description.trim(),
+    category:    meta.category,
+    access_subscription_types: accesToApi(meta.acces).access_subscription_types as ("MEMBRE")[],
+    is_payant:   accesToApi(meta.acces).is_payant,
     cover_url:   displayCoverUrl,
-    status:      f.status,
-    publish_at:  f.status === "SCHEDULED" && f.publish_at
-      ? new Date(f.publish_at).toISOString() : null,
-    niveau:  f.niveau  || null,
-    branche: f.branche || null,
+    status:      meta.status,
+    publish_at:  meta.status === "SCHEDULED" && meta.publish_at
+      ? new Date(meta.publish_at).toISOString() : null,
+    niveau:  meta.niveau  || null,
+    branche: meta.branche || null,
   };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(260px, 300px)", gap: "1.5rem", alignItems: "start" }}>
       <div>
-        <Alert kind="success">{ok}</Alert>
-
         {/* ── Couverture ── */}
         <div style={{ marginBottom: "0.9rem" }}>
           <div style={{
@@ -494,7 +463,7 @@ function FormationMeta({ formation, onSaved, onError, onInfo }: {
                 borderRadius: 7, overflow: "hidden",
                 border: `2px dashed ${displayCoverUrl ? "#c9a22760" : "#d0c8b880"}`,
                 background: displayCoverUrl
-                  ? `center/cover no-repeat url(${displayCoverUrl})`
+                  ? `center/cover no-repeat url(${getMediaUrl(displayCoverUrl)})`
                   : "rgba(201,162,39,0.04)",
                 cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -548,29 +517,29 @@ function FormationMeta({ formation, onSaved, onError, onInfo }: {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: ".8rem" }}>
-          <Input label="Titre" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
-          <Select label="Catégorie" value={f.category}
-                  onChange={(e) => setF({ ...f, category: e.target.value as Formation["category"] })}>
+          <Input label="Titre" value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} />
+          <Select label="Catégorie" value={meta.category}
+                  onChange={(e) => setMeta({ ...meta, category: e.target.value as Formation["category"] })}>
             <option value="FORMATION">Formation</option>
             <option value="LIVRE">Bibliothèque</option>
             <option value="LIBRE">Accès libre</option>
           </Select>
         </div>
         <Textarea
-          label="Description" value={f.description} maxLength={600}
+          label="Description" value={meta.description} maxLength={600}
           placeholder="Présentez le contenu, les objectifs et ce que les membres apprendront…"
-          onChange={(e) => setF({ ...f, description: e.target.value })}
+          onChange={(e) => setMeta({ ...meta, description: e.target.value })}
         />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".8rem" }}>
-          <Select label="Niveau" value={f.niveau}
-                  onChange={(e) => setF({ ...f, niveau: e.target.value as FormationNiveau | "" })}>
+          <Select label="Niveau" value={meta.niveau}
+                  onChange={(e) => setMeta({ ...meta, niveau: e.target.value as FormationNiveau | "" })}>
             <option value="">— Niveau —</option>
             <option value="DEBUTANT">Débutant</option>
             <option value="INTERMEDIAIRE">Intermédiaire</option>
             <option value="AVANCE">Avancé</option>
           </Select>
-          <Select label="Branche" value={f.branche}
-                  onChange={(e) => setF({ ...f, branche: e.target.value as Branche | "" })}>
+          <Select label="Branche" value={meta.branche}
+                  onChange={(e) => setMeta({ ...meta, branche: e.target.value as Branche | "" })}>
             <option value="">— Branche —</option>
             <option value="GENERALE">Général</option>
             <option value="FEMME">Femme</option>
@@ -578,22 +547,21 @@ function FormationMeta({ formation, onSaved, onError, onInfo }: {
           </Select>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".8rem" }}>
-          <Select label="Publication" value={f.status}
-                  onChange={(e) => setF({ ...f, status: e.target.value as FormationStatus })}>
+          <Select label="Publication" value={meta.status}
+                  onChange={(e) => setMeta({ ...meta, status: e.target.value as FormationStatus })}>
             <option value="DRAFT">Brouillon</option>
             <option value="SCHEDULED">Programmé</option>
             <option value="PUBLISHED">Publié</option>
           </Select>
-          {f.status === "SCHEDULED" && (
-            <Input label="Date de mise en ligne" type="datetime-local" value={f.publish_at}
-                   onChange={(e) => setF({ ...f, publish_at: e.target.value })} />
+          {meta.status === "SCHEDULED" && (
+            <Input label="Date de mise en ligne" type="datetime-local" value={meta.publish_at}
+                   onChange={(e) => setMeta({ ...meta, publish_at: e.target.value })} />
           )}
         </div>
-        <AccesSelector value={f.acces} onChange={(v) => setF({ ...f, acces: v })} />
+        <AccesSelector value={meta.acces} onChange={(v) => setMeta({ ...meta, acces: v })} />
         <div style={{ display: "flex", gap: ".5rem" }}>
-          <Button onClick={save} loading={saving}>Enregistrer</Button>
           {formation.status !== "PUBLISHED" && (
-            <Button variant="ghost" onClick={publish}>Publier maintenant</Button>
+            <Button variant="ghost" onClick={publish} style={{ fontSize: "0.78rem" }}>Publier maintenant</Button>
           )}
         </div>
       </div>
@@ -1186,14 +1154,20 @@ function AddEpisodeInline({ moduleId, count, onSaved, onError, onInfo, onEpisode
   const [youtube,   setYoutube]   = useState("");
   const [kind,      setKind]      = useState<ContentKind>("VIDEO");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [pdfFile,   setPdfFile]   = useState<File | null>(null);
   const [busy,      setBusy]      = useState(false);
+  
   const fileRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   const thumbUrl = kind === "VIDEO" ? ytThumb(youtube) : "";
 
   const switchKind = (k: ContentKind) => {
-    setKind(k); setYoutube(""); setMediaFile(null);
-    onEpisodeChange?.(title, "", k);
+    setKind(k);
+    // On ne reset plus tout, on garde ce qui a été saisi/choisi si possible
+    onEpisodeChange?.(title, youtube, k);
   };
 
   const add = async () => {
@@ -1203,21 +1177,38 @@ function AddEpisodeInline({ moduleId, count, onSaved, onError, onInfo, onEpisode
       const courseRes = await courseApi.create({ module: moduleId, title: title.trim(), order: count + 1 });
       const courseId = courseRes.data.id;
 
-      if (kind === "VIDEO" && youtube.trim()) {
+      let order = 1;
+
+      // 1. Vidéo YouTube
+      if (youtube.trim()) {
         await resourceApi.create({
           course: courseId, resource_type: "VIDEO", title: title.trim(),
-          order: 1, video_source: "YOUTUBE", youtube_url: youtube.trim(), bucket_key: "",
+          order: order++, video_source: "YOUTUBE", youtube_url: youtube.trim(), bucket_key: "",
         });
-      } else if (kind !== "VIDEO" && mediaFile) {
-        const { data: up } = await resourceApi.upload(mediaFile, kind);
+      }
+
+      // 2. Audio (primaire ou secondaire)
+      const audioToUpload = kind === "AUDIO" ? mediaFile : audioFile;
+      if (audioToUpload) {
+        const { data: up } = await resourceApi.upload(audioToUpload, "AUDIO");
         await resourceApi.create({
-          course: courseId, resource_type: kind, title: title.trim(),
-          order: 1, video_source: "UPLOAD", bucket_key: up.bucket_key, size_mo: up.size_mo,
+          course: courseId, resource_type: "AUDIO", title: title.trim(),
+          order: order++, video_source: "UPLOAD", bucket_key: up.bucket_key, size_mo: up.size_mo,
+        });
+      }
+
+      // 3. PDF (primaire ou secondaire)
+      const pdfToUpload = kind === "PDF" ? mediaFile : pdfFile;
+      if (pdfToUpload) {
+        const { data: up } = await resourceApi.upload(pdfToUpload, "PDF");
+        await resourceApi.create({
+          course: courseId, resource_type: "PDF", title: title.trim(),
+          order: order++, video_source: "UPLOAD", bucket_key: up.bucket_key, size_mo: up.size_mo,
         });
       }
 
       onInfo(`Épisode « ${title} » ajouté.`);
-      setTitle(""); setYoutube(""); setMediaFile(null);
+      setTitle(""); setYoutube(""); setMediaFile(null); setAudioFile(null); setPdfFile(null);
       onEpisodeChange?.("", "", kind);
       onSaved();
     } catch (e) { onError(errorMessage(e)); }
@@ -1254,32 +1245,65 @@ function AddEpisodeInline({ moduleId, count, onSaved, onError, onInfo, onEpisode
           })}
         </div>
 
-        {/* YouTube URL or file picker */}
-        {kind === "VIDEO" ? (
-          <input
-            className="input"
-            style={{ flex: "2 1 140px", fontSize: "0.81rem" }}
-            value={youtube}
-            placeholder="Lien YouTube (optionnel)"
-            onChange={(e) => { setYoutube(e.target.value); onEpisodeChange?.(title, e.target.value, kind); }}
-            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-          />
-        ) : (
-          <button type="button" onClick={() => fileRef.current?.click()} style={{
-            flex: "2 1 140px", fontSize: "0.78rem", fontWeight: 500, textAlign: "left",
-            border: "1px solid #e8dfc8", borderRadius: 5, padding: "0.30rem 0.55rem",
-            background: mediaFile ? "#2e946012" : "#fffbf0",
-            color: mediaFile ? "#2e9460" : "#a0907a",
-            cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {mediaFile ? `✓ ${mediaFile.name}` : `Choisir ${kind === "AUDIO" ? "un fichier audio" : "un PDF"}…`}
-          </button>
-        )}
+        {/* Main content input */}
+        <div style={{ flex: "3 1 200px", display: "flex", gap: "0.4rem" }}>
+          {kind === "VIDEO" ? (
+            <input
+              className="input"
+              style={{ flex: 1, fontSize: "0.81rem" }}
+              value={youtube}
+              placeholder="Lien YouTube (optionnel)"
+              onChange={(e) => { setYoutube(e.target.value); onEpisodeChange?.(title, e.target.value, kind); }}
+              onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+            />
+          ) : (
+            <button type="button" onClick={() => fileRef.current?.click()} style={{
+              flex: 1, fontSize: "0.78rem", fontWeight: 500, textAlign: "left",
+              border: "1px solid #e8dfc8", borderRadius: 5, padding: "0.30rem 0.55rem",
+              background: mediaFile ? "#2e946012" : "#fffbf0",
+              color: mediaFile ? "#2e9460" : "#a0907a",
+              cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {mediaFile ? `✓ ${mediaFile.name}` : `Choisir ${kind === "AUDIO" ? "un fichier audio" : "un PDF"}…`}
+            </button>
+          )}
 
+          {/* Optional extra uploads */}
+          <div style={{ display: "flex", gap: "0.2rem" }}>
+            <button type="button" onClick={() => audioRef.current?.click()} title="Ajouter un fichier audio" style={{
+              width: 30, height: 30, borderRadius: 5, border: "1px solid #e8dfc8",
+              background: audioFile ? "#a0461a15" : "#fffbf0",
+              color: audioFile ? "#a0461a" : "#a0907a", cursor: "pointer",
+              fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              ♪
+            </button>
+            <button type="button" onClick={() => pdfRef.current?.click()} title="Ajouter un PDF" style={{
+              width: 30, height: 30, borderRadius: 5, border: "1px solid #e8dfc8",
+              background: pdfFile ? "#2b8a5e15" : "#fffbf0",
+              color: pdfFile ? "#2b8a5e" : "#a0907a", cursor: "pointer",
+              fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              ☰
+            </button>
+          </div>
+        </div>
+
+        {/* Hidden inputs */}
         <input
           ref={fileRef} type="file" accept={KIND_OPTIONS.find((o) => o.value === kind)?.accept}
           style={{ display: "none" }}
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setMediaFile(f); e.target.value = ""; }}
+        />
+        <input
+          ref={audioRef} type="file" accept=".mp3,.wav,.ogg,.m4a,.aac"
+          style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) setAudioFile(f); e.target.value = ""; }}
+        />
+        <input
+          ref={pdfRef} type="file" accept=".pdf"
+          style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) setPdfFile(f); e.target.value = ""; }}
         />
 
         <Button type="button" variant="ghost" onClick={add} loading={busy}
@@ -1301,21 +1325,47 @@ function AddEpisodeInline({ moduleId, count, onSaved, onError, onInfo, onEpisode
         </div>
       )}
 
-      {/* File preview for audio/PDF */}
-      {kind !== "VIDEO" && mediaFile && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", marginTop: "0.4rem", paddingLeft: "0.2rem" }}>
-          <span style={{ fontSize: "1rem", color: kind === "PDF" ? "#2b8a5e" : "#a0461a" }}>
-            {kind === "PDF" ? "☰" : "♪"}
-          </span>
-          <span style={{ fontSize: "0.70rem", color: "#8b6a3a" }}>
-            {mediaFile.name} ({(mediaFile.size / 1024 / 1024).toFixed(1)} Mo) — sera envoyé à la création
-          </span>
-          <button type="button" onClick={() => setMediaFile(null)}
-            style={{ background: "none", border: "none", color: "#b53a2a", cursor: "pointer", fontSize: "0.7rem" }}>
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Files summary */}
+      <div style={{ display: "flex", gap: "0.8rem", flexWrap: "wrap", marginTop: "0.4rem", paddingLeft: "0.2rem" }}>
+        {kind !== "VIDEO" && mediaFile && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.9rem", color: kind === "PDF" ? "#2b8a5e" : "#a0461a" }}>
+              {kind === "PDF" ? "☰" : "♪"}
+            </span>
+            <span style={{ fontSize: "0.68rem", color: "#8b6a3a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {mediaFile.name} ({(mediaFile.size / 1024 / 1024).toFixed(1)} Mo)
+            </span>
+            <button type="button" onClick={() => setMediaFile(null)}
+              style={{ background: "none", border: "none", color: "#b53a2a", cursor: "pointer", fontSize: "0.65rem" }}>
+              ✕
+            </button>
+          </div>
+        )}
+        {audioFile && (kind !== "AUDIO" || !mediaFile) && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.9rem", color: "#a0461a" }}>♪</span>
+            <span style={{ fontSize: "0.68rem", color: "#8b6a3a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Audio: {audioFile.name} ({(audioFile.size / 1024 / 1024).toFixed(1)} Mo)
+            </span>
+            <button type="button" onClick={() => setAudioFile(null)}
+              style={{ background: "none", border: "none", color: "#b53a2a", cursor: "pointer", fontSize: "0.65rem" }}>
+              ✕
+            </button>
+          </div>
+        )}
+        {pdfFile && (kind !== "PDF" || !mediaFile) && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.9rem", color: "#2b8a5e" }}>☰</span>
+            <span style={{ fontSize: "0.68rem", color: "#8b6a3a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              PDF: {pdfFile.name} ({(pdfFile.size / 1024 / 1024).toFixed(1)} Mo)
+            </span>
+            <button type="button" onClick={() => setPdfFile(null)}
+              style={{ background: "none", border: "none", color: "#b53a2a", cursor: "pointer", fontSize: "0.65rem" }}>
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

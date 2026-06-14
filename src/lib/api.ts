@@ -16,6 +16,21 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+/**
+ * Résout une URL absolue pour un média.
+ * Django retourne parfois des chemins relatifs (/media/...) en développement.
+ */
+export function getMediaUrl(path: string | null | undefined): string {
+  if (!path) return "";
+  if (path.startsWith("http") || path.startsWith("blob:") || path.startsWith("data:")) {
+    return path;
+  }
+  // On récupère la base de l'API (ex: http://localhost:8010/api)
+  // et on retire le suffixe /api pour avoir la racine du serveur.
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010/api").replace(/\/api$/, "");
+  return `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;

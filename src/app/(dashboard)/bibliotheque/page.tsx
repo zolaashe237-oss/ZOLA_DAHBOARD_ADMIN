@@ -48,7 +48,7 @@ function DocCover({ pdf, size = 72 }: { pdf: LibraryPdf; size?: number }) {
   if (pdf.cover_url) {
     return (
       <img
-        src={pdf.cover_url} alt={pdf.title}
+        src={getMediaUrl(pdf.cover_url)} alt={pdf.title}
         style={{
           width: size, height, objectFit: "cover", borderRadius: 5,
           border: "1px solid #e8dfc8", flexShrink: 0, display: "block",
@@ -546,7 +546,7 @@ function DocCard({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }
         onClick={onPreview}
       >
         {pdf.cover_url ? (
-          <img src={pdf.cover_url} alt={pdf.title}
+          <img src={getMediaUrl(pdf.cover_url)} alt={pdf.title}
             style={{ width: "100%", aspectRatio: "2/3", objectFit: "cover", display: "block" }} />
         ) : (
           <div style={{

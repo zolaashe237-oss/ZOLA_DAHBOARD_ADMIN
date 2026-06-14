@@ -86,7 +86,7 @@ export function FormationCard({
       <div style={{
         height: 185,
         background: f.cover_url
-          ? `center/cover no-repeat url(${f.cover_url})`
+          ? `center/cover no-repeat url(${getMediaUrl(f.cover_url)})`
           : (COVER_GRAD[f.category] ?? COVER_GRAD.FORMATION),
         position: "relative",
         display: "flex", alignItems: "center", justifyContent: "center",
