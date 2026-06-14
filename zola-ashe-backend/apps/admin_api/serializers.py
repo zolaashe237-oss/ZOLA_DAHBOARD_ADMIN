@@ -154,6 +154,7 @@ def _validate_access_types(value):
 
 class AdminFormationSerializer(serializers.ModelSerializer):
     module_count = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Formation
@@ -164,6 +165,12 @@ class AdminFormationSerializer(serializers.ModelSerializer):
 
     def get_module_count(self, obj) -> int:
         return obj.modules.count()
+
+    def get_cover_url(self, obj) -> str:
+        from apps.content.services import generate_signed_url
+        if obj.cover_key:
+            return generate_signed_url(obj.cover_key)
+        return obj.cover_url
 
     def validate_access_subscription_types(self, value):
         return _validate_access_types(value)

@@ -148,6 +148,6 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         user.set_status(UserStatus.BLOQUE)
         user.save(update_fields=["full_name", "email", "photo", "is_active"])
         _revoke_tokens(user)
-        record(request.user, AuditAction.EXPORT_DATA, target_type="User", target_id=old_id,
+        record(request.user, AuditAction.DELETE_ACCOUNT, target_type="User", target_id=old_id,
                reason="Purge RGPD (anonymisation)")
         return Response(status=status.HTTP_204_NO_CONTENT)

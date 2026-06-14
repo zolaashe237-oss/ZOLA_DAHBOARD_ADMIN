@@ -167,7 +167,16 @@ class ExportMembersView(APIView):
         response["Content-Disposition"] = 'attachment; filename="membres.csv"'
         writer = csv.writer(response)
         writer.writerow(["id", "email", "nom", "statut", "verifie", "avertissements", "inscrit_le"])
-        for u in User.objects.filter(role=Role.MEMBER).order_by("id"):
+        
+        qs = User.objects.filter(role=Role.MEMBER).order_by("id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+
+        for u in qs:
             writer.writerow([u.id, u.email, u.full_name, u.status, u.email_verified,
                              u.nb_warnings, u.created_at.date()])
         return response
@@ -186,8 +195,18 @@ class ExportPaymentsView(APIView):
         response["Content-Disposition"] = 'attachment; filename="paiements.csv"'
         writer = csv.writer(response)
         writer.writerow(["id", "membre", "type", "statut", "montant", "swinmo_ref", "date"])
-        for p in Payment.objects.select_related("user").order_by("id"):
-            writer.writerow([p.id, p.user.email, p.type, p.status, p.amount,
+        
+        qs = Payment.objects.select_related("user").order_by("id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        if date_from:
+            qs = qs.filter(paid_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(paid_at__date__lte=date_to)
+
+        for p in qs:
+            email = p.user.email if p.user else "Compte anonymisé"
+            writer.writerow([p.id, email, p.type, p.status, p.amount,
                              p.swinmo_ref or "", p.paid_at])
         return response
 
