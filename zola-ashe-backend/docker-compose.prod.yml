@@ -8,13 +8,18 @@
 # Lancement :  make prod-up
 services:
   pgbouncer:
-    image: edoburu/pgbouncer
+    image: edoburu/pgbouncer:v1.24.1-p1
     environment:
       # pgbouncer doit toujours cibler DIRECTEMENT Postgres (jamais via lui-même,
       # sinon boucle infinie). L'app, elle, pointe sur pgbouncer:5432 dans .env.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       POOL_MODE: transaction
-      MAX_CLIENT_CONN: 500
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "20"
+      # CRITIQUE : Postgres 15+ stocke les mots de passe en SCRAM-SHA-256 par défaut.
+      # Sans cette variable, pgbouncer tente du MD5 et Postgres refuse avec
+      # "wrong password type" → migrations Django jamais appliquées → DB vide.
+      AUTH_TYPE: scram-sha-256
     depends_on:
       db:
         condition: service_healthy
