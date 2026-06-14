@@ -17,6 +17,10 @@ const ACTION_COLOR: Record<string, string> = {
   CONTENT_REMOVE:    "#b5532a",
   PAYMENT_EXONERATE: "#7d7264",
   PAYMENT_MANUAL:    "#c9a227",
+  DELETE_POST:       "#c0402c",
+  DELETE_COMMENT:    "#c0402c",
+  RESOLVE_REPORT:    "#9a6e10",
+  EXPORT_DATA:       "#243a85",
   QUIZ_RESET:        "var(--gold)",
   FORMATION_PUBLISH: "var(--ok)",
   ADMIN_CREATE:      "#5b8fd4",
@@ -31,6 +35,10 @@ const ACTION_LABEL: Record<string, string> = {
   CONTENT_REMOVE:    "Suppression contenu",
   PAYMENT_EXONERATE: "Exonération",
   PAYMENT_MANUAL:    "Paiement manuel",
+  DELETE_POST:       "Suppression post",
+  DELETE_COMMENT:    "Suppression commentaire",
+  RESOLVE_REPORT:    "Résolution signalement",
+  EXPORT_DATA:       "Export données",
   QUIZ_RESET:        "Reset quiz",
   FORMATION_PUBLISH: "Publication formation",
   ADMIN_CREATE:      "Création admin",
@@ -51,7 +59,11 @@ export default function AuditPage() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const { data } = await auditApi.list({ action: filterAction || undefined });
+      const { data } = await auditApi.list({
+      action: filterAction || undefined,
+      page: 1,
+      page_size: 20,
+    });
       const list = Array.isArray(data) ? data : (data as { results: AuditEntry[] }).results ?? [];
       if (list.length > 0) setEntries(list);
     } catch (e) { setError(errorMessage(e)); }

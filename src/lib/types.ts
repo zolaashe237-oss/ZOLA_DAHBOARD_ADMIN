@@ -101,6 +101,11 @@ export interface DashboardKPIs {
   reports_pending: number;
   new_members_month: number;
   modules_validated_month: number;
+  revenue_total?: number;
+  collection_rate?: number;
+  unpaid_amount?: number;
+  monthly_revenue?: MonthlyRevenue[];
+  payment_breakdown?: PaymentBreakdown[];
 }
 
 export type SubscriptionType  = "MEMBRE";

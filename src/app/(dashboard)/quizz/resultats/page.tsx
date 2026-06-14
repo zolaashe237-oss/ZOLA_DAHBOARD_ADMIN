@@ -3,15 +3,17 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { asList, quizResultsApi, resetQuizApi } from "@/lib/endpoints";
+import { asList, quizResultsApi, resetQuizApi, quizApi, setQuizScoreApi } from "@/lib/endpoints";
 import { MOCK_QUIZ_RESULTS, MOCK_QUIZZES } from "@/lib/mocks";
 import type { QuizItem, QuizResult } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, usePagination } from "@/components/ui";
-import { ConfirmModal } from "@/components/Modal";
+import { ConfirmModal, Modal } from "@/components/Modal";
+
+import { BrandLoader } from "@/components/BrandLoader";
 
 export default function QuizResultsPage() {
-  const [results,      setResults]      = useState<QuizResult[]>(MOCK_QUIZ_RESULTS);
-  const [quizzes,      setQuizzes]      = useState<QuizItem[]>(MOCK_QUIZZES);
+  const [results,      setResults]      = useState<QuizResult[]>([]);
+  const [quizzes,      setQuizzes]      = useState<QuizItem[]>([]);
   const [filterQuiz,   setFilterQuiz]   = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -19,16 +21,26 @@ export default function QuizResultsPage() {
   const [info,         setInfo]         = useState("");
   const [resetting,    setResetting]    = useState<number | null>(null);
   const [resetTarget,  setResetTarget]  = useState<QuizResult | null>(null);
+  const [scoreTarget,  setScoreTarget]  = useState<QuizResult | null>(null);
+  const [loading,      setLoading]      = useState(true);
 
   const load = useCallback(async () => {
+    setError("");
     try {
-      const { data } = await quizResultsApi.list({
-        quiz_id:    filterQuiz   ? Number(filterQuiz) : undefined,
-        search:     filterSearch || undefined,
-      });
-      const list = asList(data);
-      if (list.length > 0) setResults(list);
-    } catch { /* garde les mocks */ }
+      const [resData, qData] = await Promise.all([
+        quizResultsApi.list({
+          quiz_id:    filterQuiz   ? Number(filterQuiz) : undefined,
+          search:     filterSearch || undefined,
+        }),
+        quizApi.listAll(),
+      ]);
+      setResults(asList(resData.data));
+      setQuizzes(asList(qData.data));
+    } catch (e) {
+      setError("Impossible de charger les résultats des quiz.");
+    } finally {
+      setLoading(false);
+    }
   }, [filterQuiz, filterSearch]);
 
   useEffect(() => { load(); }, [load]);
@@ -61,6 +73,10 @@ export default function QuizResultsPage() {
     if (pct >= 50) return "#d9a441";
     return "#cf5a3c";
   };
+
+  if (loading) {
+    return <BrandLoader label="Chargement des résultats..." />;
+  }
 
   return (
     <div className="fade-up">
@@ -156,7 +172,14 @@ export default function QuizResultsPage() {
                     : <span style={{ color: "var(--muted-2)" }}>—</span>}
                 </td>
                 <td>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: ".45rem" }}>
+                    <Button
+                      className="btn-sm"
+                      variant="ghost"
+                      onClick={() => setScoreTarget(r)}
+                    >
+                      Saisir score
+                    </Button>
                     <Button
                       className="btn-sm"
                       variant="danger"
@@ -198,6 +221,82 @@ export default function QuizResultsPage() {
           }}
         />
       )}
+
+      {scoreTarget && (
+        <ManualScoreModal
+          result={scoreTarget}
+          onClose={() => setScoreTarget(null)}
+          onSaved={load}
+        />
+      )}
     </div>
+  );
+}
+
+function ManualScoreModal({
+  result,
+  onClose,
+  onSaved,
+}: {
+  result: QuizResult;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [score, setScore] = useState(String(result.score));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = Number(score);
+    if (isNaN(val) || val < 0 || val > 20) {
+      setError("Le score doit être un nombre entre 0 et 20.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await setQuizScoreApi({
+        user_id: result.user_id,
+        quiz_id: result.quiz_id,
+        score: val,
+      });
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title="Saisir un score" onClose={onClose} maxWidth={400}>
+      <Alert>{error}</Alert>
+      <form onSubmit={submit}>
+        <div style={{ marginBottom: "1rem", fontSize: ".85rem", color: "var(--muted)" }}>
+          Membre : <strong>{result.user_name}</strong>
+          <br />
+          Quiz : <strong>{result.quiz_title}</strong>
+        </div>
+        <Input
+          label="Score sur 20"
+          type="number"
+          min={0}
+          max={20}
+          value={score}
+          onChange={(e) => setScore(e.target.value)}
+          required
+        />
+        <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" loading={loading}>
+            Enregistrer
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

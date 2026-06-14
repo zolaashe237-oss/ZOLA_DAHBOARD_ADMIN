@@ -10,11 +10,13 @@ import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, us
 import { ConfirmModal } from "@/components/Modal";
 import { QuizEditor } from "@/components/QuizEditor";
 
+import { BrandLoader } from "@/components/BrandLoader";
+
 type QuizTarget = { quiz: QuizItem | null };
 
 export default function QuizzPage() {
-  const [formations,       setFormations]       = useState<Formation[]>(MOCK_FORMATIONS);
-  const [quizzes,          setQuizzes]          = useState<QuizItem[]>(MOCK_QUIZZES);
+  const [formations,       setFormations]       = useState<Formation[]>([]);
+  const [quizzes,          setQuizzes]          = useState<QuizItem[]>([]);
   const [filterFormation,  setFilterFormation]  = useState("");
   const [filterType,       setFilterType]       = useState("");
   const [filterSearch,     setFilterSearch]     = useState("");
@@ -22,6 +24,7 @@ export default function QuizzPage() {
   const [deleteTarget,     setDeleteTarget]     = useState<QuizItem | null>(null);
   const [error,            setError]            = useState("");
   const [info,             setInfo]             = useState("");
+  const [loading,          setLoading]          = useState(true);
 
   // ── Chargements ──────────────────────────────────────────────────────────
 
@@ -34,7 +37,11 @@ export default function QuizzPage() {
       ]);
       setFormations(asList(fRes.data));
       setQuizzes(asList(qRes.data));
-    } catch { /* garde les mocks */ }
+    } catch (e) {
+      setError("Impossible de charger les quiz et formations.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -69,6 +76,10 @@ export default function QuizzPage() {
     id ? (formations.find((f) => f.id === id)?.title ?? `#${id}`) : null;
 
   // ─────────────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return <BrandLoader label="Chargement des quiz..." />;
+  }
 
   return (
     <div className="fade-up">

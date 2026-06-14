@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import {
-  asList, downloadBlob,
-  financeApi, financeApi2, transactionsApi,
+  asList, billingPaymentsApi, dashboardApi, downloadBlob,
+  financeApi, financeApi2, membersApi, transactionsApi,
 } from "@/lib/endpoints";
 import {
   MOCK_LATE_COTISATIONS,
@@ -14,9 +14,9 @@ import {
   MOCK_TRANSACTION_KPIS,
 } from "@/lib/mocks";
 import type {
-  LateMember, MonthlyRevenue, PaymentBreakdown, TransactionKPIs,
+  DashboardKPIs, LateMember, MonthlyRevenue, Paginated, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, TransactionKPIs, User,
 } from "@/lib/types";
-import { Alert, Button, Card, Input, Select, errorMessage } from "@/components/ui";
+import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage } from "@/components/ui";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,52 @@ function fmtShort(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(".", ",")} M`;
   if (n >= 1_000)     return `${Math.round(n / 1_000).toLocaleString("fr-FR")} k`;
   return n.toLocaleString("fr-FR");
+}
+
+const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  REUSSI: "Réussi",
+  EN_ATTENTE: "En attente",
+  ECHOUE: "Échoué",
+  REMBOURSE: "Remboursé",
+  EXONERE: "Exonéré",
+};
+
+const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
+  REUSSI: "#2e9460",
+  EN_ATTENTE: "#9a6e10",
+  ECHOUE: "#c0402c",
+  REMBOURSE: "#b5532a",
+  EXONERE: "#243a85",
+};
+
+const PAYMENT_KIND_LABEL: Record<PaymentKind, string> = {
+  COTISATION: "Cotisation",
+  INSCRIPTION: "Inscription",
+  DON: "Don",
+  CADEAU: "Cadeau",
+  REMBOURSEMENT: "Remboursement",
+  EXONERATION: "Exonération",
+};
+
+function fmtDate(s: string | null): string {
+  return s ? new Date(s).toLocaleDateString("fr-FR") : "—";
+}
+
+type MemberWithLateFields = User & {
+  months_late?: number;
+  amount_due?: number;
+  cotisation_unpaid?: boolean;
+};
+
+function extractLateMembers(data: User[] | Paginated<User>): LateMember[] {
+  const members = asList(data) as MemberWithLateFields[];
+  return members
+    .filter((m) => Boolean(m.cotisation_unpaid) || (m.amount_due ?? 0) > 0 || (m.months_late ?? 0) > 0)
+    .map((m) => ({
+      ...m,
+      months_late: m.months_late ?? 0,
+      amount_due: m.amount_due ?? 0,
+    }));
 }
 
 function smoothPath(pts: [number, number][]): string {
@@ -73,7 +119,13 @@ function KpiTile({ label, value, unit, sub, accent, trendPct, trendLabel }: {
 // ── Graphique courbe + aire (SVG) ─────────────────────────────────────────────
 
 function LineAreaChart({ data }: { data: MonthlyRevenue[] }) {
-  if (data.length < 2) return null;
+  if (!data || data.length < 2) {
+    return (
+      <div style={{ height: 210, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
+        Données insuffisantes pour tracer la courbe de revenus
+      </div>
+    );
+  }
 
   const W = 700, H = 210;
   const ML = 58, MR = 22, MT = 22, MB = 32;
@@ -183,9 +235,14 @@ function LineAreaChart({ data }: { data: MonthlyRevenue[] }) {
 // ── Diagramme donut répartition (SVG) ────────────────────────────────────────
 
 function DonutChart({ data }: { data: PaymentBreakdown[] }) {
-  if (data.length === 0) return null;
-  const total = data.reduce((s, d) => s + d.amount, 0);
-  if (total === 0) return null;
+  const total = data ? data.reduce((s, d) => s + d.amount, 0) : 0;
+  if (!data || data.length === 0 || total === 0) {
+    return (
+      <div style={{ height: 168, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
+        Aucune donnée de répartition disponible ce mois
+      </div>
+    );
+  }
 
   const R = 64, CX = 100, CY = 100;
   const C = 2 * Math.PI * R;
@@ -335,8 +392,8 @@ function BarCompareChart({ data }: { data: MonthlyRevenue[] }) {
 
 // ── Cotisations en retard ─────────────────────────────────────────────────────
 
-function LateCotisations({ items, onReminder }: {
-  items: LateMember[]; onReminder: () => void;
+function LateCotisations({ items, onReminder, onReminderOne }: {
+  items: LateMember[]; onReminder: () => void; onReminderOne: (id: number) => void;
 }) {
   const totalDue = items.reduce((s, m) => s + m.amount_due, 0);
   return (
@@ -393,6 +450,9 @@ function LateCotisations({ items, onReminder }: {
                   </td>
                   <td>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <Button variant="ghost" onClick={() => onReminderOne(m.id)} style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
+                        Relancer
+                      </Button>
                       <Link href={`/membres/${m.id}`}>
                         <Button variant="ghost" style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
                           Fiche
@@ -425,46 +485,119 @@ function LateCotisations({ items, onReminder }: {
 export default function FinancePage() {
   const [error,     setError]     = useState("");
   const [info,      setInfo]      = useState("");
-  const [revenue,   setRevenue]   = useState<MonthlyRevenue[]>(MOCK_MONTHLY_REVENUE);
-  const [late,      setLate]      = useState<LateMember[]>(MOCK_LATE_COTISATIONS);
-  const [breakdown, setBreakdown] = useState<PaymentBreakdown[]>(MOCK_PAYMENT_BREAKDOWN);
-  const [kpis,      setKpis]      = useState<TransactionKPIs>(MOCK_TRANSACTION_KPIS);
+  const [revenue,   setRevenue]   = useState<MonthlyRevenue[]>([]);
+  const [late,      setLate]      = useState<LateMember[]>([]);
+  const [breakdown, setBreakdown] = useState<PaymentBreakdown[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardKPIs | null>(null);
+  const [kpis,      setKpis]      = useState<TransactionKPIs | null>(null);
+  const [payments,  setPayments]  = useState<Transaction[]>([]);
+  const [paymentsTotal, setPaymentsTotal] = useState(0);
+  const [paymentsPage,  setPaymentsPage]  = useState(1);
+  const [paymentsPageSize, setPaymentsPageSize] = useState(10);
 
-  const [manual, setManual] = useState({ user_id: "", kind: "COTISATION", reason: "" });
-
-  const wrap = async (fn: () => Promise<unknown>, ok: string) => {
-    setError(""); setInfo("");
-    try { await fn(); setInfo(ok); } catch (e) { setError(errorMessage(e)); }
-  };
+  const [paymentFilters, setPaymentFilters] = useState({
+    kind: "ALL", status: "ALL", date_from: "", date_to: "",
+  });
+  const [exportPeriod, setExportPeriod] = useState({ date_from: "", date_to: "" });
+  const [activeTab, setActiveTab] = useState<"manual" | "refund" | "exonerate">("manual");
+  const [manual, setManual] = useState({ user_id: "", kind: "COTISATION", amount: "", reason: "" });
+  const [refund, setRefund] = useState({ user_id: "", amount: "", reason: "" });
+  const [exonerate, setExonerate] = useState({ user_id: "", reason: "" });
 
   const load = useCallback(async () => {
-    const [revRes, lateRes, bdRes, kpisRes] = await Promise.allSettled([
+    const [dashboardRes, revRes, membersRes, lateRes, bdRes, kpisRes] = await Promise.allSettled([
+      dashboardApi.kpis(),
       financeApi2.monthlyRevenue(),
+      membersApi.list(),
       financeApi2.lateCotisations(),
       financeApi2.paymentBreakdown(),
       transactionsApi.kpis(),
     ]);
-    if (revRes.status  === "fulfilled" && revRes.value.data.length > 0)
-      setRevenue(revRes.value.data);
-    if (lateRes.status === "fulfilled") {
+    if (dashboardRes.status === "fulfilled") {
+      const data = dashboardRes.value.data;
+      setDashboard(data);
+      if (data.monthly_revenue?.length) setRevenue(data.monthly_revenue);
+      if (data.payment_breakdown?.length) setBreakdown(data.payment_breakdown);
+    }
+    if (
+      revRes.status === "fulfilled"
+      && revRes.value.data.length > 0
+      && (dashboardRes.status !== "fulfilled" || !dashboardRes.value.data.monthly_revenue?.length)
+    ) setRevenue(revRes.value.data);
+    if (membersRes.status === "fulfilled") {
+      const list = extractLateMembers(membersRes.value.data);
+      if (list.length > 0) setLate(list);
+    } else if (lateRes.status === "fulfilled") {
       const list = asList(lateRes.value.data);
       if (list.length > 0) setLate(list);
     }
-    if (bdRes.status   === "fulfilled" && bdRes.value.data.length > 0)
-      setBreakdown(bdRes.value.data);
+    if (
+      bdRes.status === "fulfilled"
+      && bdRes.value.data.length > 0
+      && (dashboardRes.status !== "fulfilled" || !dashboardRes.value.data.payment_breakdown?.length)
+    ) setBreakdown(bdRes.value.data);
     if (kpisRes.status === "fulfilled")
       setKpis(kpisRes.value.data);
   }, []);
 
+  const loadPayments = useCallback(async () => {
+    const params: Record<string, string | number> = {
+      page: paymentsPage,
+      page_size: paymentsPageSize,
+    };
+    if (paymentFilters.kind !== "ALL") params.kind = paymentFilters.kind;
+    if (paymentFilters.status !== "ALL") params.status = paymentFilters.status;
+    if (paymentFilters.date_from) params.date_from = paymentFilters.date_from;
+    if (paymentFilters.date_to) params.date_to = paymentFilters.date_to;
+
+    try {
+      const { data } = await transactionsApi.list(params);
+      if (Array.isArray(data)) {
+        setPayments(data);
+        setPaymentsTotal(data.length);
+      } else {
+        const paginated = data as Paginated<Transaction>;
+        setPayments(paginated.results);
+        setPaymentsTotal(paginated.count);
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, [paymentFilters, paymentsPage, paymentsPageSize]);
+
+  const wrap = async (fn: () => Promise<unknown>, ok: string) => {
+    setError(""); setInfo("");
+    try {
+      await fn();
+      setInfo(ok);
+      load();
+      loadPayments();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadPayments(); }, [loadPayments]);
 
   // Métriques dérivées
-  const revenueMonth  = revenue.at(-1)?.amount ?? 0;
+  const revenueMonth  = dashboard?.revenue_month ?? revenue.at(-1)?.amount ?? 0;
   const revenuePrev   = revenue.at(-2)?.amount ?? 0;
-  const revenueYear   = revenue.reduce((s, d) => s + d.amount, 0);
+  const revenueTotal  = dashboard?.revenue_total ?? kpis?.revenue_total ?? 0;
+  const collectionRate = dashboard?.collection_rate;
+  const unpaidAmount  = dashboard?.unpaid_amount;
   const growthPct     = revenuePrev > 0 ? ((revenueMonth - revenuePrev) / revenuePrev) * 100 : 0;
-  const lateAmount    = late.reduce((s, m) => s + m.amount_due, 0);
-  const cotisantsCount = breakdown.find((b) => b.kind === "COTISATION")?.count ?? 0;
+  const lateAmount    = unpaidAmount ?? late.reduce((s, m) => s + m.amount_due, 0);
+  const lateCount     = dashboard?.cotisations_late ?? late.length;
+  const exportParams  = {
+    date_from: exportPeriod.date_from || undefined,
+    date_to: exportPeriod.date_to || undefined,
+  };
+
+  const updatePaymentFilter = (key: keyof typeof paymentFilters, value: string) => {
+    setPaymentFilters((prev) => ({ ...prev, [key]: value }));
+    setPaymentsPage(1);
+  };
 
   return (
     <div className="fade-up">
@@ -488,29 +621,31 @@ export default function FinancePage() {
           accent="#c9a227"
         />
         <KpiTile
-          label="Revenus 12 mois"
-          value={fmtShort(revenueYear)}
+          label="Revenus cumulés"
+          value={fmtShort(revenueTotal)}
           unit="FCFA"
-          sub="12 mois glissants"
+          sub={dashboard?.revenue_total == null ? "Total transactions" : "Depuis le lancement"}
           accent="#5b8fd4"
         />
         <KpiTile
-          label="Cotisants ce mois"
-          value={String(cotisantsCount)}
-          sub="paiements cotisation"
+          label="Taux de recouvrement"
+          value={collectionRate != null ? collectionRate.toFixed(1).replace(".", ",") : "—"}
+          unit={collectionRate != null ? "%" : undefined}
+          sub={collectionRate == null ? "En attente backend" : "Cotisations encaissées"}
           accent="#52b083"
         />
         <KpiTile
-          label="En attente"
-          value={String(kpis.count_pending)}
-          sub={`${kpis.count_failed} échoué${kpis.count_failed !== 1 ? "s" : ""}`}
+          label="Montant impayé"
+          value={unpaidAmount != null ? fmtShort(unpaidAmount) : "—"}
+          unit={unpaidAmount != null ? "FCFA" : undefined}
+          sub={unpaidAmount == null ? "En attente backend" : `${lateCount} membre${lateCount !== 1 ? "s" : ""} en retard`}
           accent="#9a6e10"
         />
         <KpiTile
           label="Retards"
-          value={String(late.length)}
-          sub={late.length > 0 ? `${lateAmount.toLocaleString("fr-FR")} FCFA dûs` : "Tout à jour ✓"}
-          accent={late.length > 0 ? "#c0402c" : "#2e9460"}
+          value={String(lateCount)}
+          sub={lateCount > 0 ? `${lateAmount.toLocaleString("fr-FR")} FCFA dûs` : "Tout à jour ✓"}
+          accent={lateCount > 0 ? "#c0402c" : "#2e9460"}
         />
       </div>
 
@@ -534,47 +669,222 @@ export default function FinancePage() {
         <LateCotisations
           items={late}
           onReminder={() => wrap(() => financeApi.sendReminders(), "Relances envoyées !")}
+          onReminderOne={(id) => wrap(() => financeApi.sendReminders({ user_id: id }), "Relance envoyée.")}
         />
       </Card>
 
-      {/* ── Paiement manuel + Exports ─────────────────────────────────────── */}
+      {/* ── Historique complet des paiements ─────────────────────────────── */}
+      <Card style={{ marginBottom: "1.25rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          <div>
+            <h2 style={{ fontSize: "1rem", marginBottom: "0.25rem" }}>Historique complet des paiements</h2>
+            <p style={{ color: "var(--muted)", fontSize: "0.82rem" }}>Données réelles via GET /api/billing/payments/.</p>
+          </div>
+          <Button variant="ghost" onClick={loadPayments}>Actualiser</Button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+          <Input type="date" label="Du" value={paymentFilters.date_from}
+            onChange={(e) => updatePaymentFilter("date_from", e.target.value)} />
+          <Input type="date" label="Au" value={paymentFilters.date_to}
+            onChange={(e) => updatePaymentFilter("date_to", e.target.value)} />
+          <Select label="Type" value={paymentFilters.kind}
+            onChange={(e) => updatePaymentFilter("kind", e.target.value)}>
+            <option value="ALL">Tous</option>
+            <option value="COTISATION">Cotisation</option>
+            <option value="INSCRIPTION">Inscription</option>
+            <option value="DON">Don</option>
+            <option value="CADEAU">Cadeau</option>
+            <option value="REMBOURSEMENT">Remboursement</option>
+            <option value="EXONERATION">Exonération</option>
+          </Select>
+          <Select label="Statut" value={paymentFilters.status}
+            onChange={(e) => updatePaymentFilter("status", e.target.value)}>
+            <option value="ALL">Tous</option>
+            <option value="REUSSI">Réussi</option>
+            <option value="EN_ATTENTE">En attente</option>
+            <option value="ECHOUE">Échoué</option>
+            <option value="REMBOURSE">Remboursé</option>
+            <option value="EXONERE">Exonéré</option>
+          </Select>
+        </div>
+
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Membre</th>
+              <th>Type</th>
+              <th>Statut</th>
+              <th>Date</th>
+              <th style={{ textAlign: "right" }}>Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <div style={{ fontWeight: 700 }}>{p.user_name}</div>
+                  <div style={{ color: "var(--muted-2)", fontSize: "0.76rem" }}>{p.user_email}</div>
+                </td>
+                <td>{PAYMENT_KIND_LABEL[p.kind] ?? p.kind}</td>
+                <td><Badge color={PAYMENT_STATUS_COLOR[p.status]}>{PAYMENT_STATUS_LABEL[p.status] ?? p.status}</Badge></td>
+                <td>{fmtDate(p.paid_at ?? p.created_at)}</td>
+                <td style={{ textAlign: "right", fontWeight: 800 }}>{p.amount.toLocaleString("fr-FR")} {p.currency}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {payments.length === 0 && (
+          <p style={{ color: "var(--muted)", fontSize: "0.88rem", padding: "0.75rem 0" }}>Aucun paiement pour ces filtres.</p>
+        )}
+        <Pagination
+          page={paymentsPage}
+          totalPages={Math.max(1, Math.ceil(paymentsTotal / paymentsPageSize))}
+          total={paymentsTotal}
+          pageSize={paymentsPageSize}
+          onPage={setPaymentsPage}
+          onPageSize={(size) => { setPaymentsPageSize(size); setPaymentsPage(1); }}
+        />
+      </Card>
+
+      {/* ── Opérations administratives + Exports ─────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
         <Card>
-          <h2 style={{ fontSize: "1rem", marginBottom: "0.85rem" }}>Paiement manuel</h2>
-          <Input label="ID membre" value={manual.user_id}
-            onChange={(e) => setManual({ ...manual, user_id: e.target.value })} />
-          <Select label="Type" value={manual.kind}
-            onChange={(e) => setManual({ ...manual, kind: e.target.value })}>
-            <option value="INSCRIPTION">Droit d&apos;inscription</option>
-            <option value="COTISATION">Cotisation mensuelle</option>
-            <option value="DON">Don volontaire</option>
-          </Select>
-          <Input label="Motif" value={manual.reason}
-            onChange={(e) => setManual({ ...manual, reason: e.target.value })} />
-          <Button
-            onClick={() => wrap(
-              () => financeApi.manual({ user_id: Number(manual.user_id), kind: manual.kind, reason: manual.reason }),
-              "Paiement enregistré.",
-            )}
-          >
-            Valider le paiement
-          </Button>
+          <div style={{ display: "flex", borderBottom: "1px solid var(--line-soft)", marginBottom: "1rem", gap: "1rem" }}>
+            <button
+              onClick={() => setActiveTab("manual")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "manual" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "manual" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "manual" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Paiement manuel
+            </button>
+            <button
+              onClick={() => setActiveTab("refund")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "refund" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "refund" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "refund" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Remboursement
+            </button>
+            <button
+              onClick={() => setActiveTab("exonerate")}
+              style={{
+                background: "none", border: "none", paddingBottom: "0.5rem", cursor: "pointer",
+                color: activeTab === "exonerate" ? "var(--gold)" : "var(--muted)",
+                borderBottom: activeTab === "exonerate" ? "2px solid var(--gold)" : "none",
+                fontWeight: activeTab === "exonerate" ? 700 : 400,
+                fontSize: "0.85rem",
+              }}
+            >
+              Exonération
+            </button>
+          </div>
+
+          {activeTab === "manual" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={manual.user_id}
+                onChange={(e) => setManual({ ...manual, user_id: e.target.value })} />
+              <Select label="Type" value={manual.kind}
+                onChange={(e) => setManual({ ...manual, kind: e.target.value })}>
+                <option value="INSCRIPTION">Droit d&apos;inscription</option>
+                <option value="COTISATION">Cotisation mensuelle</option>
+                <option value="DON">Don volontaire</option>
+              </Select>
+              <Input type="number" label="Montant (FCFA, optionnel)" value={manual.amount}
+                placeholder="Montant par défaut si vide"
+                onChange={(e) => setManual({ ...manual, amount: e.target.value })} />
+              <Input label="Motif" value={manual.reason}
+                onChange={(e) => setManual({ ...manual, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.manual({
+                    user_id: Number(manual.user_id),
+                    kind: manual.kind,
+                    amount: manual.amount ? Number(manual.amount) : undefined,
+                    reason: manual.reason
+                  }),
+                  "Paiement manuel enregistré.",
+                )}
+              >
+                Valider le paiement
+              </Button>
+            </div>
+          )}
+
+          {activeTab === "refund" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={refund.user_id}
+                onChange={(e) => setRefund({ ...refund, user_id: e.target.value })} />
+              <Input type="number" label="Montant (FCFA)" value={refund.amount}
+                placeholder="Montant à rembourser"
+                onChange={(e) => setRefund({ ...refund, amount: e.target.value })} />
+              <Input label="Motif" value={refund.reason}
+                onChange={(e) => setRefund({ ...refund, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.refund({
+                    user_id: Number(refund.user_id),
+                    amount: Number(refund.amount),
+                    reason: refund.reason
+                  }),
+                  "Remboursement enregistré.",
+                )}
+              >
+                Enregistrer le remboursement
+              </Button>
+            </div>
+          )}
+
+          {activeTab === "exonerate" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <Input label="ID membre" value={exonerate.user_id}
+                onChange={(e) => setExonerate({ ...exonerate, user_id: e.target.value })} />
+              <Input label="Motif" value={exonerate.reason}
+                onChange={(e) => setExonerate({ ...exonerate, reason: e.target.value })} />
+              <Button
+                onClick={() => wrap(
+                  () => financeApi.exonerate({
+                    user_id: Number(exonerate.user_id),
+                    reason: exonerate.reason
+                  }),
+                  "Exonération accordée.",
+                )}
+              >
+                Accorder l&apos;exonération
+              </Button>
+            </div>
+          )}
         </Card>
 
         <Card>
           <h2 style={{ fontSize: "1rem", marginBottom: "0.85rem" }}>Exports</h2>
           <p style={{ fontSize: "0.83rem", color: "var(--muted)", marginBottom: "0.85rem", lineHeight: 1.6 }}>
-            Téléchargez les données membres et paiements au format CSV pour import comptable ou suivi externe.
+            Téléchargez les données membres et paiements au format CSV avec une période optionnelle.
           </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
+            <Input type="date" label="Du" value={exportPeriod.date_from}
+              onChange={(e) => setExportPeriod({ ...exportPeriod, date_from: e.target.value })} />
+            <Input type="date" label="Au" value={exportPeriod.date_to}
+              onChange={(e) => setExportPeriod({ ...exportPeriod, date_to: e.target.value })} />
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", alignItems: "flex-start" }}>
             <Button variant="ghost" onClick={() => wrap(
-              async () => downloadBlob((await financeApi.exportMembers()).data as Blob, "membres.csv"),
+              async () => downloadBlob((await financeApi.exportMembers(exportParams)).data as Blob, "membres.csv"),
               "Export membres téléchargé.",
             )}>
               ⬇ Export membres (CSV)
             </Button>
             <Button variant="ghost" onClick={() => wrap(
-              async () => downloadBlob((await financeApi.exportPayments()).data as Blob, "paiements.csv"),
+              async () => downloadBlob((await financeApi.exportPayments(exportParams)).data as Blob, "paiements.csv"),
               "Export paiements téléchargé.",
             )}>
               ⬇ Export paiements (CSV)

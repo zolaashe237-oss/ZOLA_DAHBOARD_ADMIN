@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { dashboardApi, financeApi2, transactionsApi } from "@/lib/endpoints";
+import { dashboardApi, financeApi2, transactionsApi, membersApi } from "@/lib/endpoints";
 import {
   MOCK_KPIS,
   MOCK_LATE_COTISATIONS,
@@ -47,6 +47,14 @@ function greeting() {
 // ── SVG Area Chart (revenus mensuels) ─────────────────────────────────────────
 
 function AreaChart({ data }: { data: MonthlyRevenue[] }) {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
+        Aucune donnée de revenu disponible
+      </div>
+    );
+  }
+
   const W = 640, H = 160;
   const PAD = { t: 24, r: 20, b: 30, l: 52 };
   const cW  = W - PAD.l - PAD.r;
@@ -160,6 +168,13 @@ function AreaChart({ data }: { data: MonthlyRevenue[] }) {
 // ── Barres horizontales — répartition types paiement ─────────────────────────
 
 function BreakdownBars({ data }: { data: PaymentBreakdown[] }) {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ padding: "2rem 0", textAlign: "center", color: "var(--muted)" }}>
+        Aucune donnée de répartition disponible ce mois
+      </div>
+    );
+  }
   const max = Math.max(...data.map((d) => d.amount), 1);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.1rem", flex: 1 }}>
@@ -306,14 +321,12 @@ function KpiRow({
 export default function DashboardPage() {
   const { user } = useAuth();
 
-  const [kpis,        setKpis]        = useState<DashboardKPIs | null>(MOCK_KPIS);
-  const [revenue,     setRevenue]     = useState<MonthlyRevenue[]>(MOCK_MONTHLY_REVENUE);
-  const [breakdown,   setBreakdown]   = useState<PaymentBreakdown[]>(MOCK_PAYMENT_BREAKDOWN);
-  const [late,        setLate]        = useState<LateMember[]>(MOCK_LATE_COTISATIONS);
-  const [recidivists] = useState<User[]>(MOCK_MEMBERS.filter((m) => m.nb_warnings >= 2));
-  const [recentTx,    setRecentTx]    = useState<Transaction[]>(
-    [...MOCK_TRANSACTIONS].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5)
-  );
+  const [kpis,        setKpis]        = useState<DashboardKPIs | null>(null);
+  const [revenue,     setRevenue]     = useState<MonthlyRevenue[]>([]);
+  const [breakdown,   setBreakdown]   = useState<PaymentBreakdown[]>([]);
+  const [late,        setLate]        = useState<LateMember[]>([]);
+  const [recidivists, setRecidivists] = useState<User[]>([]);
+  const [recentTx,    setRecentTx]    = useState<Transaction[]>([]);
 
   useEffect(() => {
     dashboardApi.kpis()
@@ -332,6 +345,13 @@ export default function DashboardPage() {
       .then((r) => {
         const arr = Array.isArray(r.data) ? r.data : r.data.results;
         if (arr.length > 0) setLate(arr);
+      })
+      .catch(() => {});
+
+    membersApi.list()
+      .then((r) => {
+        const arr = Array.isArray(r.data) ? r.data : r.data.results;
+        if (arr.length > 0) setRecidivists(arr.filter((m) => m.nb_warnings >= 2));
       })
       .catch(() => {});
 
@@ -731,69 +751,77 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {recentTx.map((t, i) => (
-                <tr key={t.id} style={{
-                  borderBottom: i < recentTx.length - 1 ? "1px solid var(--line-soft)" : "none",
-                  transition: "background .12s",
-                }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-2)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                >
-                  {/* Membre */}
-                  <td style={{ padding: "0.65rem 1rem" }}>
-                    <div style={{ fontWeight: 600, fontSize: "0.84rem", color: "var(--cream)" }}>
-                      {t.user_name}
-                    </div>
-                    <div style={{ fontSize: "0.72rem", color: "var(--muted-2)" }}>{t.user_email}</div>
-                  </td>
-
-                  {/* Type */}
-                  <td style={{ padding: "0.65rem 1rem" }}>
-                    <span style={{
-                      fontSize: "0.65rem", fontWeight: 700, borderRadius: 99,
-                      padding: "0.1rem 0.48rem",
-                      color: TX_KIND_COLOR[t.kind],
-                      background: `${TX_KIND_COLOR[t.kind]}14`,
-                      border: `1px solid ${TX_KIND_COLOR[t.kind]}28`,
-                    }}>
-                      {TX_KIND_LABEL[t.kind]}
-                    </span>
-                  </td>
-
-                  {/* Montant */}
-                  <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap" }}>
-                    <span style={{
-                      fontWeight: 700, fontSize: "0.88rem",
-                      color: t.status === "REUSSI" ? "var(--gold-2)"
-                           : t.status === "REMBOURSE" || t.status === "EXONERE" ? "var(--muted)"
-                           : "var(--cream)",
-                    }}>
-                      {t.status === "REMBOURSE" ? "−" : ""}
-                      {t.amount === 0 ? "—" : fmtMoney(t.amount)}
-                    </span>
-                  </td>
-
-                  {/* Statut */}
-                  <td style={{ padding: "0.65rem 1rem" }}>
-                    <span style={{
-                      fontSize: "0.65rem", fontWeight: 700, borderRadius: 99,
-                      padding: "0.1rem 0.48rem",
-                      color: TX_STATUS_COLOR[t.status],
-                      background: `${TX_STATUS_COLOR[t.status]}14`,
-                      border: `1px solid ${TX_STATUS_COLOR[t.status]}28`,
-                    }}>
-                      {TX_STATUS_LABEL[t.status]}
-                    </span>
-                  </td>
-
-                  {/* Date */}
-                  <td style={{ padding: "0.65rem 1rem", fontSize: "0.78rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
-                    {new Date(t.created_at).toLocaleDateString("fr-FR", {
-                      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-                    })}
+              {recentTx.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: "1.5rem", textAlign: "center", color: "var(--muted)", fontSize: "0.84rem" }}>
+                    Aucune transaction récente
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentTx.map((t, i) => (
+                  <tr key={t.id} style={{
+                    borderBottom: i < recentTx.length - 1 ? "1px solid var(--line-soft)" : "none",
+                    transition: "background .12s",
+                  }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-2)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    {/* Membre */}
+                    <td style={{ padding: "0.65rem 1rem" }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.84rem", color: "var(--cream)" }}>
+                        {t.user_name}
+                      </div>
+                      <div style={{ fontSize: "0.72rem", color: "var(--muted-2)" }}>{t.user_email}</div>
+                    </td>
+
+                    {/* Type */}
+                    <td style={{ padding: "0.65rem 1rem" }}>
+                      <span style={{
+                        fontSize: "0.65rem", fontWeight: 700, borderRadius: 99,
+                        padding: "0.1rem 0.48rem",
+                        color: TX_KIND_COLOR[t.kind],
+                        background: `${TX_KIND_COLOR[t.kind]}14`,
+                        border: `1px solid ${TX_KIND_COLOR[t.kind]}28`,
+                      }}>
+                        {TX_KIND_LABEL[t.kind]}
+                      </span>
+                    </td>
+
+                    {/* Montant */}
+                    <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap" }}>
+                      <span style={{
+                        fontWeight: 700, fontSize: "0.88rem",
+                        color: t.status === "REUSSI" ? "var(--gold-2)"
+                             : t.status === "REMBOURSE" || t.status === "EXONERE" ? "var(--muted)"
+                             : "var(--cream)",
+                      }}>
+                        {t.status === "REMBOURSE" ? "−" : ""}
+                        {t.amount === 0 ? "—" : fmtMoney(t.amount)}
+                      </span>
+                    </td>
+
+                    {/* Statut */}
+                    <td style={{ padding: "0.65rem 1rem" }}>
+                      <span style={{
+                        fontSize: "0.65rem", fontWeight: 700, borderRadius: 99,
+                        padding: "0.1rem 0.48rem",
+                        color: TX_STATUS_COLOR[t.status],
+                        background: `${TX_STATUS_COLOR[t.status]}14`,
+                        border: `1px solid ${TX_STATUS_COLOR[t.status]}28`,
+                      }}>
+                        {TX_STATUS_LABEL[t.status]}
+                      </span>
+                    </td>
+
+                    {/* Date */}
+                    <td style={{ padding: "0.65rem 1rem", fontSize: "0.78rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
+                      {new Date(t.created_at).toLocaleDateString("fr-FR", {
+                        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

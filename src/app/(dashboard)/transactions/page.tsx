@@ -12,7 +12,7 @@ import type {
   Transaction,
   TransactionKPIs,
 } from "@/lib/types";
-import { Alert, Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
+import { Alert, Badge, Button, Card, Pagination, errorMessage } from "@/components/ui";
 
 // ── Constantes de présentation ────────────────────────────────────────────────
 
@@ -87,12 +87,12 @@ function KpiTile({
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function TransactionsPage() {
-  const [kpis,   setKpis]   = useState<TransactionKPIs | null>(MOCK_TRANSACTION_KPIS);
-  const [items,  setItems]  = useState<Transaction[]>(MOCK_TRANSACTIONS);
+  const [kpis,   setKpis]   = useState<TransactionKPIs | null>(null);
+  const [items,  setItems]  = useState<Transaction[]>([]);
   const [error,  setError]  = useState("");
   const [info,   setInfo]   = useState("");
   const [detail, setDetail] = useState<Transaction | null>(null);
-  const [totalCount, setTotalCount] = useState(MOCK_TRANSACTIONS.length);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Filtres
   const [fStatus,   setFStatus]   = useState("ALL");
@@ -101,6 +101,9 @@ export default function TransactionsPage() {
   const [fSearch,   setFSearch]   = useState("");
   const [fDateFrom, setFDateFrom] = useState("");
   const [fDateTo,   setFDateTo]   = useState("");
+
+  const [page,     setPage]     = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // ── Chargements ──────────────────────────────────────────────────────────
 
@@ -113,7 +116,10 @@ export default function TransactionsPage() {
 
   const loadItems = useCallback(async () => {
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number> = {
+        page,
+        page_size: pageSize,
+      };
       if (fStatus   !== "ALL") params.status    = fStatus;
       if (fKind     !== "ALL") params.kind      = fKind;
       if (fMethod   !== "ALL") params.method    = fMethod;
@@ -130,10 +136,14 @@ export default function TransactionsPage() {
         setTotalCount(p.count);
       }
     } catch (e) { setError(errorMessage(e)); }
-  }, [fStatus, fKind, fMethod, fSearch, fDateFrom, fDateTo]);
+  }, [fStatus, fKind, fMethod, fSearch, fDateFrom, fDateTo, page, pageSize]);
 
   useEffect(() => { loadKpis(); }, [loadKpis]);
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [fStatus, fKind, fMethod, fSearch, fDateFrom, fDateTo]);
 
   // ── Export ───────────────────────────────────────────────────────────────
 
@@ -145,12 +155,6 @@ export default function TransactionsPage() {
       setInfo("Export téléchargé.");
     } catch (e) { setError(errorMessage(e)); }
   };
-
-  // ── Pagination locale (complète si API renvoie tout, simulée sinon) ─────
-
-  const filterKey = `${fStatus}|${fKind}|${fMethod}|${fSearch}|${fDateFrom}|${fDateTo}`;
-  const { page, totalPages, paged, pageSize, setPageSize, go } =
-    usePagination(items, 20, filterKey);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -312,7 +316,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {paged.map((t) => (
+              {items.map((t) => (
                 <tr key={t.id}>
                   {/* Référence */}
                   <td style={{ fontSize: "0.78rem", color: "var(--muted-2)",
@@ -379,14 +383,18 @@ export default function TransactionsPage() {
           </table>
         </div>
 
-        {paged.length === 0 && (
+        {items.length === 0 && (
           <p style={{ color: "var(--muted)", textAlign: "center", padding: "1.5rem 0" }}>
             Aucune transaction trouvée.
           </p>
         )}
         <Pagination
-          page={page} totalPages={totalPages} total={totalCount}
-          pageSize={pageSize} onPage={go} onPageSize={setPageSize}
+          page={page}
+          totalPages={Math.max(1, Math.ceil(totalCount / pageSize))}
+          total={totalCount}
+          pageSize={pageSize}
+          onPage={setPage}
+          onPageSize={(size) => { setPageSize(size); setPage(1); }}
         />
       </Card>
 

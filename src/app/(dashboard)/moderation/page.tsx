@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { moderationApi } from "@/lib/endpoints";
-import { MOCK_REPORTS } from "@/lib/mocks";
+import { asList, moderationApi } from "@/lib/endpoints";
 import type { ReportItem } from "@/lib/types";
-import { Alert, Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
+import { Alert, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,10 +122,93 @@ function ReportCard({
   );
 }
 
+// ── Formulaire annonce admin ─────────────────────────────────────────────────
+
+function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string) => void }) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [isPinned, setIsPinned] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await moderationApi.createAdminPost({
+        title: title.trim(),
+        body: body.trim(),
+        type: "ANNONCE",
+        is_admin_post: true,
+        is_pinned: isPinned,
+      });
+      setTitle("");
+      setBody("");
+      setIsPinned(false);
+      onPublished("Annonce admin publiée dans la communauté.");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card style={{ marginBottom: "1.4rem" }}>
+      <h2 style={{ margin: "0 0 .35rem", color: "var(--cream)", fontSize: "1rem" }}>
+        Créer une annonce admin
+      </h2>
+      <p style={{ margin: "0 0 1rem", color: "var(--muted)", fontSize: ".86rem" }}>
+        Publie une annonce officielle dans le fil communautaire.
+      </p>
+      <Alert>{error}</Alert>
+      <form onSubmit={submit}>
+        <label style={{ display: "block", marginBottom: ".75rem" }}>
+          <span className="field-label">Titre</span>
+          <input
+            className="input"
+            value={title}
+            required
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Ex: Nouveau module disponible"
+          />
+        </label>
+        <label style={{ display: "block", marginBottom: ".75rem" }}>
+          <span className="field-label">Message</span>
+          <textarea
+            className="input"
+            value={body}
+            rows={4}
+            required
+            style={{ resize: "vertical", fontFamily: "var(--sans)" }}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Contenu de l'annonce…"
+          />
+        </label>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: ".75rem", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: ".45rem", color: "var(--muted)", fontSize: ".86rem" }}>
+            <input
+              type="checkbox"
+              checked={isPinned}
+              onChange={(e) => setIsPinned(e.target.checked)}
+            />
+            Épingler l'annonce
+          </label>
+          <Button type="submit" loading={loading} disabled={!title.trim() || !body.trim()}>
+            Publier l'annonce
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ModerationPage() {
-  const [reports,      setReports]      = useState<ReportItem[]>(MOCK_REPORTS);
+  const [reports,      setReports]      = useState<ReportItem[]>([]);
+  const [loading,      setLoading]      = useState(true);
   const [filterType,   setFilterType]   = useState<"ALL" | "POST" | "COMMENT">("ALL");
   const [filterUrgent, setFilterUrgent] = useState(false);
   const [error,        setError]        = useState("");
@@ -136,10 +218,16 @@ export default function ModerationPage() {
 
   const load = useCallback(async () => {
     setError("");
+    setLoading(true);
     try {
       const { data } = await moderationApi.reports();
-      if (Array.isArray(data) && data.length > 0) setReports(data);
-    } catch { /* garde les mocks */ }
+      setReports(asList(data));
+    } catch (e) {
+      setReports([]);
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -238,7 +326,13 @@ export default function ModerationPage() {
       </div>
 
       {/* Liste */}
-      {paged.length === 0 ? (
+      {loading ? (
+        <Card>
+          <p style={{ color: "var(--muted)", textAlign: "center", padding: "1.5rem 0", fontWeight: 600 }}>
+            Chargement des signalements…
+          </p>
+        </Card>
+      ) : paged.length === 0 ? (
         <Card>
           <p style={{ color: "var(--ok)", textAlign: "center", padding: "1.5rem 0", fontWeight: 600 }}>
             ✓ Aucun signalement à traiter.
@@ -263,7 +357,12 @@ export default function ModerationPage() {
           <Pagination page={page} totalPages={totalPages} total={total}
             pageSize={pageSize} onPage={go} onPageSize={setPageSize} />
         </Card>
+     
       )}
+      
+      <div style={{ marginTop: "1.4rem" }}>
+      <AdminAnnouncementForm onPublished={setInfo} />
+      </div>
 
       {/* Confirmation suppression */}
       {deleteTarget && (
@@ -279,11 +378,12 @@ export default function ModerationPage() {
               </span>
             </span>
           }
-          withReason reasonLabel="Motif de la suppression" confirmLabel="Supprimer définitivement"
+          withReason
+          reasonLabel="Motif de la suppression"
+          confirmLabel="Supprimer définitivement"
           onClose={() => setDeleteTarget(null)}
           onConfirm={async (reason) => {
             await doDelete(deleteTarget, reason);
-            setDeleteTarget(null);
           }}
         />
       )}
