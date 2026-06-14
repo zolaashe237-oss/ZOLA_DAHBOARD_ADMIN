@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { asList, quizResultsApi, resetQuizApi } from "@/lib/endpoints";
+import { asList, quizResultsApi, resetQuizApi, quizApi } from "@/lib/endpoints";
 import { MOCK_QUIZ_RESULTS, MOCK_QUIZZES } from "@/lib/mocks";
 import type { QuizItem, QuizResult } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, usePagination } from "@/components/ui";
@@ -22,12 +22,16 @@ export default function QuizResultsPage() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await quizResultsApi.list({
-        quiz_id:    filterQuiz   ? Number(filterQuiz) : undefined,
-        search:     filterSearch || undefined,
-      });
-      const list = asList(data);
+      const [resData, qData] = await Promise.all([
+        quizResultsApi.list({
+          quiz_id:    filterQuiz   ? Number(filterQuiz) : undefined,
+          search:     filterSearch || undefined,
+        }),
+        quizApi.listAll(),
+      ]);
+      const list = asList(resData.data);
       if (list.length > 0) setResults(list);
+      setQuizzes(asList(qData.data));
     } catch { /* garde les mocks */ }
   }, [filterQuiz, filterSearch]);
 

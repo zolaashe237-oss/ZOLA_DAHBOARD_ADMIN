@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { dashboardApi, financeApi2, transactionsApi } from "@/lib/endpoints";
+import { dashboardApi, financeApi2, transactionsApi, membersApi } from "@/lib/endpoints";
 import {
   MOCK_KPIS,
   MOCK_LATE_COTISATIONS,
@@ -310,7 +310,7 @@ export default function DashboardPage() {
   const [revenue,     setRevenue]     = useState<MonthlyRevenue[]>(MOCK_MONTHLY_REVENUE);
   const [breakdown,   setBreakdown]   = useState<PaymentBreakdown[]>(MOCK_PAYMENT_BREAKDOWN);
   const [late,        setLate]        = useState<LateMember[]>(MOCK_LATE_COTISATIONS);
-  const [recidivists] = useState<User[]>(MOCK_MEMBERS.filter((m) => m.nb_warnings >= 2));
+  const [recidivists, setRecidivists] = useState<User[]>(MOCK_MEMBERS.filter((m) => m.nb_warnings >= 2));
   const [recentTx,    setRecentTx]    = useState<Transaction[]>(
     [...MOCK_TRANSACTIONS].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5)
   );
@@ -332,6 +332,13 @@ export default function DashboardPage() {
       .then((r) => {
         const arr = Array.isArray(r.data) ? r.data : r.data.results;
         if (arr.length > 0) setLate(arr);
+      })
+      .catch(() => {});
+
+    membersApi.list()
+      .then((r) => {
+        const arr = Array.isArray(r.data) ? r.data : r.data.results;
+        if (arr.length > 0) setRecidivists(arr.filter((m) => m.nb_warnings >= 2));
       })
       .catch(() => {});
 
