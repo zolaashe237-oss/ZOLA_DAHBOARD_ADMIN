@@ -169,8 +169,16 @@ class AdminFormationSerializer(serializers.ModelSerializer):
     def get_cover_url(self, obj) -> str:
         from apps.content.services import generate_signed_url
         if obj.cover_key:
-            return generate_signed_url(obj.cover_key)
-        return obj.cover_url
+            url = generate_signed_url(obj.cover_key)
+            # In local dev (USE_S3=False), generate_signed_url returns a relative
+            # path like /media/.... Build an absolute URL so the frontend (on a
+            # different port) can reach the file served by Django.
+            if url and url.startswith("/"):
+                request = self.context.get("request")
+                if request:
+                    url = request.build_absolute_uri(url)
+            return url
+        return obj.cover_url or ""
 
     def validate_access_subscription_types(self, value):
         return _validate_access_types(value)
@@ -226,8 +234,13 @@ class AdminResourceSerializer(serializers.ModelSerializer):
     def get_thumbnail(self, obj) -> str:
         from apps.content.services import generate_signed_url
         if obj.thumbnail_key:
-            return generate_signed_url(obj.thumbnail_key)
-        return obj.thumbnail_url
+            url = generate_signed_url(obj.thumbnail_key)
+            if url and url.startswith("/"):
+                request = self.context.get("request")
+                if request:
+                    url = request.build_absolute_uri(url)
+            return url
+        return obj.thumbnail_url or ""
 
     def validate(self, attrs):
         """Une vidéo YouTube exige une URL."""
