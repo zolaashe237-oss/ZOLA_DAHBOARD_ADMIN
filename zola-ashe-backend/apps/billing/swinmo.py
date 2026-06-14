@@ -26,13 +26,27 @@ def create_checkout_link(product_id: str, amount: int, email: str,
     référence interne pour réconcilier le paiement).
     """
     url = f"{settings.SWINMO_API_URL.rstrip('/')}/api/developer/checkout-link"
+    return_url = settings.SWINMO_RETURN_URL
+    cancel_url = settings.SWINMO_CANCEL_URL
+    reference = metadata.get("reference", "")
+    if reference:
+        if "?" in return_url:
+            return_url = f"{return_url}&ref={reference}"
+        else:
+            return_url = f"{return_url}?ref={reference}"
+        
+        if "?" in cancel_url:
+            cancel_url = f"{cancel_url}&ref={reference}"
+        else:
+            cancel_url = f"{cancel_url}?ref={reference}"
+
     payload = {
         "productId": product_id,
         "amount": amount,
         "email": email,
         "metadata": metadata,
-        "returnUrl": settings.SWINMO_RETURN_URL,
-        "cancelUrl": settings.SWINMO_CANCEL_URL,
+        "returnUrl": return_url,
+        "cancelUrl": cancel_url,
     }
     try:
         resp = requests.post(

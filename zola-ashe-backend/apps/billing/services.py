@@ -6,6 +6,7 @@ l'accès (RESTREINT au-delà du délai de grâce) ; le **don** est facultatif et
 sans effet sur l'accès. Importé par `content`/`community` pour l'accès, et par
 les vues/webhook billing pour l'initiation et l'activation des paiements.
 """
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import uuid4
@@ -25,11 +26,13 @@ from .models import (
     SubscriptionType,
 )
 
+logger = logging.getLogger(__name__)
 
 def is_member(user) -> bool:
     """Le membre a-t-il réglé son droit d'inscription (adhésion active) ?"""
     return Subscription.objects.filter(
         user=user, type=SubscriptionType.MEMBRE, active=True).exists()
+
 
 
 def has_subscription_access(user, sub_type: str) -> bool:
@@ -102,13 +105,21 @@ def initiate_payment(user, kind: str, amount: int | None = None) -> dict:
                 "amount": effective_amount, "checkout_url": checkout_url, "mock": True}
 
     metadata = {"reference": reference, "user_id": user.id, "kind": kind}
-    response = swinmo.create_checkout_link(plan.product_id, effective_amount, user.email, metadata)
-    return {
-        "payment_id": payment.id,
-        "reference": reference,
-        "amount": effective_amount,
-        "checkout_url": swinmo.extract_checkout_url(response),
-    }
+    
+    logger.info(f"[Swinmo] Initiation paiement pour user={user.id}, kind={kind}, amount={effective_amount}")
+    
+    try:
+        response = swinmo.create_checkout_link(plan.product_id, effective_amount, user.email, metadata)
+        logger.info(f"[Swinmo] Succès : {response}")
+        return {
+            "payment_id": payment.id,
+            "reference": reference,
+            "amount": effective_amount,
+            "checkout_url": swinmo.extract_checkout_url(response),
+        }
+    except Exception as e:
+        logger.error(f"[Swinmo] Échec requête : {str(e)}")
+        raise
 
 
 def confirm_mock_payment(user, reference: str) -> str:

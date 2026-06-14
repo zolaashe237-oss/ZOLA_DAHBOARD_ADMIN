@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 from apps.billing.serializers import PaymentSerializer, SubscriptionSerializer
+from apps.billing.models import Payment, PaymentType, PaymentStatus
 from apps.content.models import (
     Choice,
     Course,
@@ -13,6 +14,7 @@ from apps.content.models import (
     Question,
     Quiz,
     Resource,
+    QuizResult,
 )
 
 
@@ -22,19 +24,24 @@ class MemberListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "email", "full_name", "role", "status",
-                  "email_verified", "nb_warnings", "created_at", "last_login")
+                  "email_verified", "nb_warnings", "created_at", "last_login",
+                  "phone", "country", "access_levels")
 
 
 class MemberDetailSerializer(serializers.ModelSerializer):
     subscriptions = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
     quiz_results = serializers.SerializerMethodField()
+    formations_progress = serializers.SerializerMethodField()
+    password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
         fields = ("id", "email", "full_name", "photo", "role", "status",
                   "status_changed_at", "email_verified", "nb_warnings",
-                  "created_at", "last_login", "subscriptions", "payments", "quiz_results")
+                  "created_at", "last_login", "subscriptions", "payments", "quiz_results",
+                  "formations_progress", "phone", "country", "access_levels", "password")
+        read_only_fields = ("id", "status_changed_at", "created_at", "last_login", "nb_warnings")
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_subscriptions(self, obj):
@@ -49,6 +56,59 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         qs = obj.quiz_results.select_related("quiz")
         return [{"quiz": q.quiz_id, "title": q.quiz.title, "score": q.score,
                  "validated": q.validated} for q in qs]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_formations_progress(self, obj):
+        from apps.content.services import visible_formations_qs, module_completed
+        from apps.content.models import Quiz, QuizResult
+        
+        progress = []
+        for formation in visible_formations_qs():
+            modules = formation.modules.all()
+            modules_total = modules.count()
+            modules_completed = 0
+            for module in modules:
+                if module_completed(obj, module):
+                    modules_completed += 1
+            
+            progress_pct = int(round(modules_completed / modules_total * 100)) if modules_total > 0 else 0
+            
+            # Find the final exam score if it exists
+            final_exam_quiz = Quiz.objects.filter(formation=formation).first()
+            quiz_score = None
+            if final_exam_quiz:
+                quiz_result = QuizResult.objects.filter(user=obj, quiz=final_exam_quiz).first()
+                if quiz_result:
+                    quiz_score = quiz_result.score
+                    
+            progress.append({
+                "formation_id": formation.id,
+                "formation_title": formation.title,
+                "progress_pct": progress_pct,
+                "modules_completed": modules_completed,
+                "modules_total": modules_total,
+                "quiz_score": quiz_score,
+                "completed": progress_pct == 100 and modules_total > 0
+            })
+        return progress
+
+    def create(self, validated_data):
+        password = validated_data.pop("password", None)
+        user = User.objects.create(**validated_data)
+        if password:
+            user.set_password(password)
+            user.save(update_fields=["password"])
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
+        return instance
 
 
 # ─── Actions sur les membres ─────────────────────────────────────────────────
@@ -258,3 +318,105 @@ class AdminPostSerializer(serializers.Serializer):
     is_pinned = serializers.BooleanField(default=False)
     is_announcement = serializers.BooleanField(default=False)
     scheduled_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+# ─── Transactions ────────────────────────────────────────────────────────────
+
+class TransactionSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    kind = serializers.CharField(source="type", read_only=True)
+    status = serializers.SerializerMethodField()
+    amount = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    payment_method = serializers.SerializerMethodField()
+    reference = serializers.CharField(source="swinmo_ref", read_only=True)
+    created_at = serializers.DateTimeField(source="paid_at", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = (
+            "id", "user_id", "user_name", "user_email", "kind", "status",
+            "amount", "currency", "payment_method", "reference", "reason",
+            "paid_at", "created_at"
+        )
+
+    def get_status(self, obj) -> str:
+        if obj.status == PaymentStatus.VALIDE:
+            if obj.type == PaymentType.REMBOURSEMENT:
+                return "REMBOURSE"
+            elif obj.type == PaymentType.COTISATION and obj.amount == 0:
+                return "EXONERE"
+            return "REUSSI"
+        elif obj.status == PaymentStatus.EN_ATTENTE:
+            return "EN_ATTENTE"
+        elif obj.status == PaymentStatus.ECHOUE:
+            return "ECHOUE"
+        return obj.status
+
+    def get_amount(self, obj) -> int:
+        return abs(obj.amount)
+
+    def get_currency(self, obj) -> str:
+        return "XAF"
+
+    def get_payment_method(self, obj) -> str:
+        return "MANUEL" if not obj.swinmo_ref else "MTN_MOBILE_MONEY"
+
+
+# ─── Résultats QCM ────────────────────────────────────────────────────────────
+
+class AdminQuizResultSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email = serializers.CharField(source="user.email", read_only=True)
+    quiz_id = serializers.IntegerField(source="quiz.id", read_only=True)
+    quiz_title = serializers.CharField(source="quiz.title", read_only=True)
+    max_score = serializers.SerializerMethodField()
+    passed_at = serializers.DateTimeField(source="validated_at", read_only=True)
+    created_at = serializers.DateTimeField(source="validated_at", read_only=True)
+
+    class Meta:
+        model = QuizResult
+        fields = (
+            "id", "user_id", "user_name", "user_email", "quiz_id", "quiz_title",
+            "score", "max_score", "validated", "attempts", "passed_at", "created_at"
+        )
+
+    def get_max_score(self, obj) -> int:
+        return 20
+
+
+# ─── Progression ─────────────────────────────────────────────────────────────
+
+class ProgressionKpisSerializer(serializers.Serializer):
+    total_enrollments = serializers.IntegerField()
+    total_completions = serializers.IntegerField()
+    avg_completion_rate = serializers.FloatField()
+    avg_quiz_score = serializers.FloatField(allow_null=True)
+
+
+class FormationProgressStatSerializer(serializers.Serializer):
+    formation_id = serializers.IntegerField()
+    formation_title = serializers.CharField()
+    cover_url = serializers.CharField(allow_null=True, required=False)
+    enrolled_count = serializers.IntegerField()
+    completed_count = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
+    avg_quiz_score = serializers.FloatField(allow_null=True)
+    avg_progress_pct = serializers.FloatField()
+
+
+class MemberProgressEntrySerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    user_name = serializers.CharField()
+    user_email = serializers.CharField()
+    formation_id = serializers.IntegerField()
+    formation_title = serializers.CharField()
+    progress_pct = serializers.IntegerField()
+    modules_completed = serializers.IntegerField()
+    modules_total = serializers.IntegerField()
+    quiz_score = serializers.FloatField(allow_null=True)
+    last_activity = serializers.DateTimeField(allow_null=True)
+    completed = serializers.BooleanField()

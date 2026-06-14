@@ -38,6 +38,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=150)
     photo = models.ImageField(upload_to="avatars/", blank=True, null=True)
+    phone = models.CharField(max_length=30, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    access_levels = models.JSONField(default=list, blank=True)
 
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.MEMBER)
     status = models.CharField(max_length=10, choices=UserStatus.choices, default=UserStatus.RESTREINT)

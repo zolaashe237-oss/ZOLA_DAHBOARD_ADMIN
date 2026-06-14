@@ -236,3 +236,35 @@ class QuizResult(models.Model):
     class Meta:
         db_table = "quiz_results"
         unique_together = ("user", "quiz")
+
+
+class LiveSession(models.Model):
+    """Session en direct ou replay (méditations collectives, webinaires, cercles)."""
+    class Platform(models.TextChoices):
+        YOUTUBE = "YouTube", "YouTube Live"
+        ZOOM = "Zoom", "Zoom Meeting"
+        MEET = "Meet", "Google Meet"
+
+    class Status(models.TextChoices):
+        UPCOMING = "upcoming", "À venir"
+        LIVE = "live", "En cours"
+        REPLAY = "replay", "Replay"
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    start_at = models.DateTimeField()
+    duration_minutes = models.PositiveIntegerField(default=60)
+    trainer = models.CharField(max_length=150, default="Coach Rodrigue DOUANLA")
+    platform = models.CharField(max_length=10, choices=Platform.choices, default=Platform.YOUTUBE)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.UPCOMING)
+    link = models.URLField(blank=True, max_length=512)
+    tags = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "live_sessions"
+        ordering = ["status", "-start_at"]
+
+    def __str__(self):
+        return self.title
