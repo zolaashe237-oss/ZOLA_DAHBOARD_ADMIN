@@ -82,6 +82,20 @@ class MemberManagementTests(AdminBase):
         self.assertIn("results", r.data)
         self.assertEqual(len(r.data["results"]), 1)
 
+    def test_destroy_anonymizes_member_and_audits(self):
+        member_id = self.member.id
+        r = self.client.delete(f"/api/admin/members/{member_id}/")
+        self.assertEqual(r.status_code, 204)
+        
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.full_name, "Compte supprimé")
+        self.assertTrue(self.member.email.startswith("deleted+"))
+        self.assertFalse(self.member.is_active)
+        self.assertEqual(self.member.status, UserStatus.BLOQUE)
+        
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.DELETE_ACCOUNT,
+                                                target_id=str(member_id)).exists())
+
 class FinanceTests(AdminBase):
     def test_manual_inscription_activates_membership_and_audits(self):
         r = self.client.post("/api/admin/payments/manual/",
@@ -121,6 +135,38 @@ class FinanceTests(AdminBase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "text/csv")
         self.assertTrue(AuditLog.objects.filter(action=AuditAction.EXPORT_DATA).exists())
+
+    def test_export_members_csv_filters(self):
+        # Filter matching today
+        r = self.client.get(f"/api/admin/exports/members.csv?date_from={date.today()}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self.member.email, r.content.decode("utf-8"))
+        
+        # Filter excluding today
+        tomorrow = date.today() + timezone.timedelta(days=1)
+        r = self.client.get(f"/api/admin/exports/members.csv?date_from={tomorrow}")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(self.member.email, r.content.decode("utf-8"))
+
+    def test_export_payments_csv_filters(self):
+        # Create a payment
+        Payment.objects.create(
+            user=self.member,
+            type=PaymentType.COTISATION,
+            amount=5000,
+            status=PaymentStatus.VALIDE,
+            paid_at=timezone.now()
+        )
+        # Filter matching today
+        r = self.client.get(f"/api/admin/exports/payments.csv?date_from={date.today()}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self.member.email, r.content.decode("utf-8"))
+        
+        # Filter excluding today
+        tomorrow = date.today() + timezone.timedelta(days=1)
+        r = self.client.get(f"/api/admin/exports/payments.csv?date_from={tomorrow}")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(self.member.email, r.content.decode("utf-8"))
 
     def test_monthly_revenue(self):
         Payment.objects.create(

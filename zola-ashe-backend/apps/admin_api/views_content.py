@@ -179,6 +179,39 @@ class AdminFormationViewSet(viewsets.ModelViewSet):
                target_id=formation.id, payload={"published": True})
         return Response(AdminFormationSerializer(formation).data)
 
+    @extend_schema(
+        tags=[_TAG],
+        summary="Uploader la couverture d'une formation",
+        description="Uploade une image de couverture pour la formation (max 5 Mo).",
+        request=inline_serializer(name="FormationCoverRequest", fields={"file": drf_serializers.FileField()}),
+        responses={200: inline_serializer(name="FormationCoverResponse", fields={"url": drf_serializers.CharField(), "key": drf_serializers.CharField()})}
+    )
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser], url_path="cover")
+    def upload_cover(self, request, pk=None):
+        """Uploade et met à jour l'image de couverture d'une formation."""
+        formation = self.get_object()
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "Aucun fichier fourni."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Enforce size constraint (5MB for images)
+        if file.size > 5 * 1024 * 1024:
+            return Response({"detail": "Fichier de couverture trop volumineux (max 5 Mo)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        
+        key = f"thumbnails/{uuid4().hex}_{file.name}"
+        saved_key = default_storage.save(key, file)
+        
+        formation.cover_key = saved_key
+        formation.cover_url = ""  # On vide cover_url pour utiliser cover_key
+        formation.save(update_fields=["cover_key", "cover_url"])
+        
+        signed_url = generate_signed_url(saved_key)
+        record(request.user, AuditAction.UPDATE_CONTENT, target_type="Formation",
+               target_id=formation.id, payload={"cover_updated": True})
+               
+        return Response({"url": signed_url, "key": saved_key}, status=status.HTTP_200_OK)
+
 
 # ─── Documentation détaillée du CRUD Modules (arbre) ─────────────────────────
 _MODULE_FIELDS_DOC = (
