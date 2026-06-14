@@ -32,6 +32,7 @@ class MemberDetailSerializer(serializers.ModelSerializer):
     subscriptions = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
     quiz_results = serializers.SerializerMethodField()
+    formations_progress = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
@@ -39,7 +40,7 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         fields = ("id", "email", "full_name", "photo", "role", "status",
                   "status_changed_at", "email_verified", "nb_warnings",
                   "created_at", "last_login", "subscriptions", "payments", "quiz_results",
-                  "phone", "country", "access_levels", "password")
+                  "formations_progress", "phone", "country", "access_levels", "password")
         read_only_fields = ("id", "status_changed_at", "created_at", "last_login", "nb_warnings")
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -55,6 +56,41 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         qs = obj.quiz_results.select_related("quiz")
         return [{"quiz": q.quiz_id, "title": q.quiz.title, "score": q.score,
                  "validated": q.validated} for q in qs]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_formations_progress(self, obj):
+        from apps.content.services import visible_formations_qs, module_completed
+        from apps.content.models import Quiz, QuizResult
+        
+        progress = []
+        for formation in visible_formations_qs():
+            modules = formation.modules.all()
+            modules_total = modules.count()
+            modules_completed = 0
+            for module in modules:
+                if module_completed(obj, module):
+                    modules_completed += 1
+            
+            progress_pct = int(round(modules_completed / modules_total * 100)) if modules_total > 0 else 0
+            
+            # Find the final exam score if it exists
+            final_exam_quiz = Quiz.objects.filter(formation=formation).first()
+            quiz_score = None
+            if final_exam_quiz:
+                quiz_result = QuizResult.objects.filter(user=obj, quiz=final_exam_quiz).first()
+                if quiz_result:
+                    quiz_score = quiz_result.score
+                    
+            progress.append({
+                "formation_id": formation.id,
+                "formation_title": formation.title,
+                "progress_pct": progress_pct,
+                "modules_completed": modules_completed,
+                "modules_total": modules_total,
+                "quiz_score": quiz_score,
+                "completed": progress_pct == 100 and modules_total > 0
+            })
+        return progress
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
@@ -350,3 +386,37 @@ class AdminQuizResultSerializer(serializers.ModelSerializer):
 
     def get_max_score(self, obj) -> int:
         return 20
+
+
+# ─── Progression ─────────────────────────────────────────────────────────────
+
+class ProgressionKpisSerializer(serializers.Serializer):
+    total_enrollments = serializers.IntegerField()
+    total_completions = serializers.IntegerField()
+    avg_completion_rate = serializers.FloatField()
+    avg_quiz_score = serializers.FloatField(allow_null=True)
+
+
+class FormationProgressStatSerializer(serializers.Serializer):
+    formation_id = serializers.IntegerField()
+    formation_title = serializers.CharField()
+    cover_url = serializers.CharField(allow_null=True, required=False)
+    enrolled_count = serializers.IntegerField()
+    completed_count = serializers.IntegerField()
+    completion_rate = serializers.FloatField()
+    avg_quiz_score = serializers.FloatField(allow_null=True)
+    avg_progress_pct = serializers.FloatField()
+
+
+class MemberProgressEntrySerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    user_name = serializers.CharField()
+    user_email = serializers.CharField()
+    formation_id = serializers.IntegerField()
+    formation_title = serializers.CharField()
+    progress_pct = serializers.IntegerField()
+    modules_completed = serializers.IntegerField()
+    modules_total = serializers.IntegerField()
+    quiz_score = serializers.FloatField(allow_null=True)
+    last_activity = serializers.DateTimeField(allow_null=True)
+    completed = serializers.BooleanField()

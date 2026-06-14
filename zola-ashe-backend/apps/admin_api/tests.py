@@ -473,3 +473,67 @@ class ModerationTests(AdminBase):
             log.save()
         with self.assertRaises(PermissionError):
             log.delete()
+
+
+class ProgressionTests(AdminBase):
+    def setUp(self):
+        super().setUp()
+        self.f = Formation.objects.create(title="Formation Test", category=Category.FORMATION, status=FormationStatus.PUBLISHED)
+        self.m = Module.objects.create(formation=self.f, title="Module 1", order=1)
+        self.c = Course.objects.create(module=self.m, title="Cours 1", order=1)
+        self.quiz = Quiz.objects.create(course=self.c, title="Quiz 1", pass_threshold=10, active=True)
+        self.user_member = User.objects.create_user(
+            email="member.prog@zolaashe.com", password="Passw0rd!", full_name="Member Prog",
+            email_verified=True, status=UserStatus.ACTIF, role=Role.MEMBER
+        )
+        
+    def test_progression_kpis(self):
+        r = self.client.get("/api/admin/progression/kpis/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("total_enrollments", r.data)
+        self.assertIn("total_completions", r.data)
+        self.assertIn("avg_completion_rate", r.data)
+        self.assertIn("avg_quiz_score", r.data)
+
+    def test_progression_stats(self):
+        r = self.client.get("/api/admin/progression/stats/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(len(r.data) > 0)
+        self.assertEqual(r.data[0]["formation_title"], "Formation Test")
+        self.assertIn("completion_rate", r.data[0])
+
+    def test_member_progression_list(self):
+        r = self.client.get("/api/admin/progression/members/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(len(r.data) > 0)
+        entry = next(e for e in r.data if e["user_id"] == self.user_member.id)
+        self.assertEqual(entry["user_name"], "Member Prog")
+        self.assertEqual(entry["formation_title"], "Formation Test")
+        
+        # Filtre recherche
+        r_search = self.client.get("/api/admin/progression/members/", {"search": "Prog"})
+        self.assertEqual(len(r_search.data), 1)
+        self.assertEqual(r_search.data[0]["user_name"], "Member Prog")
+        
+        r_search_empty = self.client.get("/api/admin/progression/members/", {"search": "Nonexistent"})
+        self.assertEqual(len(r_search_empty.data), 0)
+
+    def test_reset_progression(self):
+        # Crée un résultat
+        QuizResult.objects.create(user=self.user_member, quiz=self.quiz, score=15, validated=True)
+        
+        # Vérifie qu'il existe
+        self.assertTrue(QuizResult.objects.filter(user=self.user_member, quiz=self.quiz).exists())
+        
+        # Réinitialise
+        r = self.client.post("/api/admin/progression/reset/", {
+            "user_id": self.user_member.id,
+            "formation_id": self.f.id,
+            "reason": "Test reset reason"
+        }, format="json")
+        self.assertEqual(r.status_code, 200)
+        
+        # Vérifie la suppression
+        self.assertFalse(QuizResult.objects.filter(user=self.user_member, quiz=self.quiz).exists())
+        # Vérifie le journal d'audit
+        self.assertTrue(AuditLog.objects.filter(action=AuditAction.RESET_QUIZ, reason="Test reset reason").exists())

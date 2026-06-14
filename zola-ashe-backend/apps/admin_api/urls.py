@@ -8,6 +8,7 @@ from . import views_content as vc
 from . import views_finance as vf
 from . import views_members as vm
 from . import views_moderation as vmod
+from . import views_progression as vp
 
 router = DefaultRouter()
 router.register("members", vm.MemberViewSet, basename="admin-member")
@@ -48,6 +49,12 @@ urlpatterns = [
 
     # Audit
     path("audit/", vmod.AuditLogListView.as_view(), name="admin-audit"),
+
+    # Progression des membres
+    path("progression/kpis/", vp.ProgressionKpisView.as_view(), name="admin-progression-kpis"),
+    path("progression/stats/", vp.FormationProgressStatView.as_view(), name="admin-progression-stats"),
+    path("progression/members/", vp.MemberProgressListView.as_view(), name="admin-progression-members"),
+    path("progression/reset/", vp.ResetProgressView.as_view(), name="admin-progression-reset"),
 
     *router.urls,
 ]
