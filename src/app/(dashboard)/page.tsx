@@ -459,6 +459,52 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* ── Taux de cotisations à jour ────────────────────────────────────── */}
+      {kpis && (
+        <div style={{
+          background: "var(--bg-1)", border: "1px solid var(--line-soft)",
+          borderRadius: "var(--radius)", padding: "1rem 1.35rem",
+          marginBottom: "2rem",
+          display: "flex", alignItems: "center", gap: "1.5rem", flexWrap: "wrap",
+        }}>
+          <div style={{ flexShrink: 0 }}>
+            <div style={{
+              fontSize: "0.72rem", color: "var(--muted)",
+              textTransform: "uppercase", letterSpacing: "0.09em", fontWeight: 600,
+            }}>
+              Taux de cotisations à jour
+            </div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--gold-2)", lineHeight: 1, marginTop: "0.2rem" }}>
+              {kpis.members_active > 0
+                ? `${Math.round(((kpis.members_active - (kpis.cotisations_late ?? 0)) / kpis.members_active) * 100)}%`
+                : "—"}
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{
+              height: 10, borderRadius: 999,
+              background: "var(--bg-3)", overflow: "hidden",
+            }}>
+              {kpis.members_active > 0 && (
+                <div style={{
+                  height: "100%", borderRadius: 999,
+                  width: `${Math.round(((kpis.members_active - (kpis.cotisations_late ?? 0)) / kpis.members_active) * 100)}%`,
+                  background: (kpis.cotisations_late ?? 0) === 0
+                    ? "var(--ok)"
+                    : (kpis.cotisations_late ?? 0) / kpis.members_active > 0.2
+                    ? "var(--bad)"
+                    : "var(--warn)",
+                  transition: "width .4s ease",
+                }} />
+              )}
+            </div>
+            <div style={{ fontSize: "0.72rem", color: "var(--muted-2)", marginTop: "0.35rem" }}>
+              {kpis.members_active - (kpis.cotisations_late ?? 0)} membres à jour · {kpis.cotisations_late ?? 0} en retard sur {kpis.members_active} actifs
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Charts ────────────────────────────────────────────────────────── */}
       <div style={{
         display: "grid",
