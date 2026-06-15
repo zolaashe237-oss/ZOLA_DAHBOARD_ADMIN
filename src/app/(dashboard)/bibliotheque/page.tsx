@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { libraryApi } from "@/lib/endpoints";
+import { getMediaUrl } from "@/lib/api";
 import { MOCK_LIBRARY } from "@/lib/mocks";
 import type { Branche, LibraryPdf, PdfAccess } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";

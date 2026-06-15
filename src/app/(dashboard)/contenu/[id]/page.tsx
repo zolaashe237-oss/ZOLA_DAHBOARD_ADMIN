@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   asList, courseApi, formationApi, moduleApi, quizApi, resourceApi,
 } from "@/lib/endpoints";
+import { getMediaUrl } from "@/lib/api";
 import type {
   Branche, CourseItem, Formation, FormationAcces, FormationNiveau, FormationStatus,
   ModuleItem, QuizItem, ResourceItem,
@@ -65,6 +66,16 @@ export default function FormationBuilderPage() {
   const [quizTarget,        setQuizTarget]        = useState<QuizTarget | null>(null);
   const [showMeta,          setShowMeta]          = useState(false);
 
+  // Metadata state (lifted)
+  const [meta, setMeta] = useState({
+    title: "", description: "", category: "FORMATION" as Formation["category"],
+    niveau: "" as FormationNiveau | "", branche: "" as Branche | "",
+    acces: "LIBRE" as FormationAcces, status: "DRAFT" as FormationStatus,
+    publish_at: "",
+  });
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [savingMeta, setSavingMeta] = useState(false);
+
   // Drag state for chapters
   const draggingChapter = useRef<number | null>(null);
   const [dragOverChapter, setDragOverChapter] = useState<number | null>(null);
@@ -79,6 +90,16 @@ export default function FormationBuilderPage() {
     try {
       const f = (await formationApi.detail(fid)).data;
       setFormation(f);
+      setMeta({
+        title: f.title,
+        description: f.description,
+        category: f.category,
+        niveau: f.niveau ?? "",
+        branche: f.branche ?? "",
+        acces: f.access_subscription_types.length > 0 ? "PAYANTE" : "LIBRE",
+        status: f.status,
+        publish_at: f.publish_at ? f.publish_at.slice(0, 16) : "",
+      });
       const mods = asList((await moduleApi.list(fid)).data);
       setModules(mods);
       const courseEntries = await Promise.all(
@@ -98,7 +119,42 @@ export default function FormationBuilderPage() {
 
   useEffect(() => { reload(); }, [reload]);
 
+  const saveMeta = async () => {
+    if (!formation) return;
+    setSavingMeta(true); setError(""); setInfo("");
+    try {
+      await formationApi.update(fid, {
+        title: meta.title, description: meta.description, category: meta.category,
+        ...accesToApi(meta.acces),
+        status: meta.status,
+        publish_at: (() => {
+          if (meta.status !== "SCHEDULED" || !meta.publish_at) return null;
+          const d = new Date(meta.publish_at);
+          return isNaN(d.getTime()) ? null : d.toISOString();
+        })(),
+        ...(meta.niveau  ? { niveau: meta.niveau }   : {}),
+        ...(meta.branche ? { branche: meta.branche } : {}),
+      });
+      if (coverFile) {
+        await formationApi.uploadCover(fid, coverFile);
+        setCoverFile(null);
+      }
+      setInfo("Modifications de la formation enregistrées.");
+      reload();
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setSavingMeta(false); }
+  };
+
   if (!formation) return <p style={{ color: "var(--muted)" }}>{error || "Chargement…"}</p>;
+
+  const hasChanges = formation.title !== meta.title ||
+    formation.description !== meta.description ||
+    formation.category !== meta.category ||
+    (formation.niveau ?? "") !== meta.niveau ||
+    (formation.branche ?? "") !== meta.branche ||
+    (formation.access_subscription_types.length > 0 ? "PAYANTE" : "LIBRE") !== meta.acces ||
+    formation.status !== meta.status ||
+    !!coverFile;
 
   const rootModules = modules
     .filter((m) => m.parent === null)
@@ -127,18 +183,23 @@ export default function FormationBuilderPage() {
 
   return (
     <div className="fade-up">
-      <Link href="/contenu" style={{
-        fontSize: ".83rem", color: "#8b6a3a", textDecoration: "none",
-        display: "inline-flex", alignItems: "center", gap: "0.3rem",
-      }}>
-        ← Toutes les formations
-      </Link>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+        <Link href="/contenu" style={{
+          fontSize: ".83rem", color: "#8b6a3a", textDecoration: "none",
+          display: "inline-flex", alignItems: "center", gap: "0.3rem",
+        }}>
+          ← Toutes les formations
+        </Link>
+        <Button onClick={saveMeta} loading={savingMeta} disabled={!hasChanges} style={{ padding: "0.4rem 1.2rem" }}>
+          Enregistrer les modifications
+        </Button>
+      </div>
 
       {/* ── Header formation ── */}
       <div style={{
         background: "#fff", border: "1px solid #e8dfc8",
         borderRadius: "var(--radius)", padding: "1.4rem 1.6rem",
-        marginTop: "0.75rem", marginBottom: "1rem",
+        marginTop: "0.25rem", marginBottom: "1rem",
       }}>
         <span style={{
           fontSize: "0.66rem", fontWeight: 700, letterSpacing: "0.08em",
@@ -196,7 +257,16 @@ export default function FormationBuilderPage() {
 
         {showMeta && (
           <div style={{ marginTop: "1rem", borderTop: "1px solid #f0e8d4", paddingTop: "1rem" }}>
-            <FormationMeta formation={formation} onSaved={reload} onError={setError} onInfo={flash} />
+            <FormationMeta
+              formation={formation}
+              meta={meta}
+              setMeta={setMeta}
+              coverFile={coverFile}
+              setCoverFile={setCoverFile}
+              onSaved={reload}
+              onError={setError}
+              onInfo={flash}
+            />
           </div>
         )}
       </div>
@@ -438,8 +508,11 @@ function FormationMeta({
     is_payant:   accesToApi(meta.acces).is_payant,
     cover_url:   displayCoverUrl,
     status:      meta.status,
-    publish_at:  meta.status === "SCHEDULED" && meta.publish_at
-      ? new Date(meta.publish_at).toISOString() : null,
+    publish_at: (() => {
+      if (meta.status !== "SCHEDULED" || !meta.publish_at) return null;
+      const d = new Date(meta.publish_at);
+      return isNaN(d.getTime()) ? null : d.toISOString();
+    })(),
     niveau:  meta.niveau  || null,
     branche: meta.branche || null,
   };

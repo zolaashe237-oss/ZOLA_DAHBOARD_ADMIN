@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { audioApi } from "@/lib/endpoints";
+import { getMediaUrl } from "@/lib/api";
 import { MOCK_AUDIO } from "@/lib/mocks";
 import type { AudioItem, Branche, PdfAccess } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
@@ -729,8 +730,5 @@ export default function AudioPage() {
         />
       )}
     </div>
-  );
-}
-v>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { getMediaUrl } from "@/lib/api";
 import type { Branche, Formation, FormationNiveau, FormationStatus } from "@/lib/types";
 
 // ── Constantes ────────────────────────────────────────────────────────────────

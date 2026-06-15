@@ -25,10 +25,12 @@ export function getMediaUrl(path: string | null | undefined): string {
   if (path.startsWith("http") || path.startsWith("blob:") || path.startsWith("data:")) {
     return path;
   }
-  // On récupère la base de l'API (ex: http://localhost:8010/api)
-  // et on retire le suffixe /api pour avoir la racine du serveur.
-  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010/api").replace(/\/api$/, "");
-  return `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+  
+  // URL de base du serveur backend (sans le suffixe /api)
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010/api";
+  const serverRoot = apiBase.replace(/\/api$/, "").replace(/\/$/, "");
+  
+  return `${serverRoot}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 api.interceptors.request.use((config) => {
