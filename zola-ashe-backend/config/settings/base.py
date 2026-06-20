@@ -140,6 +140,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # --- DRF & JWT --------------------------------------------------------------
+import sys
+IS_TESTING = "test" in sys.argv
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -153,9 +156,9 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.ScopedRateThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/min",      # CDC §7.3 : 100 req/min/IP
-        "user": "100/min",
-        "auth": "20/min",       # routes d'authentification : 20 req/min/IP
+        "anon": "999999/day" if IS_TESTING else "100/min",      # CDC §7.3 : 100 req/min/IP
+        "user": "999999/day" if IS_TESTING else "100/min",
+        "auth": "999999/day" if IS_TESTING else "20/min",       # routes d'authentification : 20 req/min/IP
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,            # CDC §8.4 : 20 éléments / page

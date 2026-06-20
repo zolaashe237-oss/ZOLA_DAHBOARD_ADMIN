@@ -94,6 +94,78 @@ class WebhookTests(APITestCase):
         self.assertEqual(r.data["outcome"], "failed")
         self.assertEqual(Payment.objects.get(swinmo_ref="ref1").status, PaymentStatus.ECHOUE)
 
+    def test_order_paid_email_fallback_without_metadata(self):
+        from django.conf import settings
+        # On crée un paiement en attente
+        payment = make_pending(self.user, ref="original_ref")
+        
+        # Payload sans metadata, mais avec email et productId
+        payload = {
+            "event": "order.paid",
+            "data": {
+                "orderId": "swinmo_order_id_123",
+                "transactionId": "FREE-123",
+                "amount": 0,
+                "currency": "XAF",
+                "customerEmail": self.user.email,
+                "productId": settings.SWINMO_PRODUCT_INSCRIPTION,
+                "status": "PAID"
+            }
+        }
+        
+        r = self._post(payload)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["outcome"], "activated")
+        
+        # Vérifie que le paiement a été validé
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentStatus.VALIDE)
+        # Et que la référence Swinmo de l'ordre a été enregistrée
+        self.assertEqual(payment.swinmo_ref, "swinmo_order_id_123")
+
+    @patch("apps.billing.swinmo.get_order_details")
+    def test_order_paid_resolves_via_api_if_metadata_missing(self, mock_get_details):
+        from django.conf import settings
+        # On crée un paiement en attente avec une référence spécifique
+        payment = make_pending(self.user, ref="api_ref_123")
+        
+        # Le mock de l'API Swinmo renvoie la référence dans metadata
+        mock_get_details.return_value = {
+            "success": True,
+            "data": {
+                "orderId": "order_api_999",
+                "status": "paid",
+                "amount": 10000,
+                "currency": "XAF",
+                "customerEmail": self.user.email,
+                "metadata": {"reference": "api_ref_123"}
+            }
+        }
+        
+        payload = {
+            "event": "order.paid",
+            "data": {
+                "orderId": "order_api_999",
+                "transactionId": "FREE-999",
+                "amount": 0,
+                "currency": "XAF",
+                "customerEmail": self.user.email,
+                "productId": settings.SWINMO_PRODUCT_INSCRIPTION,
+                "status": "PAID"
+            }
+        }
+        
+        r = self._post(payload)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["outcome"], "activated")
+        
+        # Vérifie que le paiement a été validé
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentStatus.VALIDE)
+        # Et la swinmo_ref est mise à jour avec l'orderId
+        self.assertEqual(payment.swinmo_ref, "order_api_999")
+        mock_get_details.assert_called_once_with("order_api_999")
+
 
 @override_settings(**TEST_SETTINGS)
 class ActivationTests(APITestCase):
