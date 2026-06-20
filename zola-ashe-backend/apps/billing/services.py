@@ -224,7 +224,7 @@ def process_webhook_event(event: str, data: dict) -> str:
 
     Idempotent : un `order.paid` rejoué sur un paiement déjà VALIDE est ignoré.
     """
-    reference = (data.get("metadata") or {}).get("reference")
+    reference = data.get("reference") or (data.get("metadata") or {}).get("reference")
     payment = None
     matched_via_fallback = False
     matched_via_api = False
