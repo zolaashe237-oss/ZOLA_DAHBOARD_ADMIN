@@ -225,17 +225,68 @@ def process_webhook_event(event: str, data: dict) -> str:
     Idempotent : un `order.paid` rejoué sur un paiement déjà VALIDE est ignoré.
     """
     reference = (data.get("metadata") or {}).get("reference")
-    if not reference:
-        return "no-reference"
+    payment = None
+    matched_via_fallback = False
+    matched_via_api = False
 
-    payment = Payment.objects.filter(swinmo_ref=reference).first()
+    # Si pas de référence directe dans le payload, essayer de la récupérer via l'API Swinmo
+    order_id = data.get("orderId")
+    if not reference and order_id:
+        try:
+            logger.info(f"[Swinmo] Webhook sans metadata. Récupération des détails de la commande {order_id} via l'API...")
+            order_details = swinmo.get_order_details(order_id)
+            if order_details.get("success"):
+                metadata = order_details.get("data", {}).get("metadata") or {}
+                reference = metadata.get("reference")
+                if reference:
+                    logger.info(f"[Swinmo] Référence trouvée via API Swinmo: {reference}")
+                    matched_via_api = True
+        except Exception as e:
+            logger.warning(f"[Swinmo] Échec récupération commande via API Swinmo pour {order_id}: {e}")
+
+    if reference:
+        payment = Payment.objects.filter(swinmo_ref=reference).first()
+
+    if payment is None:
+        # Fallback : réconciliation par email et produit (RG-08)
+        email = data.get("customerEmail")
+        product_id = data.get("productId")
+        if email and product_id:
+            payment_type = None
+            if product_id == settings.SWINMO_PRODUCT_INSCRIPTION:
+                payment_type = PaymentType.INSCRIPTION
+            elif product_id == settings.SWINMO_PRODUCT_COTISATION:
+                payment_type = PaymentType.COTISATION
+            elif product_id == settings.SWINMO_PRODUCT_DON:
+                payment_type = PaymentType.DON
+
+            if payment_type:
+                payment = (
+                    Payment.objects.filter(
+                        user__email__iexact=email,
+                        type=payment_type,
+                        status=PaymentStatus.EN_ATTENTE,
+                    )
+                    .order_by("paid_at")
+                    .first()
+                )
+                if payment:
+                    matched_via_fallback = True
+
     if payment is None:
         return "unknown-payment"
 
     if event == "order.paid":
         if payment.status == PaymentStatus.VALIDE:
             return "duplicate"            # RG-08 : déjà traité
-        kind = (data.get("metadata") or {}).get("kind", "")
+        
+        # Associer la référence Swinmo de l'ordre si elle n'est pas encore enregistrée
+        order_id = data.get("orderId")
+        if order_id and (not payment.swinmo_ref or matched_via_fallback or matched_via_api):
+            payment.swinmo_ref = order_id
+
+        # Récupérer le "kind" soit des metadata, soit directement du type de paiement résolu
+        kind = (data.get("metadata") or {}).get("kind") or payment.type
         activate_paid_payment(payment, kind)
         return "activated"
 

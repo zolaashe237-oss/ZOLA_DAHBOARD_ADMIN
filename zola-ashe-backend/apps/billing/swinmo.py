@@ -83,3 +83,19 @@ def verify_signature(raw_body: bytes, signature: str | None) -> bool:
         hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(expected, signature.strip().lower())
+
+
+def get_order_details(order_id: str, *, timeout: int = 15) -> dict:
+    """Récupère les détails d'une commande auprès de Swinmo (GET /api/developer/order/{orderId})."""
+    url = f"{settings.SWINMO_API_URL.rstrip('/')}/api/developer/order/{order_id}"
+    try:
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {settings.SWINMO_SECRET_KEY}"},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as exc:
+        raise SwinmoError(f"Échec de récupération de la commande Swinmo : {exc}") from exc
+
