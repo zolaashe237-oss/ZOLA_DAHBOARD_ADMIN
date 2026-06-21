@@ -45,7 +45,9 @@ services:
   backend:
     image: ${REGISTRY:-ghcr.io/edwintchakounte}/zola-ashe-backend:${TAG:-latest}
     pull_policy: always
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3}
+    # --timeout 600 : uploads vidéo (500 Mo) + écriture R2 peuvent dépasser
+    # le défaut gunicorn de 30 s, ce qui faisait planter les POST multipart.
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3} --timeout 600
     environment:
       DJANGO_ENV: prod
       DJANGO_SETTINGS_MODULE: config.settings.prod

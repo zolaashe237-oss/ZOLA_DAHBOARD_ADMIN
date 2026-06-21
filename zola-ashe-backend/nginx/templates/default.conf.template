@@ -44,7 +44,8 @@ server {
     add_header X-Frame-Options           "DENY"   always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
 
-    client_max_body_size 50M;
+    # Aligné sur la limite max applicative (vidéo 500 Mo, cf. apps/admin_api/views_content.py).
+    client_max_body_size 512M;
     access_log /dev/stdout;
     error_log  /dev/stderr;
 
@@ -66,7 +67,9 @@ server {
         proxy_set_header   X-Forwarded-Proto  https;
         proxy_set_header   X-Forwarded-Host   $host;
         proxy_connect_timeout 5s;
-        proxy_read_timeout    60s;
-        proxy_send_timeout    60s;
+        # Allongé pour absorber les uploads admin (vidéo ~500 Mo + écriture R2).
+        proxy_read_timeout    600s;
+        proxy_send_timeout    600s;
+        proxy_request_buffering off;   # streaming direct vers gunicorn (pas de buffer disque nginx)
     }
 }
