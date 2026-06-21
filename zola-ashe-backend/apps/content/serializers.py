@@ -93,7 +93,7 @@ class FormationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Formation
         fields = ("id", "title", "description", "category", "cover",
-                  "is_reserved", "locked", "module_count")
+                  "is_reserved", "locked", "module_count", "slug", "branch", "level")
 
     def get_cover(self, obj) -> str:
         return generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
@@ -116,7 +116,7 @@ class FormationDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Formation
         fields = ("id", "title", "description", "category", "cover",
-                  "is_reserved", "locked", "modules", "final_exam")
+                  "is_reserved", "locked", "modules", "final_exam", "slug", "branch", "level")
 
     def _accessible(self, obj) -> bool:
         types = self.context.get("accessible_sub_types")

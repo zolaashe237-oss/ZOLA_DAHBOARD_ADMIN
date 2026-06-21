@@ -92,6 +92,8 @@ class FormationViewSet(viewsets.ReadOnlyModelViewSet):
         qs = visible_formations_qs()
         if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
+        if branch := self.request.query_params.get("branch"):
+            qs = qs.filter(branch=branch)
         if self.action == "retrieve":
             qs = qs.prefetch_related(
                 "modules__courses__resources", "modules__courses__quiz__questions",
