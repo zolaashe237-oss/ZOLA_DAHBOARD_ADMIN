@@ -78,7 +78,10 @@ _QuizSubmitResponse = inline_serializer(
         tags=["Catalogue"], summary="Catalogue des formations",
         description="Liste les formations visibles (publiées, ou programmées dont la date est échue). "
                     "Chaque entrée indique si elle est `locked` (réservée et non accessible au membre).",
-        parameters=[OpenApiParameter("category", str, description="Filtre : FORMATION, LIVRE ou LIBRE.")]),
+        parameters=[
+            OpenApiParameter("category", str, description="Filtre : FORMATION, LIVRE ou LIBRE."),
+            OpenApiParameter("branch", str, description="Filtre : GENERALE, FEMME ou ENFANT."),
+        ]),
     retrieve=extend_schema(
         tags=["Catalogue"], summary="Détail d'une formation (arbre complet)",
         description="Renvoie l'arbre **modules → sous-modules → cours → ressources**, avec l'état "
@@ -92,6 +95,8 @@ class FormationViewSet(viewsets.ReadOnlyModelViewSet):
         qs = visible_formations_qs()
         if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
+        if branch := self.request.query_params.get("branch"):
+            qs = qs.filter(branch=branch)
         if self.action == "retrieve":
             qs = qs.prefetch_related(
                 "modules__courses__resources", "modules__courses__quiz__questions",

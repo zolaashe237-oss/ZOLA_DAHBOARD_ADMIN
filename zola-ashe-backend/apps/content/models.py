@@ -43,9 +43,32 @@ class VideoSource(models.TextChoices):
     UPLOAD = "UPLOAD", "Fichier hébergé"
 
 
+class Branch(models.TextChoices):
+    GENERALE = "GENERALE", "Générale"
+    FEMME = "FEMME", "Branche Femme"
+    ENFANT = "ENFANT", "Branche Enfant"
+
+
+class Level(models.TextChoices):
+    DEBUTANT = "DEBUTANT", "Débutant"
+    INTERMEDIAIRE = "INTERMEDIAIRE", "Intermédiaire"
+    AVANCE = "AVANCE", "Avancé"
+
+
 class Formation(models.Model):
     """Formation : unité du catalogue, organisée en modules et programmable."""
     title = models.CharField(max_length=200)
+    slug = models.SlugField(blank=True, max_length=220, unique=True)
+    branch = models.CharField(
+        max_length=10,
+        choices=Branch.choices,
+        default=Branch.GENERALE,
+    )
+    level = models.CharField(
+        max_length=15,
+        choices=Level.choices,
+        blank=True,
+    )
     description = models.TextField(blank=True)
     category = models.CharField(max_length=10, choices=Category.choices, default=Category.FORMATION)
     # Accès : liste vide = PUBLIC (tout membre non bloqué) ; ["MEMBRE"] = RÉSERVÉ
@@ -67,7 +90,10 @@ class Formation(models.Model):
     class Meta:
         db_table = "formations"
         ordering = ["category", "order", "id"]
-        indexes = [models.Index(fields=["category", "status"])]
+        indexes = [
+            models.Index(fields=["category", "status"]),
+            models.Index(fields=["branch", "level"], name="formations_branch_level_idx"),
+        ]
 
     def __str__(self):
         return self.title

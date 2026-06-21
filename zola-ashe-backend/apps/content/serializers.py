@@ -92,7 +92,7 @@ class FormationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "cover",
+        fields = ("id", "title", "slug", "branch", "level", "description", "category", "cover",
                   "is_reserved", "locked", "module_count")
 
     def get_cover(self, obj) -> str:
@@ -115,7 +115,7 @@ class FormationDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "cover",
+        fields = ("id", "title", "slug", "branch", "level", "description", "category", "cover",
                   "is_reserved", "locked", "modules", "final_exam")
 
     def _accessible(self, obj) -> bool:
