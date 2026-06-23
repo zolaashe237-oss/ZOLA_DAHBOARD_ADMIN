@@ -100,20 +100,30 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(tags=["Communauté"], summary="Supprimer mon commentaire",
-               description="Suppression logique d'un commentaire, réservée à son auteur.",
-               responses={204: OpenApiResponse(description="Commentaire supprimé.")})
-class CommentDeleteView(generics.DestroyAPIView):
-    """Suppression logique d'un commentaire par son auteur."""
+@extend_schema(tags=["Communauté"], summary="Modifier ou supprimer mon commentaire",
+               description="PATCH : modifie le texte. DELETE : suppression logique. Réservé à l'auteur.",
+               responses={200: CommentSerializer, 204: OpenApiResponse(description="Commentaire supprimé.")})
+class CommentDetailView(generics.GenericAPIView):
+    """Modification (PATCH) et suppression logique (DELETE) d'un commentaire par son auteur."""
     permission_classes = [IsAuthenticated]
     serializer_class = CommentSerializer
+    http_method_names = ["patch", "delete"]
 
     def get_queryset(self):
         return Comment.objects.filter(author=self.request.user, active=True)
 
-    def perform_destroy(self, instance):
-        instance.active = False
-        instance.save(update_fields=["active"])
+    def patch(self, request, *args, **kwargs):
+        comment = self.get_object()
+        serializer = self.get_serializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, *args, **kwargs):
+        comment = self.get_object()
+        comment.active = False
+        comment.save(update_fields=["active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=["Communauté"], summary="Signaler un contenu",

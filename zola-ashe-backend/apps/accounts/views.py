@@ -141,9 +141,16 @@ class VerifyOTPView(generics.GenericAPIView):
         if not ok:
             return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not user.email_verified:
-            user.email_verified = True
-            user.save(update_fields=["email_verified"])
+        if user.email_verified:
+            # Flux 2FA login admin : l'email est déjà vérifié → on émet les tokens.
+            access, refresh = _issue_tokens(user)
+            response = Response({"access": access, "user": UserSerializer(user).data})
+            _set_refresh_cookie(response, refresh)
+            return response
+
+        # Flux activation compte (inscription) : marquer l'email comme vérifié.
+        user.email_verified = True
+        user.save(update_fields=["email_verified"])
         return Response({"detail": "Email vérifié. Vous pouvez vous connecter."})
 
 
@@ -164,7 +171,8 @@ class ResendOTPView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         user = User.objects.filter(email__iexact=serializer.validated_data["email"]).first()
         code = None
-        if user and not user.email_verified:
+        # Autoriser le renvoi pour activation de compte ET pour le 2FA admin.
+        if user and (not user.email_verified or user.role == "ADMIN"):
             code = generate_otp(user)
             send_otp_email.delay(user.email, code, "verification")
         # Réponse neutre : ne révèle pas l'existence du compte.
@@ -218,6 +226,16 @@ class LoginView(generics.GenericAPIView):
                             status=status.HTTP_403_FORBIDDEN)
 
         reset_login_attempts(email)
+
+        # Les comptes admin passent par une 2FA OTP avant d'obtenir les tokens (CDC §5.1).
+        if user.role == "ADMIN":
+            code = generate_otp(user)
+            send_otp_email.delay(user.email, code, "verification")
+            body: dict = {"requires_otp": True, "detail": "Code de vérification envoyé par email."}
+            if settings.EMAIL_MOCK:
+                body["dev_code"] = code
+            return Response(body)
+
         access, refresh = _issue_tokens(user)
         response = Response({"access": access, "user": UserSerializer(user).data})
         _set_refresh_cookie(response, refresh)

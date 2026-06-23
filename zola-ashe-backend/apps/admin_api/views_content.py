@@ -42,13 +42,15 @@ _PostRequest = inline_serializer(
 from apps.audit.models import AuditAction
 from apps.audit.services import record
 from apps.community.models import Post
-from apps.content.models import Course, Formation, FormationStatus, Module, Quiz, QuizResult, Resource
+from apps.content.models import Audio, Course, Formation, FormationStatus, LibraryPdf, Module, Quiz, QuizResult, Resource
 from apps.content.services import generate_signed_url, record_quiz_result
 
 from .permissions import IsAdmin
 from .serializers import (
+    AdminAudioSerializer,
     AdminCourseSerializer,
     AdminFormationSerializer,
+    AdminLibraryPdfSerializer,
     AdminModuleSerializer,
     AdminPostSerializer,
     AdminQuizSerializer,
@@ -614,6 +616,42 @@ class AdminPostCreateView(APIView):
             scheduled_at=data.get("scheduled_at"),
         )
         return Response({"id": post.id}, status=status.HTTP_201_CREATED)
+
+
+# ─── Audiothèque ─────────────────────────────────────────────────────────────
+
+class AdminAudioViewSet(_AuditedContentMixin, viewsets.ModelViewSet):
+    """CRUD de l'audiothèque standalone (méditations, cours audio, contes)."""
+    serializer_class = AdminAudioSerializer
+    permission_classes = [IsAdmin]
+    queryset = Audio.objects.all().order_by("-created_at")
+    audit_target_type = "Audio"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if branche := self.request.query_params.get("branche"):
+            qs = qs.filter(branche=branche)
+        if active := self.request.query_params.get("is_active"):
+            qs = qs.filter(is_active=active.lower() == "true")
+        return qs
+
+
+# ─── Bibliothèque PDF ─────────────────────────────────────────────────────────
+
+class AdminLibraryPdfViewSet(_AuditedContentMixin, viewsets.ModelViewSet):
+    """CRUD de la bibliothèque PDF standalone (guides, livrets, supports)."""
+    serializer_class = AdminLibraryPdfSerializer
+    permission_classes = [IsAdmin]
+    queryset = LibraryPdf.objects.all().order_by("-created_at")
+    audit_target_type = "LibraryPdf"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if branche := self.request.query_params.get("branche"):
+            qs = qs.filter(branche=branche)
+        if active := self.request.query_params.get("is_active"):
+            qs = qs.filter(is_active=active.lower() == "true")
+        return qs
 
 
 class AdminQuizResultPagination(PageNumberPagination):

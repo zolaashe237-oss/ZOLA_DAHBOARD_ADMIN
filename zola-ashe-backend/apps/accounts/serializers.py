@@ -10,9 +10,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "email", "full_name", "photo", "role", "status",
-                  "email_verified", "nb_warnings", "created_at")
+                  "email_verified", "nb_warnings", "access_levels", "created_at")
         read_only_fields = ("id", "email", "role", "status", "email_verified",
-                            "nb_warnings", "created_at")
+                            "nb_warnings", "access_levels", "created_at")
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -20,6 +20,8 @@ class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     password = serializers.CharField(write_only=True)
     password2 = serializers.CharField(write_only=True)
+    phone = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    country = serializers.CharField(max_length=100, required=False, allow_blank=True)
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
@@ -39,6 +41,8 @@ class RegisterSerializer(serializers.Serializer):
             password=validated_data["password"],
             full_name=validated_data["full_name"],
             status=UserStatus.RESTREINT,
+            phone=validated_data.get("phone") or None,
+            country=validated_data.get("country") or None,
         )
 
 

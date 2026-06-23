@@ -8,7 +8,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import Choice, Course, Formation, LiveSession, Module, Question, Quiz, QuizResult, Resource
+from .models import Audio, Choice, Course, Formation, LibraryPdf, LiveSession, Module, Question, Quiz, QuizResult, Resource
 from .services import (
     course_state,
     final_exam_unlocked,
@@ -92,11 +92,16 @@ class FormationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "slug", "branch", "level", "description", "category", "cover",
+        fields = ("id", "title", "description", "category", "cover",
                   "is_reserved", "locked", "module_count")
 
     def get_cover(self, obj) -> str:
-        return generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
+        url = generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
+        if url and url.startswith("/"):
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(url)
+        return url or ""
 
     def get_locked(self, obj) -> bool:
         types = self.context.get("accessible_sub_types")
@@ -115,7 +120,7 @@ class FormationDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "slug", "branch", "level", "description", "category", "cover",
+        fields = ("id", "title", "description", "category", "cover",
                   "is_reserved", "locked", "modules", "final_exam")
 
     def _accessible(self, obj) -> bool:
@@ -200,3 +205,39 @@ class LiveSessionSerializer(serializers.ModelSerializer):
         fields = ("id", "title", "description", "start_at", "duration_minutes",
                   "trainer", "platform", "status", "link", "tags", "created_at")
         read_only_fields = fields
+
+
+class LibraryPdfPublicSerializer(serializers.ModelSerializer):
+    cover = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LibraryPdf
+        fields = ("id", "title", "description", "category", "branche",
+                  "access_level", "cover", "nb_pages", "size_mo",
+                  "is_gratuit", "created_at")
+
+    def get_cover(self, obj) -> str:
+        url = obj.cover_url or ""
+        if url and url.startswith("/"):
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(url)
+        return url
+
+
+class AudioPublicSerializer(serializers.ModelSerializer):
+    cover = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Audio
+        fields = ("id", "title", "description", "category", "branche",
+                  "access_level", "cover", "duration_sec", "size_mo",
+                  "audio_format", "is_gratuit", "created_at")
+
+    def get_cover(self, obj) -> str:
+        url = obj.cover_url or ""
+        if url and url.startswith("/"):
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(url)
+        return url

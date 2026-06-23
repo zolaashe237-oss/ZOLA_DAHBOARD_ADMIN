@@ -9,15 +9,23 @@ from . import views_finance as vf
 from . import views_members as vm
 from . import views_moderation as vmod
 from . import views_progression as vp
+from . import views_community as vcom
 
 router = DefaultRouter()
 router.register("members", vm.MemberViewSet, basename="admin-member")
+router.register("admins", vm.AdminTeamViewSet, basename="admin-team")
 router.register("formations", vc.AdminFormationViewSet, basename="admin-formation")
 router.register("modules", vc.AdminModuleViewSet, basename="admin-module")
 router.register("courses", vc.AdminCourseViewSet, basename="admin-course")
 router.register("resources", vc.AdminResourceViewSet, basename="admin-resource")
 router.register("quizzes", vc.AdminQuizViewSet, basename="admin-quiz")
 router.register("blog", AdminArticleViewSet, basename="admin-blog")
+router.register("audio", vc.AdminAudioViewSet, basename="admin-audio")
+router.register("library", vc.AdminLibraryPdfViewSet, basename="admin-library")
+router.register("lives", vcom.AdminLiveSessionViewSet, basename="admin-lives")
+router.register("plans", vf.AdminSubscriptionPlanViewSet, basename="admin-plans")
+router.register("community/channels", vcom.AdminChannelViewSet, basename="admin-community-channel")
+router.register("community/posts", vcom.AdminCommunityPostViewSet, basename="admin-community-post")
 
 urlpatterns = [
     # Dashboard & finance
@@ -40,7 +48,7 @@ urlpatterns = [
     path("quiz/score/", vc.QuizScoreView.as_view(), name="admin-quiz-score"),
     path("quiz/reset/", vc.ResetQuizView.as_view(), name="admin-quiz-reset"),
 
-    # Communauté : annonces & modération
+    # Communauté : annonces admin (legacy endpoint simple)
     path("posts/", vc.AdminPostCreateView.as_view(), name="admin-post-create"),
     path("posts/<int:pk>/delete/", vmod.AdminDeletePostView.as_view(), name="admin-post-delete"),
     path("comments/<int:pk>/delete/", vmod.AdminDeleteCommentView.as_view(), name="admin-comment-delete"),

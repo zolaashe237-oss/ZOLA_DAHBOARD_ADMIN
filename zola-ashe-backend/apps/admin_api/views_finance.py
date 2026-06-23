@@ -7,7 +7,8 @@ from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers as drf_serializers, status
+from rest_framework import serializers as drf_serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
@@ -15,13 +16,14 @@ from rest_framework.pagination import PageNumberPagination
 from apps.accounts.models import Role, User, UserStatus
 from apps.audit.models import AuditAction
 from apps.audit.services import record
-from apps.billing.models import Payment, PaymentStatus, PaymentType
+from apps.billing.models import Payment, PaymentStatus, PaymentType, SubscriptionPlan
 from apps.billing.services import activate_paid_payment, resolve_plan
 from apps.community.models import Report
 from apps.content.models import QuizResult
 
 from .permissions import IsAdmin
 from .serializers import (
+    AdminSubscriptionPlanSerializer,
     ExonerationSerializer,
     ManualPaymentSerializer,
     RefundSerializer,
@@ -404,3 +406,21 @@ class TransactionListView(APIView):
             
         serializer = TransactionSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+# ─── Plans d'abonnement ───────────────────────────────────────────────────────
+
+class AdminSubscriptionPlanViewSet(viewsets.ModelViewSet):
+    """CRUD + activation/désactivation des plans tarifaires (admin)."""
+    serializer_class = AdminSubscriptionPlanSerializer
+    permission_classes = [IsAdmin]
+    queryset = SubscriptionPlan.objects.all().order_by("billing", "name")
+
+    @action(detail=True, methods=["post"])
+    def toggle(self, request, pk=None):
+        """Bascule l'état actif/inactif d'un plan tarifaire."""
+        plan = self.get_object()
+        plan.is_active = not plan.is_active
+        plan.save(update_fields=["is_active"])
+        return Response(AdminSubscriptionPlanSerializer(plan).data)
+
