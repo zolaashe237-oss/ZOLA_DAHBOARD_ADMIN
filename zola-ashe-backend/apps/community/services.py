@@ -6,7 +6,7 @@ accès. L'audience d'un post reste un libellé optionnel, accessible à tout mem
 """
 from django.db.models import F
 
-from .models import Audience, Like, Post
+from .models import Audience, Comment, CommentLike, Like, Post
 
 
 def _is_active_member(user) -> bool:
@@ -37,6 +37,19 @@ def toggle_like(user, post: Post) -> tuple[bool, int]:
         liked = True
     post.refresh_from_db(fields=["likes_count"])
     return liked, post.likes_count
+
+
+def toggle_comment_like(user, comment: Comment) -> tuple[bool, int]:
+    """Like / unlike d'un commentaire. Retourne (liké?, likes_count à jour)."""
+    like = CommentLike.objects.filter(comment=comment, user=user).first()
+    if like:
+        like.delete()
+        liked = False
+    else:
+        CommentLike.objects.create(comment=comment, user=user)
+        liked = True
+    count = CommentLike.objects.filter(comment=comment).count()
+    return liked, count
 
 
 def share_post(user, origin: Post) -> Post:

@@ -111,9 +111,9 @@ class FormationViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(category=category)
         # Masquer les branches dont l'utilisateur n'a pas l'accès payant
         if "FEMME" not in (user.access_levels or []):
-            qs = qs.exclude(branche="FEMME")
+            qs = qs.exclude(branch="FEMME")
         if "ENFANT" not in (user.access_levels or []):
-            qs = qs.exclude(branche="ENFANT")
+            qs = qs.exclude(branch="ENFANT")
         if self.action == "retrieve":
             qs = qs.prefetch_related(
                 "modules__courses__resources", "modules__courses__quiz__questions",

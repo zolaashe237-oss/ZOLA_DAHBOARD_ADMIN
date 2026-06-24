@@ -69,6 +69,8 @@ class Post(models.Model):
 class Comment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey("accounts.User", on_delete=models.CASCADE, related_name="comments")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies")
     text = models.TextField(max_length=2000)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -86,6 +88,16 @@ class Like(models.Model):
     class Meta:
         db_table = "likes"
         unique_together = ("post", "user")  # like unique par membre (RG-29)
+
+
+class CommentLike(models.Model):
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, related_name="comment_likes")
+    user = models.ForeignKey("accounts.User", on_delete=models.CASCADE, related_name="comment_likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "comment_likes"
+        unique_together = ("comment", "user")
 
 
 class Report(models.Model):

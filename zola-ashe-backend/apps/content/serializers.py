@@ -92,8 +92,8 @@ class FormationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "cover",
-                  "is_reserved", "locked", "module_count")
+        fields = ("id", "slug", "title", "description", "category", "branch", "level",
+                  "cover", "is_reserved", "locked", "module_count")
 
     def get_cover(self, obj) -> str:
         url = generate_signed_url(obj.cover_key) if obj.cover_key else obj.cover_url
@@ -120,8 +120,8 @@ class FormationDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "cover",
-                  "is_reserved", "locked", "modules", "final_exam")
+        fields = ("id", "slug", "title", "description", "category", "branch", "level",
+                  "cover", "is_reserved", "locked", "modules", "final_exam")
 
     def _accessible(self, obj) -> bool:
         types = self.context.get("accessible_sub_types")
@@ -203,7 +203,8 @@ class LiveSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = LiveSession
         fields = ("id", "title", "description", "start_at", "duration_minutes",
-                  "trainer", "platform", "status", "link", "tags", "created_at")
+                  "trainer", "platform", "status", "link", "replay_url",
+                  "branche", "tags", "created_at")
         read_only_fields = fields
 
 

@@ -58,11 +58,21 @@ class VideoSource(models.TextChoices):
     UPLOAD = "UPLOAD", "Fichier hébergé"
 
 
+class LevelChoice(models.TextChoices):
+    DEBUTANT      = "DEBUTANT",      "Débutant"
+    INTERMEDIAIRE = "INTERMEDIAIRE", "Intermédiaire"
+    AVANCE        = "AVANCE",        "Avancé"
+
+
 class Formation(models.Model):
     """Formation : unité du catalogue, organisée en modules et programmable."""
-    title = models.CharField(max_length=200)
+    title       = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    category = models.CharField(max_length=10, choices=Category.choices, default=Category.FORMATION)
+    category    = models.CharField(max_length=10, choices=Category.choices, default=Category.FORMATION)
+    slug        = models.SlugField(max_length=220, unique=True, blank=True)
+    branch      = models.CharField(max_length=10, choices=Branche.choices, default=Branche.GENERALE)
+    level       = models.CharField(max_length=15, choices=LevelChoice.choices, blank=True)
+
     # Accès : liste vide = PUBLIC (tout membre non bloqué) ; ["MEMBRE"] = RÉSERVÉ
     # (membre actif). Codes de billing.SubscriptionType (RG-22).
     access_subscription_types = models.JSONField(default=list, blank=True)
@@ -71,18 +81,21 @@ class Formation(models.Model):
     cover_key = models.CharField(max_length=512, blank=True)  # couverture hébergée (signée)
 
     # Publication programmable (§5.4) : DRAFT → SCHEDULED (publish_at) → PUBLISHED.
-    status = models.CharField(max_length=10, choices=FormationStatus.choices,
-                              default=FormationStatus.DRAFT)
+    status     = models.CharField(max_length=10, choices=FormationStatus.choices,
+                                  default=FormationStatus.DRAFT)
     publish_at = models.DateTimeField(null=True, blank=True)
 
-    order = models.PositiveIntegerField(default=0)
+    order      = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "formations"
         ordering = ["category", "order", "id"]
-        indexes = [models.Index(fields=["category", "status"])]
+        indexes = [
+            models.Index(fields=["category", "status"]),
+            models.Index(fields=["branch", "level"], name="formations_branch_level_idx"),
+        ]
 
     def __str__(self):
         return self.title

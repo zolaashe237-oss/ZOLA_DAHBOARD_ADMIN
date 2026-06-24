@@ -13,10 +13,12 @@ class SubscriptionType(models.TextChoices):
 
 
 class PaymentType(models.TextChoices):
-    INSCRIPTION = "INSCRIPTION", "Droit d'inscription"   # unique, ouvre l'adhésion
-    COTISATION = "COTISATION", "Cotisation mensuelle"    # maintient l'accès
-    DON = "DON", "Don volontaire"                        # facultatif, sans effet d'accès
-    REMBOURSEMENT = "REMBOURSEMENT", "Remboursement"
+    INSCRIPTION    = "INSCRIPTION",    "Droit d'inscription"
+    COTISATION     = "COTISATION",     "Cotisation mensuelle"
+    BRANCHE_FEMME  = "BRANCHE_FEMME",  "Accès espace Femme"
+    BRANCHE_ENFANT = "BRANCHE_ENFANT", "Accès espace Enfant"
+    DON            = "DON",            "Don volontaire"
+    REMBOURSEMENT  = "REMBOURSEMENT",  "Remboursement"
 
 
 class PaymentStatus(models.TextChoices):
@@ -58,3 +60,34 @@ class Payment(models.Model):
     class Meta:
         db_table = "payments"
         indexes = [models.Index(fields=["user", "type", "status"])]
+
+
+class SubscriptionPlan(models.Model):
+    """Catalogue des offres d'abonnement/accès (tarifs, nombre de tranches, niveaux).
+    Seeded via migration 0006. Permet de configurer les prix sans redéploiement."""
+
+    class BillingCycle(models.TextChoices):
+        ANNUEL   = "ANNUEL",   "Annuel (paiement unique)"
+        TRANCHES = "TRANCHES", "En tranches mensuelles"
+        MENSUEL  = "MENSUEL",  "Mensuel (renouvellement automatique)"
+
+    kind           = models.CharField(max_length=20, choices=PaymentType.choices,
+                                      unique=True, db_index=True)
+    name           = models.CharField(max_length=200)
+    billing        = models.CharField(max_length=10, choices=BillingCycle.choices)
+    price_total    = models.IntegerField(default=0)
+    nb_tranches    = models.PositiveIntegerField(default=1)
+    tranche_amount = models.IntegerField(null=True, blank=True)
+    description    = models.TextField(blank=True)
+    is_active      = models.BooleanField(default=True)
+    access_levels  = models.JSONField(default=list)   # ex. ["FEMME"]
+    formation_ids  = models.JSONField(default=list)   # formations associées au plan
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "subscription_plans"
+        ordering = ["billing", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.kind})"

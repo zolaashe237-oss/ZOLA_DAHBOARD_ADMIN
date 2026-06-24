@@ -158,13 +158,16 @@ def _validate_access_types(value):
 
 class AdminFormationSerializer(serializers.ModelSerializer):
     module_count = serializers.SerializerMethodField()
-    cover_url = serializers.SerializerMethodField()
+    cover_url    = serializers.SerializerMethodField()
+    # Nommage frontend admin : branche/niveau mappés sur les champs DB branch/level
+    branche = serializers.CharField(source="branch", allow_blank=True, required=False)
+    niveau  = serializers.CharField(source="level",  allow_blank=True, required=False)
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "access_subscription_types",
-                  "cover_url", "cover_key", "status", "publish_at", "order",
-                  "module_count", "created_at", "updated_at")
+        fields = ("id", "title", "description", "category", "branche", "niveau",
+                  "access_subscription_types", "cover_url", "cover_key",
+                  "status", "publish_at", "order", "module_count", "created_at", "updated_at")
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_module_count(self, obj) -> int:
@@ -498,6 +501,7 @@ class AdminLibraryPdfSerializer(serializers.ModelSerializer):
 
 class AdminLiveSessionSerializer(serializers.ModelSerializer):
     scheduled_at = serializers.DateTimeField(source="start_at")
+    replay_url   = serializers.URLField(allow_blank=True, allow_null=True, required=False)
 
     class Meta:
         model = LiveSession
@@ -505,6 +509,10 @@ class AdminLiveSessionSerializer(serializers.ModelSerializer):
                   "trainer", "platform", "status", "link", "replay_url",
                   "branche", "tags", "created_at", "updated_at")
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_replay_url(self, value):
+        # DB column is NOT NULL (blank=True) — convert None to empty string
+        return value if value is not None else ""
 
 
 # ─── Canaux communautaires ────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
-"""Tâches asynchrones billing — cron de statut et emails Brevo (RG-02/03/07)."""
+"""Tâches asynchrones billing — cron de statut et emails (RG-02/03/07)."""
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
+from django.template.loader import render_to_string
+from django.utils import timezone
 
 from config.celery import app
 
@@ -14,21 +16,42 @@ def daily_status_check():
 
 
 @app.task
-def send_confirmation_email(email: str, kind: str):
-    """Confirme un paiement validé."""
+def send_confirmation_email(email: str, kind: str,
+                             full_name: str = "", amount: int | None = None):
+    """Envoie l'email de confirmation de paiement (HTML + texte brut)."""
     labels = {
         "INSCRIPTION": "votre adhésion à la communauté",
         "COTISATION": "votre cotisation mensuelle",
         "DON": "votre don à la communauté",
+        "BRANCHE_FEMME": "votre accès Branche Femme",
+        "BRANCHE_ENFANT": "votre accès Branche Enfant",
     }
     libelle = labels.get(kind, "votre paiement")
-    send_mail(
-        subject="ZOLA ASHÉ — Paiement confirmé",
-        message=f"Nous confirmons {libelle}. Merci de votre confiance.",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        fail_silently=False,
+
+    now = timezone.now()
+    ctx = {
+        "kind": kind,
+        "full_name": full_name,
+        "amount": amount,
+        "date": now.strftime("%d/%m/%Y"),
+        "web_base_url": settings.WEB_BASE_URL,
+        "year": now.year,
+    }
+    html = render_to_string("emails/payment_confirmation.html", ctx)
+    plain = (
+        f"Bonjour{' ' + full_name if full_name else ''},\n\n"
+        f"Nous confirmons {libelle}. Merci de votre confiance.\n\n"
+        f"Accédez à votre espace : {settings.WEB_BASE_URL}/espace-membre"
     )
+
+    msg = EmailMultiAlternatives(
+        subject="ZOLA ASHÉ — Paiement confirmé",
+        body=plain,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=False)
     return f"confirmation sent: {email} ({kind})"
 
 
