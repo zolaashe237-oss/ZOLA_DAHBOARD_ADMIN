@@ -292,7 +292,6 @@ export const MOCK_TRANSACTIONS: Transaction[] = [
 export const MOCK_PLANS: SubscriptionPlan[] = [
   {
     id: 1,
-    kind: "INSCRIPTION",
     name: "Espace Membre — Annuel",
     billing: "ANNUEL",
     price_total: 47500,
@@ -307,7 +306,6 @@ export const MOCK_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 2,
-    kind: "COTISATION",
     name: "Espace Membre — En tranches",
     billing: "TRANCHES",
     price_total: 60000,
@@ -322,7 +320,6 @@ export const MOCK_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 3,
-    kind: "BRANCHE_FEMME",
     name: "Accès espace Femme",
     billing: "ANNUEL",
     price_total: 25000,
@@ -337,7 +334,6 @@ export const MOCK_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 4,
-    kind: "BRANCHE_ENFANT",
     name: "Accès espace Enfant",
     billing: "ANNUEL",
     price_total: 20000,
@@ -352,7 +348,6 @@ export const MOCK_PLANS: SubscriptionPlan[] = [
   },
   {
     id: 5,
-    kind: "DON",
     name: "Don volontaire",
     billing: "MENSUEL",
     price_total: 0,
