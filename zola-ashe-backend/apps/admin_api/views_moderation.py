@@ -9,6 +9,7 @@ from apps.audit.models import AuditAction, AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.audit.services import record
 from apps.community.models import Comment, Like, Post, Report
+from apps.community.tasks import send_moderation_notification
 
 from .permissions import IsAdmin
 
@@ -80,7 +81,7 @@ class AdminDeletePostView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, pk=None):
-        post = Post.objects.filter(id=pk).first()
+        post = Post.objects.select_related("author").filter(id=pk).first()
         if post is None:
             return Response({"detail": "Publication introuvable."}, status=status.HTTP_404_NOT_FOUND)
         reason = request.data.get("reason", "")
@@ -90,7 +91,7 @@ class AdminDeletePostView(APIView):
         Comment.objects.filter(post=post).update(active=False)
         Like.objects.filter(post=post).delete()
         record(request.user, AuditAction.DELETE_POST, target_type="Post", target_id=post.id, reason=reason)
-        # TODO : notifier l'auteur du motif (email/in-app).
+        send_moderation_notification.delay(post.author.email, "post", reason)
         return Response({"detail": "Publication supprimée."})
 
 
@@ -101,7 +102,7 @@ class AdminDeleteCommentView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, pk=None):
-        comment = Comment.objects.filter(id=pk).first()
+        comment = Comment.objects.select_related("author").filter(id=pk).first()
         if comment is None:
             return Response({"detail": "Commentaire introuvable."}, status=status.HTTP_404_NOT_FOUND)
         reason = request.data.get("reason", "")
@@ -109,13 +110,19 @@ class AdminDeleteCommentView(APIView):
         comment.save(update_fields=["active"])
         record(request.user, AuditAction.DELETE_COMMENT, target_type="Comment",
                target_id=comment.id, reason=reason)
+        send_moderation_notification.delay(comment.author.email, "commentaire", reason)
         return Response({"detail": "Commentaire supprimé."})
 
 
 @extend_schema(tags=[_TAG], summary="Journal d'audit",
                description="Consultation en lecture seule du journal d'audit (append-only), "
-                           "filtrable par `?action=` et `?actor=`.",
-               parameters=[OpenApiParameter("action", str), OpenApiParameter("actor", int)])
+                           "filtrable par `?action=`, `?actor=`, `?date_from=` et `?date_to=`.",
+               parameters=[
+                   OpenApiParameter("action", str),
+                   OpenApiParameter("actor", int),
+                   OpenApiParameter("date_from", str, description="YYYY-MM-DD"),
+                   OpenApiParameter("date_to", str, description="YYYY-MM-DD (inclus)"),
+               ])
 class AuditLogListView(generics.ListAPIView):
     """Consultation du journal d'audit (lecture seule, filtrable)."""
     permission_classes = [IsAdmin]
@@ -128,4 +135,8 @@ class AuditLogListView(generics.ListAPIView):
             qs = qs.filter(action=action)
         if actor := params.get("actor"):
             qs = qs.filter(actor_id=actor)
+        if date_from := params.get("date_from"):
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to := params.get("date_to"):
+            qs = qs.filter(created_at__date__lte=date_to)
         return qs

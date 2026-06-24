@@ -5,11 +5,15 @@ from rest_framework import serializers
 
 from apps.accounts.models import User
 from apps.billing.serializers import PaymentSerializer, SubscriptionSerializer
-from apps.billing.models import Payment, PaymentType, PaymentStatus
+from apps.billing.models import Payment, PaymentType, PaymentStatus, SubscriptionPlan
+from apps.community.models import CommunityChannel, Post
 from apps.content.models import (
+    Audio,
     Choice,
     Course,
     Formation,
+    LibraryPdf,
+    LiveSession,
     Module,
     Question,
     Quiz,
@@ -154,13 +158,16 @@ def _validate_access_types(value):
 
 class AdminFormationSerializer(serializers.ModelSerializer):
     module_count = serializers.SerializerMethodField()
-    cover_url = serializers.SerializerMethodField()
+    cover_url    = serializers.SerializerMethodField()
+    # Nommage frontend admin : branche/niveau mappés sur les champs DB branch/level
+    branche = serializers.CharField(source="branch", allow_blank=True, required=False)
+    niveau  = serializers.CharField(source="level",  allow_blank=True, required=False)
 
     class Meta:
         model = Formation
-        fields = ("id", "title", "description", "category", "access_subscription_types",
-                  "cover_url", "cover_key", "status", "publish_at", "order",
-                  "module_count", "created_at", "updated_at")
+        fields = ("id", "title", "description", "category", "branche", "niveau",
+                  "access_subscription_types", "cover_url", "cover_key",
+                  "status", "publish_at", "order", "module_count", "created_at", "updated_at")
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_module_count(self, obj) -> int:
@@ -440,3 +447,160 @@ class MemberProgressEntrySerializer(serializers.Serializer):
     quiz_score = serializers.FloatField(allow_null=True)
     last_activity = serializers.DateTimeField(allow_null=True)
     completed = serializers.BooleanField()
+
+
+# ─── Audio standalone ────────────────────────────────────────────────────────
+
+class AdminAudioSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Audio
+        fields = ("id", "title", "description", "category", "branche", "access_level",
+                  "bucket_key", "file_url", "cover_url", "duration_sec", "size_mo",
+                  "audio_format", "is_active", "is_gratuit", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_file_url(self, obj) -> str | None:
+        if not obj.bucket_key:
+            return None
+        from apps.content.services import generate_signed_url
+        url = generate_signed_url(obj.bucket_key)
+        if url and url.startswith("/"):
+            request = self.context.get("request")
+            if request:
+                url = request.build_absolute_uri(url)
+        return url
+
+
+# ─── Bibliothèque PDF standalone ─────────────────────────────────────────────
+
+class AdminLibraryPdfSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LibraryPdf
+        fields = ("id", "title", "description", "category", "branche", "access_level",
+                  "bucket_key", "file_url", "cover_url", "nb_pages", "size_mo",
+                  "is_active", "is_gratuit", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_file_url(self, obj) -> str | None:
+        if not obj.bucket_key:
+            return None
+        from apps.content.services import generate_signed_url
+        url = generate_signed_url(obj.bucket_key)
+        if url and url.startswith("/"):
+            request = self.context.get("request")
+            if request:
+                url = request.build_absolute_uri(url)
+        return url
+
+
+# ─── Sessions en direct (admin) ───────────────────────────────────────────────
+
+class AdminLiveSessionSerializer(serializers.ModelSerializer):
+    scheduled_at = serializers.DateTimeField(source="start_at")
+    replay_url   = serializers.URLField(allow_blank=True, allow_null=True, required=False)
+
+    class Meta:
+        model = LiveSession
+        fields = ("id", "title", "description", "scheduled_at", "duration_minutes",
+                  "trainer", "platform", "status", "link", "replay_url",
+                  "branche", "tags", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_replay_url(self, value):
+        # DB column is NOT NULL (blank=True) — convert None to empty string
+        return value if value is not None else ""
+
+
+# ─── Canaux communautaires ────────────────────────────────────────────────────
+
+class AdminChannelSerializer(serializers.ModelSerializer):
+    post_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommunityChannel
+        fields = ("id", "name", "slug", "description", "branche", "color",
+                  "is_active", "post_count", "created_at")
+        read_only_fields = ("id", "created_at")
+
+    def get_post_count(self, obj) -> int:
+        return obj.posts.filter(active=True).count()
+
+
+# ─── Posts communauté (admin) ─────────────────────────────────────────────────
+
+class AdminCommunityPostSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.full_name", read_only=True)
+    author_email = serializers.CharField(source="author.email", read_only=True)
+    channel_name = serializers.SerializerMethodField()
+    body = serializers.CharField(source="text", required=False, allow_blank=True)
+    status = serializers.CharField(source="post_status")
+    comment_count = serializers.SerializerMethodField()
+    report_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Post
+        fields = ("id", "author_name", "author_email", "channel", "channel_name",
+                  "type", "title", "body", "is_pinned", "is_announcement",
+                  "status", "comment_count", "report_count",
+                  "created_at", "updated_at")
+        read_only_fields = ("id", "author_name", "author_email", "channel_name",
+                            "comment_count", "report_count", "created_at", "updated_at")
+
+    def get_channel_name(self, obj) -> str | None:
+        return obj.channel.name if obj.channel else None
+
+    def get_comment_count(self, obj) -> int:
+        return obj.comments.filter(active=True).count()
+
+    def get_report_count(self, obj) -> int:
+        from apps.community.models import Report
+        return Report.objects.filter(target_type="POST", target_id=obj.id).count()
+
+
+# ─── Plans d'abonnement ───────────────────────────────────────────────────────
+
+class AdminSubscriptionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPlan
+        fields = ("id", "kind", "name", "billing", "price_total", "nb_tranches",
+                  "tranche_amount", "description", "is_active",
+                  "access_levels", "formation_ids", "created_at", "updated_at")
+        read_only_fields = ("id", "kind", "created_at", "updated_at")
+
+
+# ─── Équipe admin ─────────────────────────────────────────────────────────────
+
+class AdminTeamSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=False)
+
+    class Meta:
+        model = User
+        fields = ("id", "email", "full_name", "photo", "role", "status",
+                  "email_verified", "is_active", "created_at", "last_login",
+                  "password")
+        read_only_fields = ("id", "created_at", "last_login", "email_verified")
+
+    def create(self, validated_data):
+        from apps.accounts.models import Role
+        password = validated_data.pop("password", None)
+        validated_data["role"] = Role.ADMIN
+        validated_data["email_verified"] = True
+        user = User.objects.create(**validated_data)
+        if password:
+            user.set_password(password)
+            user.save(update_fields=["password"])
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
+        return instance

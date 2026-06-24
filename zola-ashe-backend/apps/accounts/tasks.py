@@ -1,6 +1,8 @@
 """Tâches asynchrones de l'app accounts — envois d'emails via Brevo (CDC §3.3)."""
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils import timezone
 
 from config.celery import app
 
@@ -11,25 +13,35 @@ def send_otp_email(email: str, code: str, purpose: str = "verification"):
 
     purpose : 'verification' (activation compte) ou 'reset' (mot de passe oublié).
     """
+    ctx = {
+        "code": code,
+        "ttl": settings.OTP_TTL_MINUTES,
+        "year": timezone.now().year,
+    }
+
     if purpose == "reset":
         subject = "ZOLA ASHÉ — Réinitialisation de votre mot de passe"
-        body = (
+        template = "emails/otp_reset.html"
+        plain = (
             f"Votre code de réinitialisation est : {code}\n"
             f"Il expire dans {settings.OTP_TTL_MINUTES} minutes.\n\n"
             "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email."
         )
     else:
         subject = "ZOLA ASHÉ — Activez votre compte"
-        body = (
+        template = "emails/otp_verification.html"
+        plain = (
             f"Bienvenue ! Votre code de vérification est : {code}\n"
             f"Il expire dans {settings.OTP_TTL_MINUTES} minutes."
         )
 
-    send_mail(
+    html = render_to_string(template, ctx)
+    msg = EmailMultiAlternatives(
         subject=subject,
-        message=body,
+        body=plain,
         from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        fail_silently=False,
+        to=[email],
     )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=False)
     return f"otp email sent: {email} ({purpose})"

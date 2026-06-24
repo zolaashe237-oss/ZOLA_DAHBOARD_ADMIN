@@ -17,6 +17,21 @@ from django.db import models
 from django.utils import timezone
 
 
+class Branche(models.TextChoices):
+    """Branche cible d'un contenu (utilisée par Audio, LibraryPdf, LiveSession)."""
+    GENERALE = "GENERALE", "Générale"
+    FEMME = "FEMME", "Femmes"
+    ENFANT = "ENFANT", "Enfants"
+
+
+class AccessLevel(models.TextChoices):
+    """Niveau d'accès requis pour un contenu standalone (Audio, LibraryPdf)."""
+    PUBLIC = "PUBLIC", "Public"
+    MEMBRE = "MEMBRE", "Membres"
+    FEMME = "FEMME", "Femmes"
+    ENFANT = "ENFANT", "Enfants"
+
+
 class Category(models.TextChoices):
     """Catégorie de catalogue (rangement, sans effet d'accès)."""
     LIVRE = "LIVRE", "Livre"
@@ -43,34 +58,21 @@ class VideoSource(models.TextChoices):
     UPLOAD = "UPLOAD", "Fichier hébergé"
 
 
-class Branch(models.TextChoices):
-    GENERALE = "GENERALE", "Générale"
-    FEMME = "FEMME", "Branche Femme"
-    ENFANT = "ENFANT", "Branche Enfant"
-
-
-class Level(models.TextChoices):
-    DEBUTANT = "DEBUTANT", "Débutant"
+class LevelChoice(models.TextChoices):
+    DEBUTANT      = "DEBUTANT",      "Débutant"
     INTERMEDIAIRE = "INTERMEDIAIRE", "Intermédiaire"
-    AVANCE = "AVANCE", "Avancé"
+    AVANCE        = "AVANCE",        "Avancé"
 
 
 class Formation(models.Model):
     """Formation : unité du catalogue, organisée en modules et programmable."""
-    title = models.CharField(max_length=200)
-    slug = models.SlugField(blank=True, max_length=220, unique=True)
-    branch = models.CharField(
-        max_length=10,
-        choices=Branch.choices,
-        default=Branch.GENERALE,
-    )
-    level = models.CharField(
-        max_length=15,
-        choices=Level.choices,
-        blank=True,
-    )
+    title       = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    category = models.CharField(max_length=10, choices=Category.choices, default=Category.FORMATION)
+    category    = models.CharField(max_length=10, choices=Category.choices, default=Category.FORMATION)
+    slug        = models.SlugField(max_length=220, unique=True, blank=True)
+    branch      = models.CharField(max_length=10, choices=Branche.choices, default=Branche.GENERALE)
+    level       = models.CharField(max_length=15, choices=LevelChoice.choices, blank=True)
+
     # Accès : liste vide = PUBLIC (tout membre non bloqué) ; ["MEMBRE"] = RÉSERVÉ
     # (membre actif). Codes de billing.SubscriptionType (RG-22).
     access_subscription_types = models.JSONField(default=list, blank=True)
@@ -79,11 +81,11 @@ class Formation(models.Model):
     cover_key = models.CharField(max_length=512, blank=True)  # couverture hébergée (signée)
 
     # Publication programmable (§5.4) : DRAFT → SCHEDULED (publish_at) → PUBLISHED.
-    status = models.CharField(max_length=10, choices=FormationStatus.choices,
-                              default=FormationStatus.DRAFT)
+    status     = models.CharField(max_length=10, choices=FormationStatus.choices,
+                                  default=FormationStatus.DRAFT)
     publish_at = models.DateTimeField(null=True, blank=True)
 
-    order = models.PositiveIntegerField(default=0)
+    order      = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -267,23 +269,26 @@ class QuizResult(models.Model):
 class LiveSession(models.Model):
     """Session en direct ou replay (méditations collectives, webinaires, cercles)."""
     class Platform(models.TextChoices):
-        YOUTUBE = "YouTube", "YouTube Live"
-        ZOOM = "Zoom", "Zoom Meeting"
-        MEET = "Meet", "Google Meet"
+        YOUTUBE = "YOUTUBE", "YouTube Live"
+        ZOOM = "ZOOM", "Zoom Meeting"
+        MEET = "MEET", "Google Meet"
+        TEAMS = "TEAMS", "Microsoft Teams"
 
     class Status(models.TextChoices):
-        UPCOMING = "upcoming", "À venir"
-        LIVE = "live", "En cours"
-        REPLAY = "replay", "Replay"
+        PLANIFIE = "PLANIFIE", "Planifié"
+        EN_COURS = "EN_COURS", "En cours"
+        TERMINE = "TERMINE", "Terminé"
 
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     start_at = models.DateTimeField()
     duration_minutes = models.PositiveIntegerField(default=60)
     trainer = models.CharField(max_length=150, default="Coach Rodrigue DOUANLA")
-    platform = models.CharField(max_length=10, choices=Platform.choices, default=Platform.YOUTUBE)
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.UPCOMING)
+    platform = models.CharField(max_length=10, choices=Platform.choices, default=Platform.ZOOM)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PLANIFIE)
     link = models.URLField(blank=True, max_length=512)
+    replay_url = models.URLField(blank=True, max_length=512)
+    branche = models.CharField(max_length=10, choices=Branche.choices, default=Branche.GENERALE)
     tags = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -291,6 +296,55 @@ class LiveSession(models.Model):
     class Meta:
         db_table = "live_sessions"
         ordering = ["status", "-start_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class Audio(models.Model):
+    """Contenu audio standalone de l'audiothèque (méditations, cours, contes)."""
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=100, blank=True)
+    branche = models.CharField(max_length=10, choices=Branche.choices, default=Branche.GENERALE)
+    access_level = models.CharField(max_length=10, choices=AccessLevel.choices, default=AccessLevel.PUBLIC)
+    bucket_key = models.CharField(max_length=512, blank=True)
+    cover_url = models.URLField(blank=True)
+    duration_sec = models.PositiveIntegerField(null=True, blank=True)
+    size_mo = models.FloatField(null=True, blank=True)
+    audio_format = models.CharField(max_length=10, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_gratuit = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "audio_items"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class LibraryPdf(models.Model):
+    """PDF standalone de la bibliothèque (guides, livrets, supports)."""
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    category = models.CharField(max_length=100, blank=True)
+    branche = models.CharField(max_length=10, choices=Branche.choices, default=Branche.GENERALE)
+    access_level = models.CharField(max_length=10, choices=AccessLevel.choices, default=AccessLevel.PUBLIC)
+    bucket_key = models.CharField(max_length=512, blank=True)
+    cover_url = models.URLField(blank=True)
+    nb_pages = models.PositiveIntegerField(null=True, blank=True)
+    size_mo = models.FloatField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_gratuit = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "library_pdfs"
+        ordering = ["-created_at"]
 
     def __str__(self):
         return self.title

@@ -3,11 +3,12 @@ import csv
 from datetime import timedelta
 
 from django.db.models import Sum, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers as drf_serializers, status
+from rest_framework import serializers as drf_serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
@@ -15,13 +16,14 @@ from rest_framework.pagination import PageNumberPagination
 from apps.accounts.models import Role, User, UserStatus
 from apps.audit.models import AuditAction
 from apps.audit.services import record
-from apps.billing.models import Payment, PaymentStatus, PaymentType
+from apps.billing.models import Payment, PaymentStatus, PaymentType, SubscriptionPlan
 from apps.billing.services import activate_paid_payment, resolve_plan
 from apps.community.models import Report
 from apps.content.models import QuizResult
 
 from .permissions import IsAdmin
 from .serializers import (
+    AdminSubscriptionPlanSerializer,
     ExonerationSerializer,
     ManualPaymentSerializer,
     RefundSerializer,
@@ -154,60 +156,74 @@ class ExonerationView(APIView):
         return Response({"payment_id": payment.id}, status=status.HTTP_201_CREATED)
 
 
+class _Echo:
+    """Pseudo-buffer pour csv.writer : retourne chaque ligne plutôt que la stocker."""
+    def write(self, value):
+        return value
+
+
 @extend_schema(tags=[_TAG], summary="Exporter les membres (CSV)",
-               description="Télécharge la liste des membres au format CSV. Action journalisée.",
+               description="Télécharge la liste des membres au format CSV (streaming). Action journalisée.",
                responses={200: OpenApiResponse(OpenApiTypes.BINARY, description="Fichier CSV.")})
 class ExportMembersView(APIView):
-    """Export CSV de la liste des membres (CDC §5.3) — journalisé."""
+    """Export CSV streamé des membres (CDC §5.3) — aucune mise en mémoire complète."""
     permission_classes = [IsAdmin]
 
     def get(self, request):
         record(request.user, AuditAction.EXPORT_DATA, target_type="User", reason="Export membres CSV")
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = 'attachment; filename="membres.csv"'
-        writer = csv.writer(response)
-        writer.writerow(["id", "email", "nom", "statut", "verifie", "avertissements", "inscrit_le"])
-        
+
         qs = User.objects.filter(role=Role.MEMBER).order_by("id")
         date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
+        date_to   = request.query_params.get("date_to")
         if date_from:
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to:
             qs = qs.filter(created_at__date__lte=date_to)
 
-        for u in qs:
-            writer.writerow([u.id, u.email, u.full_name, u.status, u.email_verified,
-                             u.nb_warnings, u.created_at.date()])
+        writer = csv.writer(_Echo())
+
+        def generate():
+            yield writer.writerow(["id", "email", "nom", "statut", "verifie",
+                                   "avertissements", "inscrit_le"])
+            for u in qs.iterator(chunk_size=500):
+                yield writer.writerow([u.id, u.email, u.full_name, u.status,
+                                       u.email_verified, u.nb_warnings, u.created_at.date()])
+
+        response = StreamingHttpResponse(generate(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="membres.csv"'
         return response
 
 
 @extend_schema(tags=[_TAG], summary="Exporter les paiements (CSV)",
-               description="Télécharge l'ensemble des paiements au format CSV. Action journalisée.",
+               description="Télécharge l'ensemble des paiements au format CSV (streaming). Action journalisée.",
                responses={200: OpenApiResponse(OpenApiTypes.BINARY, description="Fichier CSV.")})
 class ExportPaymentsView(APIView):
-    """Export CSV des paiements (CDC §5.7) — journalisé."""
+    """Export CSV streamé des paiements (CDC §5.7) — aucune mise en mémoire complète."""
     permission_classes = [IsAdmin]
 
     def get(self, request):
         record(request.user, AuditAction.EXPORT_DATA, target_type="Payment", reason="Export paiements CSV")
-        response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = 'attachment; filename="paiements.csv"'
-        writer = csv.writer(response)
-        writer.writerow(["id", "membre", "type", "statut", "montant", "swinmo_ref", "date"])
-        
+
         qs = Payment.objects.select_related("user").order_by("id")
         date_from = request.query_params.get("date_from")
-        date_to = request.query_params.get("date_to")
+        date_to   = request.query_params.get("date_to")
         if date_from:
             qs = qs.filter(paid_at__date__gte=date_from)
         if date_to:
             qs = qs.filter(paid_at__date__lte=date_to)
 
-        for p in qs:
-            email = p.user.email if p.user else "Compte anonymisé"
-            writer.writerow([p.id, email, p.type, p.status, p.amount,
-                             p.swinmo_ref or "", p.paid_at])
+        writer = csv.writer(_Echo())
+
+        def generate():
+            yield writer.writerow(["id", "membre", "type", "statut", "montant",
+                                   "swinmo_ref", "date"])
+            for p in qs.iterator(chunk_size=500):
+                email = p.user.email if p.user else "Compte anonymisé"
+                yield writer.writerow([p.id, email, p.type, p.status, p.amount,
+                                       p.swinmo_ref or "", p.paid_at])
+
+        response = StreamingHttpResponse(generate(), content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="paiements.csv"'
         return response
 
 
@@ -304,14 +320,41 @@ class LateCotisationsView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        late_threshold = timezone.now() - timedelta(days=30)
-        users = []
+        from django.conf import settings
+        now = timezone.now()
+        late_threshold = now - timedelta(days=30)
+
+        # Prix d'une cotisation mensuelle (fallback settings si pas de plan actif)
+        try:
+            plan = SubscriptionPlan.objects.get(kind="COTISATION", is_active=True)
+            unit_price = plan.tranche_amount or plan.price_total
+        except SubscriptionPlan.DoesNotExist:
+            unit_price = getattr(settings, "PRICE_COTISATION", 10000)
+
+        results = []
         for user in User.objects.filter(role=Role.MEMBER, status=UserStatus.ACTIF):
-            last = Payment.objects.filter(user=user, type=PaymentType.COTISATION, status=PaymentStatus.VALIDE).order_by("-paid_at").first()
+            last = (
+                Payment.objects
+                .filter(user=user, type=PaymentType.COTISATION, status=PaymentStatus.VALIDE)
+                .order_by("-paid_at")
+                .first()
+            )
             if last is None or last.paid_at < late_threshold:
-                users.append(user)
-        serializer = MemberListSerializer(users, many=True)
-        return Response(serializer.data)
+                if last is None:
+                    # Jamais payé — retard depuis la date d'inscription
+                    delta_days = (now - user.created_at).days
+                else:
+                    delta_days = (now - last.paid_at).days
+
+                months_late = max(1, delta_days // 30)
+                amount_due  = months_late * unit_price
+
+                data = MemberListSerializer(user).data
+                data["months_late"] = months_late
+                data["amount_due"]  = amount_due
+                results.append(data)
+
+        return Response(results)
 
 
 class TransactionKpisView(APIView):
@@ -404,3 +447,21 @@ class TransactionListView(APIView):
             
         serializer = TransactionSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+# ─── Plans d'abonnement ───────────────────────────────────────────────────────
+
+class AdminSubscriptionPlanViewSet(viewsets.ModelViewSet):
+    """CRUD + activation/désactivation des plans tarifaires (admin)."""
+    serializer_class = AdminSubscriptionPlanSerializer
+    permission_classes = [IsAdmin]
+    queryset = SubscriptionPlan.objects.all().order_by("billing", "name")
+
+    @action(detail=True, methods=["post"])
+    def toggle(self, request, pk=None):
+        """Bascule l'état actif/inactif d'un plan tarifaire."""
+        plan = self.get_object()
+        plan.is_active = not plan.is_active
+        plan.save(update_fields=["is_active"])
+        return Response(AdminSubscriptionPlanSerializer(plan).data)
+

@@ -8,7 +8,8 @@ router = DefaultRouter()
 router.register("posts", views.PostViewSet, basename="post")
 
 urlpatterns = [
-    path("comments/<int:pk>/", views.CommentDeleteView.as_view(), name="comment-delete"),
+    path("comments/<int:pk>/", views.CommentDetailView.as_view(), name="comment-detail"),
+    path("comments/<int:pk>/like/", views.CommentLikeView.as_view(), name="comment-like"),
     path("reports/", views.ReportCreateView.as_view(), name="report-create"),
     *router.urls,
 ]

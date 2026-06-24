@@ -8,9 +8,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Audience, Comment, Like, Post, Report
+from .models import Audience, Comment, CommentLike, Like, Post, Report
 from .serializers import CommentSerializer, PostSerializer, ReportSerializer
-from .services import accessible_audiences, can_access_audience, share_post, toggle_like
+from .services import accessible_audiences, can_access_audience, share_post, toggle_comment_like, toggle_like
 
 _LikeResponse = inline_serializer(
     name="LikeResponse",
@@ -86,34 +86,73 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(PostSerializer(shared, context=ctx).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(tags=["Communauté"], summary="Commentaires d'une publication",
-                   description="GET : liste les commentaires actifs. POST : ajoute un commentaire.",
+                   description="GET : liste les commentaires actifs avec likes. POST : ajoute un commentaire.",
                    request=CommentSerializer, responses={200: CommentSerializer(many=True)})
     @action(detail=True, methods=["get", "post"])
     def comments(self, request, pk=None):
         post = self.get_object()
         if request.method == "GET":
-            qs = post.comments.filter(active=True).select_related("author")
-            return Response(CommentSerializer(qs, many=True).data)
-        serializer = CommentSerializer(data=request.data)
+            user = request.user
+            my_likes = CommentLike.objects.filter(comment=OuterRef("pk"), user=user)
+            qs = (
+                post.comments.filter(active=True)
+                .select_related("author")
+                .annotate(
+                    liked_by_me_annot=Exists(my_likes),
+                    likes_count_annot=Count("comment_likes"),
+                )
+            )
+            ctx = self.get_serializer_context()
+            return Response(CommentSerializer(qs, many=True, context=ctx).data)
+        serializer = CommentSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         serializer.save(post=post, author=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(tags=["Communauté"], summary="Supprimer mon commentaire",
-               description="Suppression logique d'un commentaire, réservée à son auteur.",
-               responses={204: OpenApiResponse(description="Commentaire supprimé.")})
-class CommentDeleteView(generics.DestroyAPIView):
-    """Suppression logique d'un commentaire par son auteur."""
+@extend_schema(tags=["Communauté"], summary="Modifier ou supprimer mon commentaire",
+               description="PATCH : modifie le texte. DELETE : suppression logique. Réservé à l'auteur.",
+               responses={200: CommentSerializer, 204: OpenApiResponse(description="Commentaire supprimé.")})
+class CommentDetailView(generics.GenericAPIView):
+    """Modification (PATCH) et suppression logique (DELETE) d'un commentaire par son auteur."""
     permission_classes = [IsAuthenticated]
     serializer_class = CommentSerializer
+    http_method_names = ["patch", "delete"]
 
     def get_queryset(self):
         return Comment.objects.filter(author=self.request.user, active=True)
 
-    def perform_destroy(self, instance):
-        instance.active = False
-        instance.save(update_fields=["active"])
+    def patch(self, request, *args, **kwargs):
+        comment = self.get_object()
+        serializer = self.get_serializer(comment, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, *args, **kwargs):
+        comment = self.get_object()
+        comment.active = False
+        comment.save(update_fields=["active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+_CommentLikeResponse = inline_serializer(
+    name="CommentLikeResponse",
+    fields={"liked": drf_serializers.BooleanField(), "likes_count": drf_serializers.IntegerField()})
+
+
+@extend_schema(tags=["Communauté"], summary="Aimer / ne plus aimer un commentaire", request=None,
+               responses={200: _CommentLikeResponse, 404: OpenApiResponse(description="Commentaire introuvable.")})
+class CommentLikeView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = CommentSerializer
+
+    def post(self, request, pk=None):
+        comment = Comment.objects.filter(id=pk, active=True).first()
+        if comment is None:
+            return Response({"detail": "Commentaire introuvable."}, status=status.HTTP_404_NOT_FOUND)
+        liked, count = toggle_comment_like(request.user, comment)
+        return Response({"liked": liked, "likes_count": count})
 
 
 @extend_schema(tags=["Communauté"], summary="Signaler un contenu",

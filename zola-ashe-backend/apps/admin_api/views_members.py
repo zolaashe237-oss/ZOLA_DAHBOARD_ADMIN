@@ -19,6 +19,7 @@ from apps.billing.services import is_member
 
 from .permissions import IsAdmin
 from .serializers import (
+    AdminTeamSerializer,
     MemberDetailSerializer,
     MemberListSerializer,
     ReasonSerializer,
@@ -151,3 +152,62 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         record(request.user, AuditAction.DELETE_ACCOUNT, target_type="User", target_id=old_id,
                reason="Purge RGPD (anonymisation)")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Gestion de l'équipe admin ────────────────────────────────────────────────
+
+class AdminTeamViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                       mixins.CreateModelMixin, mixins.UpdateModelMixin,
+                       mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """CRUD des comptes admin (super-admin uniquement)."""
+    serializer_class = AdminTeamSerializer
+    permission_classes = [IsAdmin]
+
+    def get_queryset(self):
+        return User.objects.filter(role=Role.ADMIN).order_by("-created_at")
+
+    def destroy(self, request, *args, **kwargs):
+        """Suppression définitive du compte admin (pas de données sensibles à conserver)."""
+        user = self.get_object()
+        if user == request.user:
+            return Response({"detail": "Vous ne pouvez pas supprimer votre propre compte."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        _revoke_tokens(user)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        """Désactive un compte admin (sans suppression)."""
+        user = self.get_object()
+        if user == request.user:
+            return Response({"detail": "Vous ne pouvez pas désactiver votre propre compte."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reason = request.data.get("reason", "")
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        _revoke_tokens(user)
+        record(request.user, AuditAction.BLOCK_USER, target_type="User", target_id=user.id,
+               reason=reason)
+        return Response({"is_active": False})
+
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        """Réactive un compte admin désactivé."""
+        user = self.get_object()
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+        record(request.user, AuditAction.UNBLOCK_USER, target_type="User", target_id=user.id)
+        return Response({"is_active": True})
+
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request, pk=None):
+        """Génère un mot de passe temporaire pour l'admin."""
+        from django.utils.crypto import get_random_string
+        user = self.get_object()
+        temp_pwd = get_random_string(length=10)
+        user.set_password(temp_pwd)
+        user.save(update_fields=["password"])
+        record(request.user, AuditAction.UPDATE_CONTENT, target_type="User", target_id=user.id,
+               reason="Réinitialisation mot de passe admin")
+        return Response({"temp_password": temp_pwd})

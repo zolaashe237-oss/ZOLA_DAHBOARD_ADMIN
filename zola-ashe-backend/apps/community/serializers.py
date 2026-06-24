@@ -47,12 +47,32 @@ class PostSerializer(serializers.ModelSerializer):
 
 
 class CommentSerializer(serializers.ModelSerializer):
-    author = AuthorSerializer(read_only=True)
+    author      = AuthorSerializer(read_only=True)
+    likes_count = serializers.SerializerMethodField()
+    liked_by_me = serializers.SerializerMethodField()
+    # parent est nullable et writable : None pour un commentaire racine, ID pour une réponse
+    parent      = serializers.PrimaryKeyRelatedField(
+        queryset=Comment.objects.filter(active=True),
+        required=False, allow_null=True, default=None,
+    )
 
     class Meta:
         model = Comment
-        fields = ("id", "post", "author", "text", "created_at")
-        read_only_fields = ("id", "post", "author", "created_at")
+        fields = ("id", "post", "parent", "author", "text", "likes_count", "liked_by_me", "created_at")
+        read_only_fields = ("id", "post", "author", "likes_count", "liked_by_me", "created_at")
+
+    def get_likes_count(self, obj) -> int:
+        count = getattr(obj, "likes_count_annot", None)
+        return count if count is not None else obj.comment_likes.count()
+
+    def get_liked_by_me(self, obj) -> bool:
+        liked = getattr(obj, "liked_by_me_annot", None)
+        if liked is not None:
+            return bool(liked)
+        request = self.context.get("request")
+        if request is None:
+            return False
+        return obj.comment_likes.filter(user=request.user).exists()
 
 
 class ReportSerializer(serializers.ModelSerializer):

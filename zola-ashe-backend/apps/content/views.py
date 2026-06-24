@@ -13,10 +13,12 @@ from rest_framework.response import Response
 
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Formation, LiveSession, Quiz, QuizResult, Resource
+from .models import Audio, Formation, LibraryPdf, LiveSession, Quiz, QuizResult, Resource
 from .serializers import (
+    AudioPublicSerializer,
     FormationDetailSerializer,
     FormationListSerializer,
+    LibraryPdfPublicSerializer,
     QuizPublicSerializer,
     QuizResultSerializer,
     QuizSubmitSerializer,
@@ -31,6 +33,20 @@ from .services import (
     record_quiz_result,
     visible_formations_qs,
 )
+
+
+def _allowed_access_levels(user) -> list[str]:
+    """Niveaux de contenu accessibles (PUBLIC/MEMBRE/FEMME/ENFANT) selon le profil."""
+    from apps.accounts.models import UserStatus
+    if user.status == UserStatus.BLOQUE:
+        return []
+    levels = ["PUBLIC"]
+    if user.status == UserStatus.ACTIF:
+        levels.append("MEMBRE")
+        for lvl in ("FEMME", "ENFANT"):
+            if lvl in (user.access_levels or []):
+                levels.append(lvl)
+    return levels
 
 
 def _accessible_sub_types(user) -> set[str]:
@@ -78,10 +94,7 @@ _QuizSubmitResponse = inline_serializer(
         tags=["Catalogue"], summary="Catalogue des formations",
         description="Liste les formations visibles (publiées, ou programmées dont la date est échue). "
                     "Chaque entrée indique si elle est `locked` (réservée et non accessible au membre).",
-        parameters=[
-            OpenApiParameter("category", str, description="Filtre : FORMATION, LIVRE ou LIBRE."),
-            OpenApiParameter("branch", str, description="Filtre : GENERALE, FEMME ou ENFANT."),
-        ]),
+        parameters=[OpenApiParameter("category", str, description="Filtre : FORMATION, LIVRE ou LIBRE.")]),
     retrieve=extend_schema(
         tags=["Catalogue"], summary="Détail d'une formation (arbre complet)",
         description="Renvoie l'arbre **modules → sous-modules → cours → ressources**, avec l'état "
@@ -92,11 +105,15 @@ class FormationViewSet(viewsets.ReadOnlyModelViewSet):
     """Catalogue des formations visibles (publiées ou programmées échues) + arbre détaillé."""
 
     def get_queryset(self):
+        user = self.request.user
         qs = visible_formations_qs()
         if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
-        if branch := self.request.query_params.get("branch"):
-            qs = qs.filter(branch=branch)
+        # Masquer les branches dont l'utilisateur n'a pas l'accès payant
+        if "FEMME" not in (user.access_levels or []):
+            qs = qs.exclude(branch="FEMME")
+        if "ENFANT" not in (user.access_levels or []):
+            qs = qs.exclude(branch="ENFANT")
         if self.action == "retrieve":
             qs = qs.prefetch_related(
                 "modules__courses__resources", "modules__courses__quiz__questions",
@@ -221,3 +238,53 @@ class LiveSessionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = LiveSessionSerializer
     queryset = LiveSession.objects.all().order_by("status", "-start_at")
+
+
+class AudioViewSet(viewsets.ReadOnlyModelViewSet):
+    """Audiothèque — liste et streaming des audios actifs."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = AudioPublicSerializer
+
+    def get_queryset(self):
+        allowed = _allowed_access_levels(self.request.user)
+        qs = Audio.objects.filter(is_active=True, access_level__in=allowed).order_by("-created_at")
+        if branche := self.request.query_params.get("branche"):
+            qs = qs.filter(branche=branche)
+        return qs
+
+    @action(detail=True, methods=["get"], url_path="stream")
+    def stream(self, request, pk=None):
+        """URL signée (1h) du fichier audio."""
+        audio = self.get_object()
+        if not audio.bucket_key:
+            return Response({"detail": "Aucun fichier attaché à cet audio."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        url = generate_signed_url(audio.bucket_key)
+        if url and url.startswith("/"):
+            url = request.build_absolute_uri(url)
+        return Response({"kind": "audio", "url": url, "expires_in": 3600})
+
+
+class LibraryPdfViewSet(viewsets.ReadOnlyModelViewSet):
+    """Bibliothèque PDF — liste et streaming des documents actifs."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = LibraryPdfPublicSerializer
+
+    def get_queryset(self):
+        allowed = _allowed_access_levels(self.request.user)
+        qs = LibraryPdf.objects.filter(is_active=True, access_level__in=allowed).order_by("-created_at")
+        if branche := self.request.query_params.get("branche"):
+            qs = qs.filter(branche=branche)
+        return qs
+
+    @action(detail=True, methods=["get"], url_path="stream")
+    def stream(self, request, pk=None):
+        """URL signée (1h) du fichier PDF."""
+        pdf = self.get_object()
+        if not pdf.bucket_key:
+            return Response({"detail": "Aucun fichier attaché à ce document."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        url = generate_signed_url(pdf.bucket_key)
+        if url and url.startswith("/"):
+            url = request.build_absolute_uri(url)
+        return Response({"kind": "file", "url": url, "expires_in": 3600})

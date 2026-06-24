@@ -23,6 +23,7 @@ from .models import (
     PaymentStatus,
     PaymentType,
     Subscription,
+    SubscriptionPlan,
     SubscriptionType,
 )
 
@@ -60,19 +61,35 @@ class Plan:
 
 
 def resolve_plan(kind: str) -> Plan:
-    """Traduit un `kind` d'achat en tarif, produit Swinmo et types métier."""
-    plans = {
+    """Traduit un `kind` d'achat en tarif, produit Swinmo et types métier.
+
+    Les prix sont lus depuis SubscriptionPlan en DB si le plan est actif ;
+    sinon, les valeurs de settings servent de repli.
+    """
+    STATIC: dict[str, Plan] = {
         "INSCRIPTION": Plan("INSCRIPTION", settings.SWINMO_PRODUCT_INSCRIPTION,
                             settings.PRICE_INSCRIPTION, PaymentType.INSCRIPTION,
                             SubscriptionType.MEMBRE),
-        "COTISATION": Plan("COTISATION", settings.SWINMO_PRODUCT_COTISATION,
-                           settings.PRICE_COTISATION, PaymentType.COTISATION, None),
+        "COTISATION":  Plan("COTISATION",  settings.SWINMO_PRODUCT_COTISATION,
+                            settings.PRICE_COTISATION, PaymentType.COTISATION, None),
+        "BRANCHE_FEMME":  Plan("BRANCHE_FEMME",
+                               getattr(settings, "SWINMO_PRODUCT_BRANCHE_FEMME", ""),
+                               25000, PaymentType.BRANCHE_FEMME, None),
+        "BRANCHE_ENFANT": Plan("BRANCHE_ENFANT",
+                               getattr(settings, "SWINMO_PRODUCT_BRANCHE_ENFANT", ""),
+                               20000, PaymentType.BRANCHE_ENFANT, None),
         "DON": Plan("DON", settings.SWINMO_PRODUCT_DON, settings.DON_MIN_AMOUNT,
                     PaymentType.DON, None),
     }
-    if kind not in plans:
+    if kind not in STATIC:
         raise ValueError(f"Type d'achat inconnu : {kind}")
-    return plans[kind]
+    base = STATIC[kind]
+    try:
+        db = SubscriptionPlan.objects.get(kind=kind, is_active=True)
+        amount = db.tranche_amount if db.tranche_amount is not None else db.price_total
+        return Plan(base.kind, base.product_id, amount, base.payment_type, base.subscription_type)
+    except SubscriptionPlan.DoesNotExist:
+        return base
 
 
 # ─── Initiation d'un paiement (création du lien Swinmo) ─────────────────────
@@ -208,13 +225,28 @@ def activate_paid_payment(payment: Payment, kind: str) -> None:
     elif kind == "DON":
         pass  # facultatif, aucun effet sur l'accès
 
+    elif kind == "BRANCHE_FEMME":
+        levels = list(user.access_levels or [])
+        if "FEMME" not in levels:
+            levels.append("FEMME")
+            user.access_levels = levels
+            user.save(update_fields=["access_levels"])
+
+    elif kind == "BRANCHE_ENFANT":
+        levels = list(user.access_levels or [])
+        if "ENFANT" not in levels:
+            levels.append("ENFANT")
+            user.access_levels = levels
+            user.save(update_fields=["access_levels"])
+
     payment.save()
-    _send_confirmation(user.email, kind)
+    _send_confirmation(user.email, kind, full_name=user.full_name, amount=payment.amount)
 
 
-def _send_confirmation(email: str, kind: str) -> None:
+def _send_confirmation(email: str, kind: str,
+                        full_name: str = "", amount: int | None = None) -> None:
     from .tasks import send_confirmation_email
-    send_confirmation_email.delay(email, kind)
+    send_confirmation_email.delay(email, kind, full_name, amount)
 
 
 # ─── Traitement d'un webhook Swinmo (RG-01, RG-08) ──────────────────────────
