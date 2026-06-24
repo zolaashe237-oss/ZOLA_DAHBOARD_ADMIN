@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { plansApi } from "@/lib/endpoints";
-import { MOCK_PLANS } from "@/lib/mocks";
 import type { PlanBilling, Paginated, SubscriptionPlan } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -300,7 +299,7 @@ const GROUPS: { key: PlanBilling; label: string; desc: string }[] = [
 ];
 
 export default function AbonnementsPage() {
-  const [items,      setItems]      = useState<SubscriptionPlan[]>(MOCK_PLANS);
+  const [items,      setItems]      = useState<SubscriptionPlan[]>([]);
   const [error,      setError]      = useState("");
   const [info,       setInfo]       = useState("");
   const [formTarget, setFormTarget] = useState<{ plan: SubscriptionPlan | null } | null>(null);
@@ -310,7 +309,7 @@ export default function AbonnementsPage() {
     try {
       const { data } = await plansApi.list();
       setItems(Array.isArray(data) ? data : (data as Paginated<SubscriptionPlan>).results);
-    } catch { /* garde les mocks */ }
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { load(); }, [load]);

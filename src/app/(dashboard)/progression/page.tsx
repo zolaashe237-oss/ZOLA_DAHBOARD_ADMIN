@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { progressionApi } from "@/lib/endpoints";
-import { MOCK_FORMATION_STATS, MOCK_MEMBER_PROGRESS, MOCK_PROGRESSION_KPIS } from "@/lib/mocks";
 import type {
   FormationProgressStat,
   MemberProgressEntry,

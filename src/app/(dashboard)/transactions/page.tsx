@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { downloadBlob, transactionsApi } from "@/lib/endpoints";
-import { MOCK_TRANSACTION_KPIS, MOCK_TRANSACTIONS } from "@/lib/mocks";
 import type {
   Paginated,
   PaymentKind,
@@ -111,7 +110,7 @@ export default function TransactionsPage() {
     try {
       const { data } = await transactionsApi.kpis();
       setKpis(data);
-    } catch { /* silencieux */ }
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   const loadItems = useCallback(async () => {

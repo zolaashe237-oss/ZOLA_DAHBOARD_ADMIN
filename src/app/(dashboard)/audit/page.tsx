@@ -3,46 +3,48 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { auditApi } from "@/lib/endpoints";
-import { MOCK_AUDIT_ENTRIES } from "@/lib/mocks";
 import type { AuditEntry } from "@/lib/types";
 import { Alert, Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
+// Clés = valeurs exactes de AuditAction (backend apps/audit/models.py)
 const ACTION_COLOR: Record<string, string> = {
-  MEMBER_BLOCK:      "var(--danger)",
-  MEMBER_WARN:       "var(--warn)",
-  MEMBER_UNBLOCK:    "var(--ok)",
-  MEMBER_CREATE:     "#5b8fd4",
-  CONTENT_REMOVE:    "#b5532a",
-  PAYMENT_EXONERATE: "#7d7264",
-  PAYMENT_MANUAL:    "#c9a227",
-  DELETE_POST:       "#c0402c",
-  DELETE_COMMENT:    "#c0402c",
-  RESOLVE_REPORT:    "#9a6e10",
-  EXPORT_DATA:       "#243a85",
-  QUIZ_RESET:        "var(--gold)",
-  FORMATION_PUBLISH: "var(--ok)",
-  ADMIN_CREATE:      "#5b8fd4",
-  ADMIN_DEACTIVATE:  "var(--danger)",
+  BLOCK_USER:         "var(--danger)",
+  UNBLOCK_USER:       "var(--ok)",
+  WARN_USER:          "var(--warn)",
+  DELETE_POST:        "#c0402c",
+  DELETE_COMMENT:     "#c0402c",
+  RESOLVE_REPORT:     "#9a6e10",
+  MANUAL_PAYMENT:     "#c9a227",
+  CLOSE_SUBSCRIPTION: "#7d7264",
+  DELETE_ACCOUNT:     "var(--danger)",
+  GRANT_BRANCH:       "#5b8fd4",
+  REVOKE_BRANCH:      "#b5532a",
+  RESET_QUIZ:         "var(--gold)",
+  UPDATE_CONTENT:     "#5b8fd4",
+  DELETE_CONTENT:     "#b5532a",
+  EXPORT_DATA:        "#243a85",
+  SEND_REMINDER:      "#7d7264",
 };
 
 const ACTION_LABEL: Record<string, string> = {
-  MEMBER_BLOCK:      "Blocage membre",
-  MEMBER_WARN:       "Avertissement",
-  MEMBER_UNBLOCK:    "Déblocage membre",
-  MEMBER_CREATE:     "Création membre",
-  CONTENT_REMOVE:    "Suppression contenu",
-  PAYMENT_EXONERATE: "Exonération",
-  PAYMENT_MANUAL:    "Paiement manuel",
-  DELETE_POST:       "Suppression post",
-  DELETE_COMMENT:    "Suppression commentaire",
-  RESOLVE_REPORT:    "Résolution signalement",
-  EXPORT_DATA:       "Export données",
-  QUIZ_RESET:        "Reset quiz",
-  FORMATION_PUBLISH: "Publication formation",
-  ADMIN_CREATE:      "Création admin",
-  ADMIN_DEACTIVATE:  "Désactivation admin",
+  BLOCK_USER:         "Blocage membre",
+  UNBLOCK_USER:       "Déblocage membre",
+  WARN_USER:          "Avertissement",
+  DELETE_POST:        "Suppression post",
+  DELETE_COMMENT:     "Suppression commentaire",
+  RESOLVE_REPORT:     "Résolution signalement",
+  MANUAL_PAYMENT:     "Paiement manuel",
+  CLOSE_SUBSCRIPTION: "Clôture adhésion",
+  DELETE_ACCOUNT:     "Suppression compte",
+  GRANT_BRANCH:       "Attribution branche",
+  REVOKE_BRANCH:      "Révocation branche",
+  RESET_QUIZ:         "Reset quiz",
+  UPDATE_CONTENT:     "Modification contenu",
+  DELETE_CONTENT:     "Suppression contenu",
+  EXPORT_DATA:        "Export données",
+  SEND_REMINDER:      "Envoi relance",
 };
 
 const KNOWN_ACTIONS = Object.keys(ACTION_LABEL);
@@ -50,7 +52,8 @@ const KNOWN_ACTIONS = Object.keys(ACTION_LABEL);
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AuditPage() {
-  const [entries,    setEntries]    = useState<AuditEntry[]>(MOCK_AUDIT_ENTRIES);
+  const [entries,    setEntries]    = useState<AuditEntry[]>([]);
+  const [loading,    setLoading]    = useState(true);
   const [filterAction, setFilterAction] = useState("");
   const [filterFrom,   setFilterFrom]   = useState("");
   const [filterTo,     setFilterTo]     = useState("");
@@ -58,33 +61,23 @@ export default function AuditPage() {
 
   const load = useCallback(async () => {
     setError("");
+    setLoading(true);
     try {
       const { data } = await auditApi.list({
-      action: filterAction || undefined,
-      page: 1,
-      page_size: 20,
-    });
+        action:    filterAction || undefined,
+        date_from: filterFrom   || undefined,
+        date_to:   filterTo     || undefined,
+        page_size: 500,
+      });
       const list = Array.isArray(data) ? data : (data as { results: AuditEntry[] }).results ?? [];
-      if (list.length > 0) setEntries(list);
+      setEntries(list);
     } catch (e) { setError(errorMessage(e)); }
-  }, [filterAction]);
+    finally { setLoading(false); }
+  }, [filterAction, filterFrom, filterTo]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Filtrage local (dates + action) ──────────────────────────────────────
-
-  const filtered = entries.filter((e) => {
-    if (filterAction && !e.action.toUpperCase().includes(filterAction.toUpperCase())) return false;
-    if (filterFrom) {
-      const from = new Date(filterFrom).getTime();
-      if (new Date(e.created_at).getTime() < from) return false;
-    }
-    if (filterTo) {
-      const to = new Date(filterTo).getTime() + 86_400_000; // inclure la journée
-      if (new Date(e.created_at).getTime() > to) return false;
-    }
-    return true;
-  });
+  const filtered = entries;
 
   const filterKey = `${filterAction}|${filterFrom}|${filterTo}`;
   const { page, totalPages, paged, total, pageSize, setPageSize, go } =
@@ -205,7 +198,14 @@ export default function AuditPage() {
                 </tr>
               ))}
 
-              {paged.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={5} style={{ padding: "2.5rem", textAlign: "center", color: "var(--muted)" }}>
+                    Chargement…
+                  </td>
+                </tr>
+              )}
+              {!loading && paged.length === 0 && (
                 <tr>
                   <td colSpan={5} style={{ padding: "2.5rem", textAlign: "center", color: "var(--muted)" }}>
                     Aucune entrée trouvée.

@@ -233,8 +233,8 @@ export const moderationApi = {
 };
 
 export const auditApi = {
-  list: (params?: { action?: string; page?: number; page_size?: number }) =>
-    api.get<Paginated<AuditEntry>>("/admin/audit/", { params }),
+  list: (params?: { action?: string; date_from?: string; date_to?: string; page?: number; page_size?: number }) =>
+    api.get<AuditEntry[] | Paginated<AuditEntry>>("/admin/audit/", { params }),
 };
 
 // ── Lives / Sessions en direct ──────────────────────────────────────────────

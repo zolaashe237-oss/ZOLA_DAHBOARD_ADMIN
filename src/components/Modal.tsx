@@ -18,17 +18,39 @@ export function Modal({
   title?: string;
   maxWidth?: number;
 }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [scrolled,   setScrolled]   = useState(false); // header shadow
+  const [hasMore,    setHasMore]    = useState(false); // bottom gradient
+
+  // Keyboard close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Prevent scroll on body
+  // Lock body scroll
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Scroll indicators
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const update = () => {
+      setScrolled(el.scrollTop > 4);
+      setHasMore(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    };
+
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
   }, []);
 
   return (
@@ -36,10 +58,11 @@ export function Modal({
       onClick={onClose}
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
-        background: "rgba(10,7,4,.70)",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(10,7,4,.72)",
+        display: "grid", placeItems: "center",
         padding: "1rem",
         backdropFilter: "blur(3px)",
+        overflowY: "auto",
       }}
     >
       <div
@@ -53,39 +76,90 @@ export function Modal({
           width: "100%",
           maxWidth,
           maxHeight: "90vh",
-          overflowY: "auto",
-          padding: "1.5rem 1.75rem",
+          display: "flex",
+          flexDirection: "column",
           boxShadow: "0 28px 72px rgba(0,0,0,.6)",
           position: "relative",
+          overflow: "hidden",
         }}
       >
-        {/* Header */}
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          marginBottom: title ? "1.3rem" : 0,
-        }}>
-          {title && (
-            <h2 style={{ fontSize: "1.05rem", margin: 0, color: "var(--cream)" }}>
+        {/* ── Header sticky ────────────────────────────────────────────────── */}
+        <div
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "1.15rem 1.5rem 1rem",
+            borderBottom: "1px solid var(--line-soft)",
+            background: "var(--bg-1)",
+            // Shadow quand le corps a été scrollé
+            boxShadow: scrolled
+              ? "0 4px 12px rgba(0,0,0,0.15)"
+              : "none",
+            transition: "box-shadow .2s",
+            zIndex: 2,
+          }}
+        >
+          {title ? (
+            <h2 style={{ fontSize: "1.05rem", margin: 0, color: "var(--cream)", fontWeight: 600 }}>
               {title}
             </h2>
+          ) : (
+            <span />
           )}
           <button
             onClick={onClose}
             aria-label="Fermer"
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: "var(--muted)", fontSize: "1.15rem", lineHeight: 1,
-              padding: "0.2rem .4rem", marginLeft: "auto", borderRadius: 6,
-              transition: "color .15s",
+              color: "var(--muted)", fontSize: "1.1rem", lineHeight: 1,
+              padding: "0.25rem .45rem", borderRadius: 6,
+              transition: "color .15s, background .15s",
+              marginLeft: "auto",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--cream)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--muted)")}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--cream)";
+              e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--muted)";
+              e.currentTarget.style.background = "none";
+            }}
           >
             ✕
           </button>
         </div>
 
-        {children}
+        {/* ── Corps scrollable ─────────────────────────────────────────────── */}
+        <div
+          ref={bodyRef}
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            overflowX: "hidden",
+            padding: "1.35rem 1.5rem 1.5rem",
+          }}
+        >
+          {children}
+        </div>
+
+        {/* ── Gradient de bas : indique qu'il y a du contenu en dessous ────── */}
+        {hasMore && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 52,
+              background: "linear-gradient(to top, var(--bg-1) 20%, transparent)",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          />
+        )}
       </div>
     </div>
   );

@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { livesApi } from "@/lib/endpoints";
-import { MOCK_LIVES } from "@/lib/mocks";
 import type { Branche, LivePlatform, LiveSession, LiveStatus, Paginated } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -630,7 +629,7 @@ function SessionDetailModal({ session: s, onClose, onEdit, onDelete }: {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function LivesPage() {
-  const [items,   setItems]   = useState<LiveSession[]>(MOCK_LIVES);
+  const [items,   setItems]   = useState<LiveSession[]>([]);
   const [view,    setView]    = useState<LiveView>(() =>
     (typeof window !== "undefined" ? (localStorage.getItem("lives_view") as LiveView) : null) ?? "month"
   );
@@ -648,11 +647,18 @@ export default function LivesPage() {
   const [detailTarget, setDetailTarget] = useState<LiveSession | null>(null);
   const [deleteId,     setDeleteId]     = useState<number | null>(null);
 
+  const [loading, setLoading] = useState(true);
+
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const { data } = await livesApi.list();
       setItems(Array.isArray(data) ? data : (data as Paginated<LiveSession>).results);
-    } catch { /* garde les mocks */ }
+    } catch {
+      setError("Impossible de charger les sessions. Vérifiez votre connexion.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);

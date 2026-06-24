@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { audioApi } from "@/lib/endpoints";
 import { getMediaUrl } from "@/lib/api";
-import { MOCK_AUDIO } from "@/lib/mocks";
 import type { AudioItem, Branche, PdfAccess } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -536,7 +535,7 @@ const VIEW_MODES: { key: ViewMode; icon: string; label: string }[] = [
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function AudioPage() {
-  const [items,        setItems]        = useState<AudioItem[]>(MOCK_AUDIO);
+  const [items,        setItems]        = useState<AudioItem[]>([]);
   const [editTarget,   setEditTarget]   = useState<AudioItem | null>(null);
   const [showForm,     setShowForm]     = useState(false);
   const [preview,      setPreview]      = useState<AudioItem | null>(null);
@@ -558,8 +557,8 @@ export default function AudioPage() {
     try {
       const { data } = await audioApi.list();
       const result = Array.isArray(data) ? data : data.results;
-      if (result.length > 0) setItems(result);
-    } catch { /* garde les mocks */ }
+      setItems(result);
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { load(); }, [load]);

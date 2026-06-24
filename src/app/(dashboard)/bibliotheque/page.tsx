@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { libraryApi } from "@/lib/endpoints";
 import { getMediaUrl } from "@/lib/api";
-import { MOCK_LIBRARY } from "@/lib/mocks";
 import type { Branche, LibraryPdf, PdfAccess } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -788,7 +787,7 @@ const VIEW_MODES: { key: ViewMode; icon: string; label: string }[] = [
 ];
 
 export default function BibliothequePage() {
-  const [items,        setItems]        = useState<LibraryPdf[]>(MOCK_LIBRARY);
+  const [items,        setItems]        = useState<LibraryPdf[]>([]);
   const [editTarget,   setEditTarget]   = useState<LibraryPdf | null>(null);
   const [showForm,     setShowForm]     = useState(false);
   const [preview,      setPreview]      = useState<LibraryPdf | null>(null);
@@ -813,8 +812,8 @@ export default function BibliothequePage() {
     try {
       const { data } = await libraryApi.list();
       const result = Array.isArray(data) ? data : data.results;
-      if (result.length > 0) setItems(result);
-    } catch { /* garde les données de démo */ }
+      setItems(result);
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { load(); }, [load]);

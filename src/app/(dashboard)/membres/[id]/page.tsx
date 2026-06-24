@@ -4,7 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { financeApi, membersApi } from "@/lib/endpoints";
-import { getMockMemberDetail } from "@/lib/mocks";
 import type { MemberDetail } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -264,8 +263,8 @@ export default function MemberDetailPage() {
     try {
       const { data } = await membersApi.detail(userId);
       setMember(data);
-    } catch {
-      setMember(getMockMemberDetail(userId));
+    } catch (e) {
+      setError(errorMessage(e));
     } finally { setLoading(false); }
   }, [userId]);
 

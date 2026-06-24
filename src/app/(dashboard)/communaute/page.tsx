@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { communityApi } from "@/lib/endpoints";
-import { MOCK_CHANNELS, MOCK_POSTS } from "@/lib/mocks";
 import type { Branche, CommunityChannel, CommunityPost, Paginated, PostStatus, PostType } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -163,8 +162,8 @@ function ChannelFormModal({
 
 export default function CommunautePage() {
   const [activeTab, setActiveTab] = useState<Tab>("annonces");
-  const [posts,    setPosts]    = useState<CommunityPost[]>(MOCK_POSTS);
-  const [channels, setChannels] = useState<CommunityChannel[]>(MOCK_CHANNELS);
+  const [posts,    setPosts]    = useState<CommunityPost[]>([]);
+  const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [error,    setError]    = useState("");
   const [info,     setInfo]     = useState("");
 
@@ -183,14 +182,14 @@ export default function CommunautePage() {
     try {
       const { data } = await communityApi.listChannels();
       setChannels(Array.isArray(data) ? data : (data as Paginated<CommunityChannel>).results);
-    } catch { /* garde les mocks */ }
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   const loadPosts = useCallback(async () => {
     try {
       const { data } = await communityApi.listPosts();
       setPosts(Array.isArray(data) ? data : (data as Paginated<CommunityPost>).results);
-    } catch { /* garde les mocks */ }
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { loadChannels(); loadPosts(); }, [loadChannels, loadPosts]);

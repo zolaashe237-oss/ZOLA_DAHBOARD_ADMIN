@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { asList, quizResultsApi, resetQuizApi, quizApi, setQuizScoreApi } from "@/lib/endpoints";
-import { MOCK_QUIZ_RESULTS, MOCK_QUIZZES } from "@/lib/mocks";
 import type { QuizItem, QuizResult } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
