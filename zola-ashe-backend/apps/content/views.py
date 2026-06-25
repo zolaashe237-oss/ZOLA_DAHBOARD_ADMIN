@@ -103,12 +103,16 @@ _QuizSubmitResponse = inline_serializer(
 )
 class FormationViewSet(viewsets.ReadOnlyModelViewSet):
     """Catalogue des formations visibles (publiées ou programmées échues) + arbre détaillé."""
+    pagination_class = None
 
     def get_queryset(self):
+        from django.db.models import Q
         user = self.request.user
         qs = visible_formations_qs()
         if category := self.request.query_params.get("category"):
             qs = qs.filter(category=category)
+        if search := self.request.query_params.get("search"):
+            qs = qs.filter(Q(title__icontains=search) | Q(description__icontains=search))
         # Masquer les branches dont l'utilisateur n'a pas l'accès payant
         if "FEMME" not in (user.access_levels or []):
             qs = qs.exclude(branch="FEMME")
@@ -243,13 +247,17 @@ class LiveSessionViewSet(viewsets.ReadOnlyModelViewSet):
 class AudioViewSet(viewsets.ReadOnlyModelViewSet):
     """Audiothèque — liste et streaming des audios actifs."""
     permission_classes = [IsAuthenticated]
-    serializer_class = AudioPublicSerializer
+    serializer_class   = AudioPublicSerializer
+    pagination_class   = None
 
     def get_queryset(self):
+        from django.db.models import Q
         allowed = _allowed_access_levels(self.request.user)
         qs = Audio.objects.filter(is_active=True, access_level__in=allowed).order_by("-created_at")
         if branche := self.request.query_params.get("branche"):
             qs = qs.filter(branche=branche)
+        if search := self.request.query_params.get("search"):
+            qs = qs.filter(Q(title__icontains=search) | Q(description__icontains=search))
         return qs
 
     @action(detail=True, methods=["get"], url_path="stream")
@@ -268,13 +276,17 @@ class AudioViewSet(viewsets.ReadOnlyModelViewSet):
 class LibraryPdfViewSet(viewsets.ReadOnlyModelViewSet):
     """Bibliothèque PDF — liste et streaming des documents actifs."""
     permission_classes = [IsAuthenticated]
-    serializer_class = LibraryPdfPublicSerializer
+    serializer_class   = LibraryPdfPublicSerializer
+    pagination_class   = None
 
     def get_queryset(self):
+        from django.db.models import Q
         allowed = _allowed_access_levels(self.request.user)
         qs = LibraryPdf.objects.filter(is_active=True, access_level__in=allowed).order_by("-created_at")
         if branche := self.request.query_params.get("branche"):
             qs = qs.filter(branche=branche)
+        if search := self.request.query_params.get("search"):
+            qs = qs.filter(Q(title__icontains=search) | Q(description__icontains=search))
         return qs
 
     @action(detail=True, methods=["get"], url_path="stream")

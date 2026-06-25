@@ -7,6 +7,7 @@ blacklist via SimpleJWT).
 """
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.core.cache import cache
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import generics, serializers as drf_serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -20,6 +21,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .models import User, UserStatus
 from .serializers import (
     DeleteAccountSerializer,
+    EmailChangeConfirmSerializer,
+    EmailChangeRequestSerializer,
     LoginSerializer,
     PasswordChangeSerializer,
     PasswordForgotSerializer,
@@ -425,3 +428,67 @@ class MeView(generics.RetrieveUpdateDestroyAPIView):
         response = Response({"detail": "Votre compte a été supprimé."})
         _clear_refresh_cookie(response)
         return response
+
+
+class EmailChangeRequestView(APIView):
+    """Étape 1 : demande de changement d'email — envoie un OTP à la nouvelle adresse."""
+    permission_classes = [IsAuthenticated]
+    throttle_classes   = [_AuthThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user      = request.user
+        new_email = serializer.validated_data["new_email"].lower()
+        password  = serializer.validated_data["password"]
+
+        if not user.check_password(password):
+            return Response({"detail": "Mot de passe incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email__iexact=new_email).exclude(pk=user.pk).exists():
+            return Response({"detail": "Cette adresse email est déjà utilisée."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        ttl = settings.OTP_TTL_MINUTES * 60
+        cache.set(f"email_change:{user.id}", new_email, timeout=ttl)
+
+        code = generate_otp(user)
+        send_otp_email.delay(new_email, code, "email_change")
+
+        body = {"detail": f"Un code de confirmation a été envoyé à {new_email}."}
+        if settings.EMAIL_MOCK:
+            body["dev_code"] = code
+        return Response(body)
+
+
+class EmailChangeConfirmView(APIView):
+    """Étape 2 : confirmation par OTP — applique le changement d'adresse email."""
+    permission_classes = [IsAuthenticated]
+    throttle_classes   = [_AuthThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user          = request.user
+        pending_email = cache.get(f"email_change:{user.id}")
+
+        if not pending_email:
+            return Response({"detail": "Aucune demande en cours. Recommencez depuis le début."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        ok, message = verify_otp(user, serializer.validated_data["code"])
+        if not ok:
+            return Response({"detail": message}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(email__iexact=pending_email).exclude(pk=user.pk).exists():
+            cache.delete(f"email_change:{user.id}")
+            return Response({"detail": "Cette adresse n'est plus disponible."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user.email = pending_email
+        user.save(update_fields=["email"])
+        cache.delete(f"email_change:{user.id}")
+
+        return Response({"detail": "Email mis à jour.", "email": pending_email})

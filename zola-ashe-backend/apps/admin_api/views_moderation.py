@@ -11,7 +11,7 @@ from apps.audit.services import record
 from apps.community.models import Comment, Like, Post, Report
 from apps.community.tasks import send_moderation_notification
 
-from .permissions import IsAdmin
+from .permissions import AdminModerationThrottle, IsAdmin
 
 _TAG = "Admin · Modération & Audit"
 _ReasonRequest = inline_serializer(name="ModerationReasonRequest",
@@ -60,6 +60,7 @@ class ReportQueueView(APIView):
                request=_ReasonRequest, responses={200: _DetailResponse})
 class HandleReportView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes   = [AdminModerationThrottle]
 
     def post(self, request, pk=None):
         report = Report.objects.filter(id=pk).first()
@@ -79,6 +80,7 @@ class HandleReportView(APIView):
 class AdminDeletePostView(APIView):
     """Suppression d'un post par modération (RG-33) — cascade logique."""
     permission_classes = [IsAdmin]
+    throttle_classes   = [AdminModerationThrottle]
 
     def post(self, request, pk=None):
         post = Post.objects.select_related("author").filter(id=pk).first()
@@ -100,6 +102,7 @@ class AdminDeletePostView(APIView):
                request=_ReasonRequest, responses={200: _DetailResponse})
 class AdminDeleteCommentView(APIView):
     permission_classes = [IsAdmin]
+    throttle_classes   = [AdminModerationThrottle]
 
     def post(self, request, pk=None):
         comment = Comment.objects.select_related("author").filter(id=pk).first()

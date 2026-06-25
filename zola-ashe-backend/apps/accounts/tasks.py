@@ -27,6 +27,14 @@ def send_otp_email(email: str, code: str, purpose: str = "verification"):
             f"Il expire dans {settings.OTP_TTL_MINUTES} minutes.\n\n"
             "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email."
         )
+    elif purpose == "email_change":
+        subject = "ZOLA ASHÉ — Confirmez votre nouvelle adresse email"
+        template = "emails/otp_verification.html"
+        plain = (
+            f"Votre code de confirmation est : {code}\n"
+            f"Il expire dans {settings.OTP_TTL_MINUTES} minutes.\n\n"
+            "Si vous n'avez pas demandé à changer votre email, ignorez cet email."
+        )
     else:
         subject = "ZOLA ASHÉ — Activez votre compte"
         template = "emails/otp_verification.html"

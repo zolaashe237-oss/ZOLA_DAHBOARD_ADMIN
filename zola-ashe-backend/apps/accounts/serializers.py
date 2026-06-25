@@ -87,3 +87,12 @@ class DeleteAccountSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, help_text="Mot de passe actuel (confirmation).")
     reason = serializers.CharField(required=False, allow_blank=True,
                                    help_text="Motif facultatif de la suppression.")
+
+
+class EmailChangeRequestSerializer(serializers.Serializer):
+    new_email = serializers.EmailField(help_text="Nouvelle adresse email souhaitée.")
+    password  = serializers.CharField(write_only=True, help_text="Mot de passe actuel (confirmation).")
+
+
+class EmailChangeConfirmSerializer(serializers.Serializer):
+    code = serializers.CharField(min_length=6, max_length=6, help_text="Code OTP envoyé à la nouvelle adresse.")

@@ -23,4 +23,18 @@ def send_moderation_notification(email: str, content_type: str, reason: str):
         recipient_list=[email],
         fail_silently=True,
     )
+    # Notification in-app
+    try:
+        from apps.accounts.models import User
+        from apps.notifications.models import Notification, NotifType
+        user = User.objects.filter(email=email).first()
+        if user:
+            Notification.objects.create(
+                user=user,
+                type=NotifType.MODERATION,
+                title="Contenu retiré par la modération",
+                body=f"Votre {libelle} a été retiré. Motif : {reason or 'Non précisé'}.",
+            )
+    except Exception:
+        pass
     return f"moderation_notification sent: {email} ({content_type})"
