@@ -37,6 +37,7 @@ urlpatterns = [
     path("api/billing/", include("apps.billing.urls")),
     path("api/blog/", include("apps.blog.urls")),       # journal public
     path("api/admin/", include("apps.admin_api.urls")),
+    path("api/", include("apps.notifications.urls")),
 ]
 
 # En développement, servir les fichiers media uploadés localement.

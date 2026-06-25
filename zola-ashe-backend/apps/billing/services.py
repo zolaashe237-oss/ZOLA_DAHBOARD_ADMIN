@@ -241,12 +241,34 @@ def activate_paid_payment(payment: Payment, kind: str) -> None:
 
     payment.save()
     _send_confirmation(user.email, kind, full_name=user.full_name, amount=payment.amount)
+    _create_payment_notification(user, kind, payment.amount)
 
 
 def _send_confirmation(email: str, kind: str,
                         full_name: str = "", amount: int | None = None) -> None:
     from .tasks import send_confirmation_email
     send_confirmation_email.delay(email, kind, full_name, amount)
+
+
+def _create_payment_notification(user, kind: str, amount: int) -> None:
+    try:
+        from apps.notifications.models import Notification, NotifType
+        labels = {
+            "INSCRIPTION":    "Droit d'adhésion",
+            "COTISATION":     "Cotisation mensuelle",
+            "DON":            "Don enregistré",
+            "BRANCHE_FEMME":  "Branche Femme",
+            "BRANCHE_ENFANT": "Branche Enfant",
+        }
+        label = labels.get(kind, kind)
+        Notification.objects.create(
+            user=user,
+            type=NotifType.PAIEMENT,
+            title=f"Paiement confirmé — {label}",
+            body=f"Votre paiement de {amount:,} FCFA a été validé.".replace(",", " "),
+        )
+    except Exception:
+        pass
 
 
 # ─── Traitement d'un webhook Swinmo (RG-01, RG-08) ──────────────────────────

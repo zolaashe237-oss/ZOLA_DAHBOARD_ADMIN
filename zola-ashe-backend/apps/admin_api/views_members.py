@@ -17,7 +17,7 @@ from apps.audit.services import record
 from apps.billing.models import Payment, PaymentStatus, PaymentType
 from apps.billing.services import is_member
 
-from .permissions import IsAdmin
+from .permissions import AdminModerationThrottle, IsAdmin
 from .serializers import (
     AdminTeamSerializer,
     MemberDetailSerializer,
@@ -56,6 +56,11 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         if self.action in ["retrieve", "create", "update", "partial_update"]:
             return MemberDetailSerializer
         return MemberListSerializer
+
+    def get_throttles(self):
+        if self.action in ("block", "unblock", "warn", "destroy"):
+            return [AdminModerationThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         qs = User.objects.filter(role=Role.MEMBER).order_by("-created_at")

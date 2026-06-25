@@ -48,6 +48,7 @@ LOCAL_APPS = [
     "apps.admin_api",
     "apps.audit",
     "apps.blog",
+    "apps.notifications",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -159,6 +160,7 @@ REST_FRAMEWORK = {
         "anon": "999999/day" if IS_TESTING else "100/min",      # CDC §7.3 : 100 req/min/IP
         "user": "999999/day" if IS_TESTING else "100/min",
         "auth": "999999/day" if IS_TESTING else "20/min",       # routes d'authentification : 20 req/min/IP
+        "admin_moderation": "999999/day" if IS_TESTING else "120/hour",  # actions de modération irréversibles
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,            # CDC §8.4 : 20 éléments / page

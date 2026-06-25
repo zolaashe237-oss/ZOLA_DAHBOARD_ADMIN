@@ -62,12 +62,27 @@ def send_payment_reminder(user_id: int):
     user = User.objects.filter(id=user_id).first()
     if user is None:
         return "user introuvable"
-    send_mail(
-        subject="ZOLA ASHÉ — Rappel de cotisation",
-        message=("Votre cotisation mensuelle est en attente. "
-                 "Réglez-la depuis votre espace pour conserver votre accès."),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-        fail_silently=False,
+
+    first_name = (user.full_name or "").split()[0] if user.full_name else ""
+    ctx = {
+        "first_name": first_name,
+        "app_url": f"{settings.WEB_BASE_URL}/espace-membre/mon-espace",
+        "web_base_url": settings.WEB_BASE_URL,
+        "year": timezone.now().year,
+    }
+    html  = render_to_string("emails/payment_reminder.html", ctx)
+    plain = (
+        f"Bonjour{' ' + first_name if first_name else ''},\n\n"
+        "Votre cotisation mensuelle est en attente. "
+        "Réglez-la depuis votre espace pour conserver votre accès.\n\n"
+        f"{settings.WEB_BASE_URL}/espace-membre/mon-espace"
     )
+    msg = EmailMultiAlternatives(
+        subject="ZOLA ASHÉ — Rappel de cotisation",
+        body=plain,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    msg.attach_alternative(html, "text/html")
+    msg.send(fail_silently=False)
     return f"reminder sent: {user_id}"

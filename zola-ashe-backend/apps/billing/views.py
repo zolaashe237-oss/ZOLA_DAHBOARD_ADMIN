@@ -65,15 +65,28 @@ _CloseResponse = inline_serializer(
     responses={200: OpenApiResponse(_TariffList, description="Tarifs courants.")},
 )
 class SubscriptionTypesView(APIView):
-    """Tarifs publics (vitrine) — aucun secret exposé."""
+    """Tarifs publics (vitrine) — lus en DB (SubscriptionPlan), aucun secret exposé."""
     permission_classes = [AllowAny]
 
+    _KINDS = ["INSCRIPTION", "COTISATION", "DON", "BRANCHE_FEMME", "BRANCHE_ENFANT"]
+
     def get(self, _request):
-        return Response([
-            {"kind": "INSCRIPTION", "label": "Droit d'inscription", "amount": settings.PRICE_INSCRIPTION},
-            {"kind": "COTISATION", "label": "Cotisation mensuelle", "amount": settings.PRICE_COTISATION},
-            {"kind": "DON", "label": "Don volontaire", "amount": 0},
-        ])
+        from .models import SubscriptionPlan
+        db_plans = {p.kind: p for p in SubscriptionPlan.objects.filter(is_active=True)}
+        result = []
+        for kind in self._KINDS:
+            p = db_plans.get(kind)
+            if p:
+                result.append({
+                    "kind":           kind,
+                    "label":          p.name,
+                    "amount":         p.tranche_amount if p.tranche_amount is not None else p.price_total,
+                    "price_total":    p.price_total,
+                    "tranche_amount": p.tranche_amount,
+                    "nb_tranches":    p.nb_tranches,
+                    "billing":        p.billing,
+                })
+        return Response(result)
 
 
 @extend_schema(
