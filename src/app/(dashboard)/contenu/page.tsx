@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { asList, formationApi } from "@/lib/endpoints";
-import { MOCK_FORMATIONS } from "@/lib/mocks";
 import type { Branche, Formation, FormationAcces, FormationNiveau, FormationStatus } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
@@ -216,7 +215,7 @@ export default function ContenuPage() {
     setLoading(true);
     formationApi.list()
       .then((r) => setItems(asList(r.data)))
-      .catch(() => {})
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false));
   }, []);
 

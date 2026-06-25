@@ -8,12 +8,6 @@ import type { Article, Paginated } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 
-const MOCK_ARTICLES: Article[] = [
-  { id: 1, title: "Bienvenue dans la communauté Zola Ashé", slug: "bienvenue", excerpt: "Découvrez notre espace de croissance spirituelle et personnelle.",           body: "", cover_url: "", category: "Communauté",  published: true,  published_at: "2026-01-15T10:00:00Z", created_at: "2026-01-15T09:00:00Z" },
-  { id: 2, title: "Les 5 piliers du développement intégral", slug: "piliers",  excerpt: "Corps, esprit, âme, relation, vocation — un regard holistique sur la vie.", body: "", cover_url: "", category: "Formation",   published: true,  published_at: "2026-03-01T08:00:00Z", created_at: "2026-02-28T12:00:00Z" },
-  { id: 3, title: "Méditation de pleine conscience — Guide", slug: "meditation", excerpt: "Comment intégrer la méditation dans votre quotidien en 10 minutes par jour.", body: "", cover_url: "", category: "Bien-être",   published: false, published_at: null,                   created_at: "2026-05-20T14:00:00Z" },
-];
-
 const empty = { title: "", category: "", excerpt: "", cover_url: "", body: "", published: true };
 
 // ── Formulaire article (modal) ────────────────────────────────────────────────
@@ -108,7 +102,7 @@ function ArticleFormModal({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BlogPage() {
-  const [items,      setItems]      = useState<Article[]>(MOCK_ARTICLES);
+  const [items,      setItems]      = useState<Article[]>([]);
   const [error,      setError]      = useState("");
   const [info,       setInfo]       = useState("");
   const [formTarget, setFormTarget] = useState<{ article: Article | null } | null>(null);
@@ -118,8 +112,8 @@ export default function BlogPage() {
     try {
       const { data } = await blogApi.list();
       const list = Array.isArray(data) ? data : (data as Paginated<Article>).results;
-      if (list.length > 0) setItems(list);
-    } catch { /* garde les mocks */ }
+      setItems(list);
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { load(); }, [load]);

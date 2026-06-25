@@ -7,12 +7,6 @@ import {
   asList, billingPaymentsApi, dashboardApi, downloadBlob,
   financeApi, financeApi2, membersApi, transactionsApi,
 } from "@/lib/endpoints";
-import {
-  MOCK_LATE_COTISATIONS,
-  MOCK_MONTHLY_REVENUE,
-  MOCK_PAYMENT_BREAKDOWN,
-  MOCK_TRANSACTION_KPIS,
-} from "@/lib/mocks";
 import type {
   DashboardKPIs, LateMember, MonthlyRevenue, Paginated, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, TransactionKPIs, User,
 } from "@/lib/types";

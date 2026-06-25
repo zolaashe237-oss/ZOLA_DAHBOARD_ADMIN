@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { downloadBlob, financeApi, membersApi } from "@/lib/endpoints";
-import { MOCK_MEMBERS } from "@/lib/mocks";
 import type { User } from "@/lib/types";
 import {
   Alert, Button, Card, Input, Pagination, Select,
@@ -216,7 +215,7 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MembresPage() {
-  const [members,     setMembers]     = useState<User[]>(MOCK_MEMBERS);
+  const [members,     setMembers]     = useState<User[]>([]);
   const [filterSearch, setFilterSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterBranch, setFilterBranch] = useState("");
@@ -237,14 +236,8 @@ export default function MembresPage() {
         search: debouncedSearch || undefined,
         status: filterStatus || undefined,
       });
-      // Préserve phone/country depuis les mocks si l'API ne les renvoie pas encore
-      setMembers(
-        data.results.map((m) => {
-          const mock = MOCK_MEMBERS.find((mm) => mm.id === m.id);
-          return { ...m, phone: m.phone ?? mock?.phone ?? null, country: m.country ?? mock?.country ?? null };
-        }),
-      );
-    } catch { /* garde les mocks */ }
+      setMembers(data.results);
+    } catch (e) { setError(errorMessage(e)); }
   }, [debouncedSearch, filterStatus]);
 
   useEffect(() => { load(); }, [load]);
