@@ -521,3 +521,106 @@ table { width: 100%; border-collapse: collapse; }
 @media (prefers-reduced-motion:reduce) {
   .fade-up, .brand-loader__ring, .brand-loader__emblem { animation: none !important; }
 }
+
+/* ════════════════════════════════════════════════════════════
+   AGENT IA - Back-office (Sprint S06 · Axe 1 · FE2 Garnel)
+   Bloc additif uniquement : nouvelles classes/keyframes, aucune
+   règle existante ci-dessus n'est modifiée (charte inchangée).
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Halo au survol des déclencheurs IA ("✨ Générer avec l'IA") ── */
+/* Bloom doux et statique (pas de rotation) - juste un fondu + une légère élévation. */
+.ai-cta { position: relative; isolation: isolate; transition: transform .28s ease; }
+.ai-cta::before {
+  content: "";
+  position: absolute; inset: -10px; z-index: -1; border-radius: inherit;
+  background: radial-gradient(60% 60% at 50% 45%, rgba(201,162,39,.38), transparent 72%);
+  opacity: 0; transform: scale(.9);
+  filter: blur(9px);
+  transition: opacity .35s ease, transform .35s ease;
+}
+.ai-cta:hover, .ai-cta:focus-visible { transform: translateY(-1px); }
+.ai-cta:hover::before, .ai-cta:focus-visible::before { opacity: 1; transform: scale(1); }
+
+/* ── Douce pulsation générique (points, badges) ── */
+@keyframes aiPulse { 0%,100% { transform: scale(.92); } 50% { transform: scale(1.05); } }
+
+/* ── Texte scintillant (statuts de génération) ── */
+.ai-shimmer-text {
+  display: inline-block;
+  background: linear-gradient(90deg, var(--muted) 0%, var(--gold) 20%, var(--terra-2) 40%, var(--muted) 60%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  animation: aiShimmer 2.4s linear infinite;
+  font-weight: 700;
+}
+@keyframes aiShimmer { 0% { background-position: 0% 0; } 100% { background-position: -220% 0; } }
+
+/* ── Barre de progression IA (déterminée + reflet animé) ── */
+.ai-progress-track { position: relative; width: 100%; height: 7px; border-radius: 999px; background: var(--bg-3); overflow: hidden; }
+.ai-progress-fill {
+  position: relative; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), var(--terra-2));
+  transition: width .45s cubic-bezier(.22,.9,.35,1);
+  overflow: hidden;
+}
+.ai-progress-fill::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255,255,255,.55) 45%, transparent 70%);
+  background-size: 200% 100%;
+  animation: aiSheen 1.35s linear infinite;
+}
+@keyframes aiSheen { from { background-position: 140% 0; } to { background-position: -60% 0; } }
+
+/* ── Étapes de génération (liste verticale animée) ── */
+.ai-step { display: flex; align-items: center; gap: .6rem; padding: .3rem 0; font-size: .82rem; color: var(--muted-2); transition: color .25s ease; }
+.ai-step__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--line-med); transition: background .25s ease, box-shadow .25s ease, transform .25s ease; }
+.ai-step[data-state="active"] { color: var(--gold-2); font-weight: 600; }
+.ai-step[data-state="active"] .ai-step__dot { background: var(--gold); box-shadow: 0 0 0 4px rgba(201,162,39,.18); transform: scale(1.15); animation: aiPulse 1.2s ease-in-out infinite; }
+.ai-step[data-state="done"] { color: var(--ok); }
+.ai-step[data-state="done"] .ai-step__dot { background: var(--ok); }
+
+/* ── Apparition en cascade des cartes générées ── */
+@keyframes aiCardIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+.ai-card-in { animation: aiCardIn .38s cubic-bezier(.22,.9,.35,1) both; }
+
+/* ── Pastille « Mode démonstration » (secours simulation, backend IA pas encore branché) ── */
+.ai-demo-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+  padding: .22rem .6rem; border-radius: 999px;
+  color: var(--gold-2); background: var(--gold-bg);
+  border: 1px dashed rgba(201,162,39,.55);
+  white-space: nowrap;
+}
+.ai-demo-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: aiPulse 1.4s ease-in-out infinite; flex-shrink: 0; }
+
+/* ── Points de saisie (mini-loader inline - régénération d'une question) ── */
+.ai-typing { display: inline-flex; gap: .22rem; align-items: center; }
+.ai-typing span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .35; animation: aiTypingBounce 1s ease-in-out infinite; }
+.ai-typing span:nth-child(2) { animation-delay: .15s; }
+.ai-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes aiTypingBounce { 0%,60%,100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+/* ── Anneau de pulsation (statuts nécessitant une attention : QRO à revoir) ── */
+.ai-badge-pulse { position: relative; }
+.ai-badge-pulse::after {
+  content: ""; position: absolute; inset: -2px; border-radius: inherit;
+  border: 1px solid currentColor; opacity: .5;
+  animation: aiRingPulse 1.8s ease-out infinite;
+}
+@keyframes aiRingPulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(1.35); opacity: 0; } }
+
+/* ── Retour visuel du glisser-déposer (parcours progressif par branche) ── */
+.ai-drag-item { transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
+.ai-drag-item[data-dragging="true"] { opacity: .45; }
+.ai-drag-item[data-drop-target="true"] { box-shadow: 0 0 0 2px var(--gold), var(--shadow); transform: translateY(-2px); }
+
+/* ── Réduction de mouvement ── */
+@media (prefers-reduced-motion: reduce) {
+  .ai-cta { transition: none; }
+  .ai-cta::before, .ai-shimmer-text, .ai-progress-fill::after, .ai-step__dot,
+  .ai-demo-badge__dot, .ai-typing span, .ai-badge-pulse::after {
+    animation: none !important;
+  }
+}

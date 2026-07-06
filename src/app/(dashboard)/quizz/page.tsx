@@ -8,10 +8,13 @@ import type { Formation, QuizItem } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 import { QuizEditor } from "@/components/QuizEditor";
+import { AIGenerateModal, type AIGenerateResult, type AIGenerateTarget } from "@/components/ai/AIGenerateModal";
+import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
 
 import { BrandLoader } from "@/components/BrandLoader";
 
 type QuizTarget = { quiz: QuizItem | null };
+type AIGenerateState = { preset: AIGenerateTarget | null };
 
 export default function QuizzPage() {
   const [formations,       setFormations]       = useState<Formation[]>([]);
@@ -24,6 +27,10 @@ export default function QuizzPage() {
   const [error,            setError]            = useState("");
   const [info,             setInfo]             = useState("");
   const [loading,          setLoading]          = useState(true);
+
+  // ── Agent IA (G-01 à G-04) ───────────────────────────────────────────────
+  const [aiGenerate, setAiGenerate] = useState<AIGenerateState | null>(null);
+  const [aiReview,   setAiReview]   = useState<AIGenerateResult | null>(null);
 
   // ── Chargements ──────────────────────────────────────────────────────────
 
@@ -119,10 +126,18 @@ export default function QuizzPage() {
           </Select>
         </div>
         <Button
+          variant="ghost"
           style={{ marginBottom: ".85rem" }}
           onClick={() => { setQuizTarget({ quiz: null }); setError(""); setInfo(""); }}
         >
           + Créer un quiz
+        </Button>
+        <Button
+          className="ai-cta"
+          style={{ marginBottom: ".85rem" }}
+          onClick={() => { setAiGenerate({ preset: null }); setError(""); setInfo(""); }}
+        >
+          ✨ Générer avec l&apos;IA
         </Button>
         <Link href="/quizz/resultats" style={{ marginBottom: ".85rem" }}>
           <Button variant="ghost">Voir les résultats →</Button>
@@ -149,14 +164,25 @@ export default function QuizzPage() {
                 <tr key={q.id}>
                   {/* Titre */}
                   <td>
-                    <button
-                      onClick={() => setQuizTarget({ quiz: q })}
-                      style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
-                               textAlign: "left", color: "var(--cream)", fontWeight: 600,
-                               fontSize: ".875rem", fontFamily: "var(--sans)" }}
-                    >
-                      {q.title}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: ".45rem" }}>
+                      <button
+                        onClick={() => setQuizTarget({ quiz: q })}
+                        style={{ background: "none", border: "none", padding: 0, cursor: "pointer",
+                                 textAlign: "left", color: "var(--cream)", fontWeight: 600,
+                                 fontSize: ".875rem", fontFamily: "var(--sans)" }}
+                      >
+                        {q.title}
+                      </button>
+                      {q.generated_by_ai && (
+                        <span title="Généré par l'agent IA" style={{
+                          fontSize: ".64rem", fontWeight: 800, borderRadius: 999, padding: ".08rem .45rem",
+                          color: "var(--gold-2)", background: "var(--gold-bg)", border: "1px solid rgba(201,162,39,.35)",
+                          whiteSpace: "nowrap", flexShrink: 0,
+                        }}>
+                          ✨ IA
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Formation */}
@@ -200,6 +226,29 @@ export default function QuizzPage() {
                   {/* Actions */}
                   <td>
                     <div style={{ display: "flex", gap: ".35rem", justifyContent: "flex-end" }}>
+                      {/* Générer avec l'IA (module de cette formation) */}
+                      {q.formation !== null && (
+                        <button
+                          onClick={() => setAiGenerate({
+                            preset: {
+                              formationId: q.formation as number,
+                              formationTitle: formationTitle(q.formation) ?? "Formation",
+                              courseId: null,
+                              contextLabel: "Formation entière (examen)",
+                            },
+                          })}
+                          title="Générer un nouveau quiz IA pour cette formation"
+                          className="ai-cta"
+                          style={{
+                            background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+                            borderRadius: "var(--radius-sm)", width: 32, height: 32,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            cursor: "pointer", fontSize: ".9rem", transition: "all .15s",
+                          }}
+                        >
+                          ✨
+                        </button>
+                      )}
                       {/* Éditer */}
                       <button
                         onClick={() => setQuizTarget({ quiz: q })}
@@ -284,6 +333,36 @@ export default function QuizzPage() {
           onConfirm={async () => {
             await doDelete(deleteTarget);
             setDeleteTarget(null);
+          }}
+        />
+      )}
+
+      {/* ── Agent IA - G-01/G-02 : configuration + génération ── */}
+      {aiGenerate && (
+        <AIGenerateModal
+          formations={formations}
+          preset={aiGenerate.preset}
+          onClose={() => setAiGenerate(null)}
+          onGenerated={(result) => { setAiGenerate(null); setAiReview(result); }}
+        />
+      )}
+
+      {/* ── Agent IA - G-03/G-04 : aperçu, édition, niveau/rang, publication ── */}
+      {aiReview && (
+        <AIReviewPanel
+          initialQuestions={aiReview.questions}
+          config={aiReview.config}
+          niveauSuggere={aiReview.niveauSuggere}
+          rangSuggere={aiReview.rangSuggere}
+          simulated={aiReview.simulated}
+          targetFormationId={aiReview.targetFormationId}
+          targetCourseId={aiReview.targetCourseId}
+          targetBranche={formations.find((f) => f.id === aiReview.targetFormationId)?.branche ?? null}
+          onClose={() => setAiReview(null)}
+          onPublished={(message) => {
+            setAiReview(null);
+            load();
+            setInfo(message);
           }}
         />
       )}

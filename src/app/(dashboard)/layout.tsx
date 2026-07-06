@@ -35,6 +35,14 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Intelligence Artificielle",
+    items: [
+      { href: "/quizz/parcours",     label: "Parcours par branche", icon: "✦" },
+      { href: "/quizz/revue-qro",    label: "Revue QRO",            icon: "◐" },
+      { href: "/quizz/historique-ia", label: "Historique IA",       icon: "◷" },
+    ],
+  },
+  {
     label: "Commerce",
     items: [
       { href: "/abonnements",  label: "Abonnements",   icon: "◈" },

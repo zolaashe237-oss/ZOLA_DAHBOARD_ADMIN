@@ -205,6 +205,10 @@ export interface QuizQuestion {
   multiple: boolean;
   order: number;
   choices: QuizChoice[];
+  /** Type IA - absent = QCM classique (rétro-compatible). QRO = réponse ouverte notée par Gemini. */
+  type?: AIQuestionType;
+  /** Critères d'évaluation IA pour une question QRO (choices reste [] dans ce cas). */
+  criteria?: string[];
 }
 
 export interface QuizItem {
@@ -215,6 +219,87 @@ export interface QuizItem {
   pass_threshold: number;
   active: boolean;
   questions: QuizQuestion[];
+  created_at: string;
+  /** Métadonnées agent IA (IAB2/IAB8) - absentes sur les quiz créés manuellement. */
+  generated_by_ai?: boolean;
+  ai_source?: AISourceType | null;
+  niveau?: AIDifficulty | null;
+  rang?: number | null;
+  branche?: Branche | null;
+  status?: "DRAFT" | "PUBLISHED";
+}
+
+// ── Agent IA - Génération de quiz (Gemini 3.5) ────────────────────────────────
+// Réf. sprint SPR-ZOLA-S06-2026 · Axe 1 · Tâches G-01 à G-07 (back-office admin)
+
+export type AIQuestionType = "QCM" | "QRO";
+export type AIDifficulty   = "FACILE" | "INTERMEDIAIRE" | "DIFFICILE";
+export type AISourceType   = "SCRIPT" | "PDF";
+export type AIJobStatus    = "PENDING" | "IN_PROGRESS" | "DONE" | "FAILED";
+export type QROVerdict     = "VALIDE" | "NON_VALIDE" | "A_REVOIR";
+
+export interface AIGenerationConfig {
+  nb_questions: number;
+  nb_qcm: number;
+  nb_qro: number;
+  difficulty: AIDifficulty;
+  source: AISourceType;
+  /** Cible de la génération - au moins un des trois doit être fourni. */
+  formation?: number | null;
+  course?: number | null;
+  module_title?: string;
+  formation_title?: string;
+}
+
+/** Question telle que retournée par l'IA, avant publication (id client uniquement). */
+export interface AIGeneratedQuestion {
+  client_id: string;
+  type: AIQuestionType;
+  text: string;
+  choices: QuizChoice[];
+  criteria: string[];
+  difficulty: AIDifficulty;
+  suggested_rank: number;
+  regenerating?: boolean;
+}
+
+export interface AIQuizJob {
+  job_id: string;
+  status: AIJobStatus;
+  progress: number;
+  formation_title?: string;
+  module_title?: string;
+  niveau_suggere?: AIDifficulty;
+  rang_suggere?: number;
+  questions?: AIGeneratedQuestion[];
+  error?: string;
+  /** true si la réponse provient du moteur de simulation local (backend IA pas encore branché). */
+  simulated?: boolean;
+}
+
+export interface AIQROReviewItem {
+  id: number;
+  quiz_id: number;
+  quiz_title: string;
+  question_text: string;
+  chapter_context: string;
+  member_name: string;
+  member_answer: string;
+  ai_score: number;
+  ai_verdict: QROVerdict;
+  ai_justification: string;
+  created_at: string;
+}
+
+export interface AIQuizHistoryEntry {
+  id: number;
+  quiz_title: string;
+  source_title: string;
+  ai_source: AISourceType | null;
+  generated_by_ai: boolean;
+  validated_by: string | null;
+  status: "DRAFT" | "PUBLISHED";
+  niveau: AIDifficulty | null;
   created_at: string;
 }
 
