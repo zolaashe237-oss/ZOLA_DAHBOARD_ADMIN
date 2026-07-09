@@ -15,6 +15,8 @@ import type {
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { QuizEditor } from "@/components/QuizEditor";
 import { FormationCard, COVER_GRAD } from "@/components/FormationCard";
+import { AIGenerateModal, AIGenerateResult, AIGenerateTarget } from "@/components/ai/AIGenerateModal";
+import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
 
 type QuizTarget = { quiz: QuizItem | null; course?: number; formation?: number };
 
@@ -64,6 +66,8 @@ export default function FormationBuilderPage() {
   const [error,             setError]             = useState("");
   const [info,              setInfo]              = useState("");
   const [quizTarget,        setQuizTarget]        = useState<QuizTarget | null>(null);
+  const [aiTarget,          setAiTarget]          = useState<AIGenerateTarget | null>(null);
+  const [aiResult,          setAiResult]          = useState<AIGenerateResult | null>(null);
   const [showMeta,          setShowMeta]          = useState(false);
 
   // Metadata state (lifted)
@@ -351,6 +355,7 @@ export default function FormationBuilderPage() {
                     onError={setError}
                     onInfo={flash}
                     onQuiz={setQuizTarget}
+                    onAiGenerate={setAiTarget}
                     onEpisodeChange={(ep) => setPendingEpisode(ep)}
                   />
                 </div>
@@ -397,16 +402,33 @@ export default function FormationBuilderPage() {
             </div>
           </div>
         </div>
-        <button
-          onClick={() => setQuizTarget({ quiz: finalExam, formation: fid })}
-          style={{
-            background: "rgba(201,162,39,0.10)", color: "#7a5a1a",
-            border: "1px solid rgba(201,162,39,0.32)", borderRadius: 6,
-            fontSize: "0.78rem", fontWeight: 600, padding: "0.34rem 0.82rem", cursor: "pointer",
-          }}
-        >
-          {finalExam ? "Modifier l'examen" : "Ajouter un examen final"}
-        </button>
+        <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
+          <button
+            onClick={() => setQuizTarget({ quiz: finalExam, formation: fid })}
+            style={{
+              background: "rgba(201,162,39,0.10)", color: "#7a5a1a",
+              border: "1px solid rgba(201,162,39,0.32)", borderRadius: 6,
+              fontSize: "0.78rem", fontWeight: 600, padding: "0.34rem 0.82rem", cursor: "pointer",
+            }}
+          >
+            {finalExam ? "Modifier l'examen" : "Ajouter un examen final"}
+          </button>
+          <button
+            onClick={() => formation && setAiTarget({
+              formationId: fid,
+              formationTitle: formation.title,
+              courseId: null,
+              contextLabel: "Examen final de la formation",
+            })}
+            style={{
+              background: "rgba(201,162,39,0.18)", color: "#7a5a1a",
+              border: "1px solid rgba(201,162,39,0.45)", borderRadius: 6,
+              fontSize: "0.78rem", fontWeight: 700, padding: "0.34rem 0.82rem", cursor: "pointer",
+            }}
+          >
+            ✨ Générer quiz
+          </button>
+        </div>
       </div>
 
       {quizTarget && (
@@ -416,6 +438,30 @@ export default function FormationBuilderPage() {
           formation={quizTarget.formation}
           onClose={() => setQuizTarget(null)}
           onSaved={() => { setQuizTarget(null); reload(); }}
+        />
+      )}
+
+      {aiTarget && !aiResult && formation && (
+        <AIGenerateModal
+          formations={[formation]}
+          preset={aiTarget}
+          onClose={() => setAiTarget(null)}
+          onGenerated={(result) => { setAiTarget(null); setAiResult(result); }}
+        />
+      )}
+
+      {aiResult && formation && (
+        <AIReviewPanel
+          initialQuestions={aiResult.questions}
+          config={aiResult.config}
+          niveauSuggere={aiResult.niveauSuggere}
+          rangSuggere={aiResult.rangSuggere}
+          simulated={aiResult.simulated}
+          targetFormationId={aiResult.targetFormationId}
+          targetCourseId={aiResult.targetCourseId}
+          targetBranche={formation.branche ?? null}
+          onClose={() => setAiResult(null)}
+          onPublished={(msg) => { setAiResult(null); flash(msg); reload(); }}
         />
       )}
     </div>
@@ -701,7 +747,7 @@ function AddChapterForm({ formationId, modules, onSaved, onError, onInfo, onTitl
 
 function ChapterCard({
   formation, module, chapterIndex, episodeOffset, courses, chapterQuiz, resourcesByCourse,
-  onReload, onError, onInfo, onQuiz, onEpisodeChange,
+  onReload, onError, onInfo, onQuiz, onAiGenerate, onEpisodeChange,
 }: {
   formation:         Formation;
   module:            ModuleItem;
@@ -711,7 +757,8 @@ function ChapterCard({
   chapterQuiz:       QuizItem | null;
   resourcesByCourse: Record<number, ResourceItem[]>;
   onReload: () => void; onError: (s: string) => void; onInfo: (s: string) => void;
-  onQuiz:   (t: QuizTarget) => void;
+  onQuiz:         (t: QuizTarget) => void;
+  onAiGenerate:   (target: AIGenerateTarget) => void;
   onEpisodeChange?: (ep: PendingEpisode | null) => void;
 }) {
   const draggingEp = useRef<number | null>(null);
@@ -907,21 +954,42 @@ function ChapterCard({
             </div>
           )}
         </div>
-        <button
-          onClick={() => {
-            if (courses.length === 0) { onInfo("Ajoutez d'abord un épisode avant d'ajouter un quiz."); return; }
-            onQuiz({ quiz: chapterQuiz, course: courses[0].id });
-          }}
-          style={{
-            background: chapterQuiz ? "rgba(201,162,39,0.10)" : "rgba(139,106,58,0.08)",
-            color: chapterQuiz ? "#7a5a1a" : "#8b6a3a",
-            border: `1px solid ${chapterQuiz ? "rgba(201,162,39,0.30)" : "#e8dfc8"}`,
-            borderRadius: 6, fontSize: "0.74rem", fontWeight: 600,
-            padding: "0.28rem 0.7rem", cursor: "pointer", flexShrink: 0,
-          }}
-        >
-          {chapterQuiz ? "Modifier" : "+ Quiz"}
-        </button>
+        <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+          <button
+            onClick={() => {
+              if (courses.length === 0) { onInfo("Ajoutez d'abord un épisode avant d'ajouter un quiz."); return; }
+              onQuiz({ quiz: chapterQuiz, course: courses[0].id });
+            }}
+            style={{
+              background: chapterQuiz ? "rgba(201,162,39,0.10)" : "rgba(139,106,58,0.08)",
+              color: chapterQuiz ? "#7a5a1a" : "#8b6a3a",
+              border: `1px solid ${chapterQuiz ? "rgba(201,162,39,0.30)" : "#e8dfc8"}`,
+              borderRadius: 6, fontSize: "0.74rem", fontWeight: 600,
+              padding: "0.28rem 0.7rem", cursor: "pointer",
+            }}
+          >
+            {chapterQuiz ? "Modifier" : "+ Quiz"}
+          </button>
+          <button
+            onClick={() => {
+              if (courses.length === 0) { onInfo("Ajoutez d'abord un épisode avant de générer un quiz IA."); return; }
+              onAiGenerate({
+                formationId:    formation.id,
+                formationTitle: formation.title,
+                courseId:       courses[0].id,
+                contextLabel:   module.title,
+              });
+            }}
+            style={{
+              background: "rgba(201,162,39,0.18)", color: "#7a5a1a",
+              border: "1px solid rgba(201,162,39,0.45)", borderRadius: 6,
+              fontSize: "0.74rem", fontWeight: 700,
+              padding: "0.28rem 0.7rem", cursor: "pointer",
+            }}
+          >
+            ✨ Générer quiz
+          </button>
+        </div>
       </div>
     </div>
   );

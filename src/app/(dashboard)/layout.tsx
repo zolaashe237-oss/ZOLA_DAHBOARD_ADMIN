@@ -12,7 +12,7 @@ import { ToastProvider } from "@/components/Toast";
 
 // ── Structure de navigation groupée ──────────────────────────────────────────
 
-type NavItem = { href: string; label: string; icon: string };
+type NavItem = { href: string; label: string; icon: string; exact?: boolean };
 type NavGroup = { label: string | null; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -25,21 +25,21 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Membres & Contenu",
     items: [
-      { href: "/membres",      label: "Membres",       icon: "◎" },
-      { href: "/contenu",      label: "Formations",    icon: "◫" },
-      { href: "/quizz",           label: "Quiz & QCM",      icon: "◆" },
-      { href: "/quizz/resultats", label: "Résultats quiz",   icon: "◌" },
-      { href: "/lives",        label: "Lives",         icon: "⬤" },
-      { href: "/bibliotheque", label: "Bibliothèque",  icon: "◧" },
-      { href: "/audio",        label: "Audio",          icon: "♪" },
+      { href: "/membres",             label: "Membres",          icon: "◎" },
+      { href: "/contenu",             label: "Formations",       icon: "◫" },
+      { href: "/quizz",               label: "Quiz & QCM",       icon: "◆", exact: true },
+      { href: "/quizz/resultats",     label: "Résultats quiz",   icon: "◌" },
+      { href: "/lives",               label: "Lives",            icon: "⬤" },
+      { href: "/bibliotheque",        label: "Bibliothèque",     icon: "◧" },
+      { href: "/audio",               label: "Audio",            icon: "♪" },
     ],
   },
   {
     label: "Intelligence Artificielle",
     items: [
-      { href: "/quizz/parcours",     label: "Parcours par branche", icon: "✦" },
-      { href: "/quizz/revue-qro",    label: "Revue QRO",            icon: "◐" },
-      { href: "/quizz/historique-ia", label: "Historique IA",       icon: "◷" },
+      { href: "/quizz/parcours",      label: "Parcours par branche", icon: "✦" },
+      { href: "/quizz/revue-qro",     label: "Revue QRO",            icon: "◐" },
+      { href: "/quizz/historique-ia", label: "Historique IA",        icon: "◷" },
     ],
   },
   {
@@ -133,6 +133,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               {group.items.map((item) => {
                 const active = item.href === "/"
                   ? pathname === "/"
+                  : item.exact
+                  ? pathname === item.href
                   : pathname.startsWith(item.href);
                 return (
                   <Link
