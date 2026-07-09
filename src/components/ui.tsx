@@ -165,11 +165,23 @@ export const STATUS_COLOR: Record<string, string> = {
 };
 
 export function errorMessage(e: unknown): string {
-  const detail = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
+  const response = (e as { response?: { data?: unknown; status?: number } })?.response;
+  const detail   = response?.data;
+  const status   = response?.status;
+
   if ((e as Error)?.message === "Accès réservé aux administrateurs.") return (e as Error).message;
-  if (!detail) return "Une erreur est survenue.";
-  if (typeof detail.detail === "string") return detail.detail;
-  const first = Object.values(detail)[0];
+
+  if (!response) return "Impossible de contacter le serveur. Vérifiez votre connexion.";
+
+  if (typeof detail === "string" || !detail) {
+    if (status === 404) return "Cette fonctionnalité n'est pas encore disponible côté serveur.";
+    if (status === 500) return "Erreur interne du serveur. Réessayez plus tard.";
+    return `Une erreur est survenue (code ${status ?? "inconnu"}).`;
+  }
+
+  const obj = detail as Record<string, unknown>;
+  if (typeof obj.detail === "string") return obj.detail;
+  const first = Object.values(obj)[0];
   if (Array.isArray(first)) return String(first[0]);
   return typeof first === "string" ? first : "Une erreur est survenue.";
 }

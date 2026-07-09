@@ -7,6 +7,7 @@ import type { Branche, Formation, FormationAcces, FormationNiveau, FormationStat
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 import { FormationCard } from "@/components/FormationCard";
+import { YoutubeImportModal } from "@/components/YoutubeImportModal";
 
 // ── Groupement par branche ────────────────────────────────────────────────────
 
@@ -190,6 +191,7 @@ export default function ContenuPage() {
   const [coverFile,    setCoverFile]    = useState<File | null>(null);
   const [coverUrl,     setCoverUrl]     = useState("");
   const [showForm,     setShowForm]     = useState(false);
+  const [showYoutubeImport, setShowYoutubeImport] = useState(false);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState("");
   const [info,         setInfo]         = useState("");
@@ -315,6 +317,13 @@ export default function ContenuPage() {
           </Select>
         </div>
         <Button
+          variant="ghost"
+          style={{ marginBottom: ".85rem" }}
+          onClick={() => { setShowYoutubeImport(true); setError(""); setInfo(""); }}
+        >
+          ⬇ Importer depuis YouTube
+        </Button>
+        <Button
           style={{ marginBottom: ".85rem" }}
           onClick={() => {
             if (showForm) resetForm();
@@ -324,6 +333,13 @@ export default function ContenuPage() {
           {showForm ? "✕ Annuler" : "+ Nouvelle formation"}
         </Button>
       </div>
+
+      {showYoutubeImport && (
+        <YoutubeImportModal
+          onClose={() => setShowYoutubeImport(false)}
+          onImported={(message) => { setInfo(message); setShowYoutubeImport(false); load(); }}
+        />
+      )}
 
       {/* ── Formulaire création avec aperçu live ── */}
       {showForm && (

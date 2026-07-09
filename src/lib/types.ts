@@ -149,6 +149,33 @@ export interface Formation {
   updated_at: string;
 }
 
+// ── Import automatique depuis YouTube (F2) ───────────────────────────────────
+
+export interface YoutubeImportPreviewCourse {
+  title: string;
+  youtube_url: string;
+  duration_sec: number | null;
+}
+
+export interface YoutubeImportPreviewModule {
+  title: string;
+  courses: YoutubeImportPreviewCourse[];
+}
+
+export interface YoutubeImportPreview {
+  formation_title: string;
+  playlist_url: string;
+  modules: YoutubeImportPreviewModule[];
+  total_videos: number;
+}
+
+export interface YoutubeImportResult {
+  formation: Formation;
+  modules_created: number;
+  courses_created: number;
+  simulated?: boolean;
+}
+
 export interface ModuleItem {
   id: number;
   formation: number;
@@ -220,6 +247,9 @@ export interface QuizItem {
   active: boolean;
   questions: QuizQuestion[];
   created_at: string;
+  /** F4 - livre PDF associé à ce quiz (association bidirectionnelle). */
+  library_pdf?: number | null;
+  library_pdf_title?: string | null;
   /** Métadonnées agent IA (IAB2/IAB8) - absentes sur les quiz créés manuellement. */
   generated_by_ai?: boolean;
   ai_source?: AISourceType | null;
@@ -501,8 +531,19 @@ export interface LibraryPdf {
   nb_pages: number | null;
   size_mo: number | null;
   is_active: boolean;
+  /** F4 - quiz associé à ce document, s'il existe. */
+  linked_quiz_id?: number | null;
+  linked_quiz_title?: string | null;
   /** Accessible gratuitement même si access_level est restreint */
   is_gratuit?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface SocialLinksConfig {
+  facebook_url: string;
+  instagram_url: string;
+  youtube_url: string;
+  tiktok_url: string;
+  updated_at?: string;
 }

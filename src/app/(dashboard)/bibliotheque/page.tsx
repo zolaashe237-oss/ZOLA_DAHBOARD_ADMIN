@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { libraryApi } from "@/lib/endpoints";
+import { asList, libraryApi, quizApi } from "@/lib/endpoints";
 import { getMediaUrl } from "@/lib/api";
-import type { Branche, LibraryPdf, PdfAccess } from "@/lib/types";
+import type { Branche, LibraryPdf, PdfAccess, QuizItem } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 
@@ -335,7 +336,15 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   const [saving,     setSaving]     = useState(false);
   const [dragOver,   setDragOver]   = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [quizOptions, setQuizOptions] = useState<QuizItem[]>([]);
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    quizApi.listAll()
+      .then((r) => setQuizOptions(asList(r.data)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
@@ -492,6 +501,17 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
             <option value="FEMME">♀ Branche Femmes</option>
             <option value="ENFANT">◈ Branche Enfants</option>
           </Select>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: editing ? "1fr auto" : "1fr", gap: "0.55rem", alignItems: "flex-end", marginBottom: "1rem" }}>
+          <Select label="Quiz associé" value={form.linked_quiz_id ?? ""} onChange={(e) => setForm({ ...form, linked_quiz_id: e.target.value ? Number(e.target.value) : null })}>
+            <option value="">— Aucun quiz associé —</option>
+            {quizOptions.map((q) => <option key={q.id} value={q.id}>{q.title}</option>)}
+          </Select>
+          {editing && (
+            <Button type="button" variant="ghost" onClick={() => router.push(`/quizz?create=1&library_pdf=${editing}`)}>
+              + Créer un quiz pour ce livre
+            </Button>
+          )}
         </div>
         <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1.1rem" }}>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.86rem", color: "var(--muted)", cursor: "pointer" }}>
@@ -773,7 +793,7 @@ const EMPTY_FORM = {
   title: "", description: "", category: "", branche: "GENERALE" as Branche,
   access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_url: "",
   nb_pages: null as number | null, size_mo: null as number | null,
-  is_active: true, is_gratuit: false,
+  is_active: true, is_gratuit: false, linked_quiz_id: null as number | null,
 };
 
 // ── Page principale ───────────────────────────────────────────────────────────
@@ -856,6 +876,7 @@ export default function BibliothequePage() {
     nb_pages: editTarget.nb_pages, size_mo: editTarget.size_mo,
     is_active: editTarget.is_active,
     is_gratuit: editTarget.is_gratuit ?? false,
+    linked_quiz_id: editTarget.linked_quiz_id ?? null,
   } : { ...EMPTY_FORM };
 
   return (
