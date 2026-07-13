@@ -49,6 +49,7 @@ LOCAL_APPS = [
     "apps.audit",
     "apps.blog",
     "apps.notifications",
+    "apps.ai_quiz",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -328,3 +329,38 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- IA (Gemini 2.5 Flash) --------------------------------------------------
+# Le sprint mentionne « Gemini 3.5 Flash » qui n'existe pas côté Google ; on
+# utilise le modèle courant équivalent (2.5 Flash) via variable configurable.
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-2.5-flash")
+GEMINI_TIMEOUT_S = env.int("GEMINI_TIMEOUT_S", default=60)
+GEMINI_MAX_RETRIES = env.int("GEMINI_MAX_RETRIES", default=2)
+AI_ENABLED = env.bool("AI_ENABLED", default=True)
+YOUTUBE_API_KEY = env("YOUTUBE_API_KEY", default="")
+
+# --- Logging ----------------------------------------------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name} — {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "ai_quiz": {
+            "handlers": ["console"],
+            "level": env("AI_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+    },
+}
