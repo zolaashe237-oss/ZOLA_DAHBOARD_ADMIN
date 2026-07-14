@@ -38,10 +38,13 @@ import type {
   QuizResult,
   ReportItem,
   ResourceItem,
+  SocialLinksConfig,
   SubscriptionPlan,
   Transaction,
   TransactionKPIs,
   User,
+  YoutubeImportPreview,
+  YoutubeImportResult,
 } from "./types";
 
 export const authApi = {
@@ -92,7 +95,8 @@ export const adminAccountApi = {
 };
 
 export const dashboardApi = {
-  kpis: () => api.get<DashboardKPIs>("/admin/dashboard/"),
+  kpis: (params?: { date_from?: string; date_to?: string }) =>
+    api.get<DashboardKPIs>("/admin/dashboard/", { params }),
 };
 
 export const membersApi = {
@@ -126,6 +130,48 @@ export const formationApi = {
     const fd = new FormData();
     fd.append("file", file);
     return api.post<{ url: string; key: string }>(`/admin/formations/${id}/cover/`, fd);
+  },
+};
+
+
+// ── Import automatique de formation depuis une playlist YouTube (F2) ─────────
+// F2-B (Edwin) : POST /api/admin/formations/import-youtube/
+
+export const youtubeImportApi = {
+  preview: async (playlistUrl: string): Promise<{ preview: YoutubeImportPreview; simulated: boolean }> => {
+    try {
+      const { data } = await api.post<YoutubeImportPreview>(
+        "/admin/formations/import-youtube/",
+        { playlist_url: playlistUrl, mode: "preview" },
+      );
+      return { preview: data, simulated: false };
+    } catch {
+      return {
+        preview: {
+          formation_title: "Formation importée (aperçu simulé)",
+          playlist_url: playlistUrl,
+          modules: [
+            {
+              title: "Module 1",
+              courses: [
+                { title: "Introduction", youtube_url: playlistUrl, duration_sec: 480 },
+                { title: "Notions de base", youtube_url: playlistUrl, duration_sec: 620 },
+              ],
+            },
+          ],
+          total_videos: 2,
+        },
+        simulated: true,
+      };
+    }
+  },
+
+  confirm: async (playlistUrl: string): Promise<YoutubeImportResult> => {
+    const { data } = await api.post<YoutubeImportResult>(
+      "/admin/formations/import-youtube/",
+      { playlist_url: playlistUrl, mode: "confirm" },
+    );
+    return { ...data, simulated: false };
   },
 };
 
@@ -452,6 +498,10 @@ export const audioApi = {
 
 export const libraryApi = {
   list: () => api.get<LibraryPdf[] | Paginated<LibraryPdf>>("/admin/library/"),
+  listActive: async (): Promise<LibraryPdf[]> => {
+    const { data } = await api.get<LibraryPdf[] | Paginated<LibraryPdf>>("/admin/library/", { params: { is_active: true } });
+    return asList(data);
+  },
   create: (data: Partial<LibraryPdf>) => api.post<LibraryPdf>("/admin/library/", data),
   update: (id: number, data: Partial<LibraryPdf>) =>
     api.patch<LibraryPdf>(`/admin/library/${id}/`, data),
@@ -465,4 +515,10 @@ export const libraryApi = {
       fd,
     );
   },
+};
+
+export const socialLinksApi = {
+  get: () => api.get<SocialLinksConfig>("/config/social-links/"),
+  update: (data: Partial<SocialLinksConfig>) =>
+    api.patch<SocialLinksConfig>("/config/social-links/", data),
 };

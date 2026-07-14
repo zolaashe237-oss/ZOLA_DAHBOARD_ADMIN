@@ -13,7 +13,7 @@ import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
 
 import { BrandLoader } from "@/components/BrandLoader";
 
-type QuizTarget = { quiz: QuizItem | null };
+type QuizTarget = { quiz: QuizItem | null; libraryPdf?: number };
 type AIGenerateState = { preset: AIGenerateTarget | null };
 
 export default function QuizzPage() {
@@ -51,6 +51,14 @@ export default function QuizzPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const libraryPdf = params.get("library_pdf");
+    if (params.get("create") === "1") {
+      setQuizTarget({ quiz: null, libraryPdf: libraryPdf ? Number(libraryPdf) : undefined });
+    }
+  }, []);
 
   // ── Filtres ───────────────────────────────────────────────────────────────
 
@@ -313,6 +321,7 @@ export default function QuizzPage() {
       {quizTarget && (
         <QuizEditor
           quiz={quizTarget.quiz}
+          libraryPdf={quizTarget.libraryPdf}
           formations={formations}
           onClose={() => setQuizTarget(null)}
           onSaved={() => {
