@@ -4,6 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { dashboardApi, financeApi2, transactionsApi, membersApi } from "@/lib/endpoints";
+import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
+import {
+  MOCK_KPIS,
+  MOCK_LATE_COTISATIONS,
+  MOCK_MEMBERS,
+  MOCK_MONTHLY_REVENUE,
+  MOCK_PAYMENT_BREAKDOWN,
+  MOCK_TRANSACTIONS,
+} from "@/lib/mocks";
 import { useAuth } from "@/context/AuthContext";
 import type { DashboardKPIs, LateMember, MonthlyRevenue, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, User } from "@/lib/types";
 
@@ -319,9 +328,12 @@ export default function DashboardPage() {
   const [late,        setLate]        = useState<LateMember[]>([]);
   const [recidivists, setRecidivists] = useState<User[]>([]);
   const [recentTx,    setRecentTx]    = useState<Transaction[]>([]);
+  const [range,       setRange]       = useState<DateRange>({ date_from: "", date_to: "" });
 
   useEffect(() => {
-    dashboardApi.kpis()
+    const params = range.date_from && range.date_to ? range : undefined;
+
+    dashboardApi.kpis(params)
       .then((r) => setKpis(r.data))
       .catch(() => {});
 
@@ -347,14 +359,14 @@ export default function DashboardPage() {
       })
       .catch(() => {});
 
-    transactionsApi.list()
+    transactionsApi.list(params ? { date_from: params.date_from, date_to: params.date_to } : undefined)
       .then((r) => {
         const arr = Array.isArray(r.data) ? r.data : (r.data as { results: Transaction[] }).results;
         const sorted = [...arr].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
         if (sorted.length > 0) setRecentTx(sorted);
       })
       .catch(() => {});
-  }, []);
+  }, [range]);
 
   const today = new Date().toLocaleDateString("fr-FR", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
@@ -378,16 +390,19 @@ export default function DashboardPage() {
             {greeting()}{user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""} — état de la plateforme Zola Ashé.
           </p>
         </div>
-        <Link href="/membres" style={{
+        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <DateRangePicker value={range} onChange={setRange} />
+          <Link href="/membres" style={{
           display: "inline-flex", alignItems: "center", gap: "0.45rem",
           padding: "0.5rem 1rem",
           background: "var(--bg-1)", border: "1px solid var(--line-soft)",
           borderRadius: "var(--radius)", color: "var(--cream)",
           fontSize: "0.82rem", fontWeight: 500, textDecoration: "none",
           whiteSpace: "nowrap",
-        }}>
-          ◎ Gérer les membres
-        </Link>
+          }}>
+            ◎ Gérer les membres
+          </Link>
+        </div>
       </div>
 
       {/* ── KPI Row 1 — 4 tuiles principales ──────────────────────────────── */}

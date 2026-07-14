@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { Alert, Button } from "@/components/ui";
 import { useAIGeneration } from "@/hooks/useAIGeneration";
-import { moduleApi } from "@/lib/endpoints";
+import { courseApi, moduleApi, resourceApi, asList } from "@/lib/endpoints";
 import type {
   AIDifficulty, AIGeneratedQuestion, AIGenerationConfig, AISourceType, Formation, ModuleItem,
 } from "@/lib/types";
@@ -27,6 +27,7 @@ const SOURCES: { value: AISourceType; label: string; hint: string; icon: string 
 export interface AIGenerateTarget {
   formationId: number;
   formationTitle: string;
+  moduleId?: number | null;
   courseId?: number | null;
   contextLabel: string; // ex. "Formation entière" ou "Module 2 - Méditation & Silence"
 }
@@ -55,7 +56,7 @@ export function AIGenerateModal({
 }) {
   const [formationId, setFormationId] = useState<string>(preset ? String(preset.formationId) : "");
   const [modules,      setModules]     = useState<ModuleItem[]>([]);
-  const [moduleId,     setModuleId]    = useState<string>("");
+  const [moduleId,     setModuleId]    = useState<string>(preset?.moduleId ? String(preset.moduleId) : "");
   const [loadingMods,  setLoadingMods] = useState(false);
 
   const [nbQuestions, setNbQuestions] = useState(8);
@@ -64,17 +65,64 @@ export function AIGenerateModal({
   const [source,       setSource]     = useState<AISourceType>("SCRIPT");
   const [formError,    setFormError]  = useState("");
 
+  const [youtubeUrl,   setYoutubeUrl]   = useState<string>("");
+  const [pdfResourceId, setPdfResourceId] = useState<string>("");
+  const [loadingResources, setLoadingResources] = useState(false);
+
   const gen = useAIGeneration();
 
   // Charge les modules de la formation choisie (contexte + thématisation de la simulation).
   useEffect(() => {
-    if (preset || !formationId) { setModules([]); setModuleId(""); return; }
+    const targetFormId = preset ? preset.formationId : (formationId ? Number(formationId) : null);
+    if (!targetFormId) { setModules([]); setModuleId(""); return; }
     setLoadingMods(true);
-    moduleApi.list(Number(formationId))
-      .then((r) => setModules(Array.isArray(r.data) ? r.data : r.data.results))
+    moduleApi.list(targetFormId)
+      .then((r) => {
+        const mods = asList(r.data);
+        setModules(mods);
+        if (preset?.moduleId) {
+          setModuleId(String(preset.moduleId));
+        } else if (mods.length > 0) {
+          setModuleId(String(mods[0].id));
+        }
+      })
       .catch(() => setModules([]))
       .finally(() => setLoadingMods(false));
   }, [formationId, preset]);
+
+  // Récupère les ressources du module sélectionné pour trouver youtubeUrl ou pdfResourceId
+  useEffect(() => {
+    if (!moduleId) {
+      setYoutubeUrl("");
+      setPdfResourceId("");
+      return;
+    }
+    setLoadingResources(true);
+    setYoutubeUrl("");
+    setPdfResourceId("");
+    courseApi.list(Number(moduleId))
+      .then(async (res) => {
+        const courses = asList(res.data);
+        if (courses.length > 0) {
+          const firstCourse = courses[0];
+          const resList = asList((await resourceApi.list(firstCourse.id)).data);
+          const videoRes = resList.find(r => r.resource_type === "VIDEO" && r.video_source === "YOUTUBE");
+          if (videoRes?.youtube_url) {
+            setYoutubeUrl(videoRes.youtube_url);
+          }
+          const pdfRes = resList.find(r => r.resource_type === "PDF");
+          if (pdfRes?.id) {
+            setPdfResourceId(String(pdfRes.id));
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Erreur lors du chargement des ressources du module", err);
+      })
+      .finally(() => {
+        setLoadingResources(false);
+      });
+  }, [moduleId]);
 
   const nbQro = nbQuestions - nbQcm;
 
@@ -83,7 +131,8 @@ export function AIGenerateModal({
   const moduleTitle = preset?.contextLabel
     ?? modules.find((m) => String(m.id) === moduleId)?.title ?? "";
 
-  const canSubmit = !!formationTitle && nbQuestions >= 5 && nbQuestions <= 20 && nbQcm >= 0 && nbQcm <= nbQuestions;
+  const isSourceMissing = (source === "SCRIPT" && !youtubeUrl) || (source === "PDF" && !pdfResourceId);
+  const canSubmit = !!formationTitle && !!moduleId && !loadingResources && !isSourceMissing && nbQuestions >= 5 && nbQuestions <= 20 && nbQcm >= 0 && nbQcm <= nbQuestions;
 
   const buildConfig = (): AIGenerationConfig => ({
     nb_questions: nbQuestions, nb_qcm: nbQcm, nb_qro: nbQro,
@@ -92,11 +141,18 @@ export function AIGenerateModal({
     course: preset ? (preset.courseId ?? null) : null,
     formation_title: formationTitle,
     module_title: moduleTitle,
+    moduleId: Number(moduleId),
+    source_ref: source === "SCRIPT" ? youtubeUrl : pdfResourceId,
+    source_text: "",
   });
 
   const submit = async () => {
     setFormError("");
     if (!formationTitle) { setFormError("Choisissez une formation cible."); return; }
+    if (isSourceMissing) {
+      setFormError(source === "SCRIPT" ? "Le module sélectionné n'a pas de vidéo YouTube comme source." : "Le module sélectionné n'a pas de document PDF comme source.");
+      return;
+    }
     await gen.start(buildConfig());
   };
 
@@ -227,11 +283,27 @@ export function AIGenerateModal({
                   className={`chip press ${source === s.value ? "on" : ""}`}
                   onClick={() => setSource(s.value)}
                   title={s.hint}
+                  disabled={loadingResources}
                 >
                   {s.icon} {s.label}
                 </button>
               ))}
             </div>
+            {loadingResources && (
+              <p style={{ color: "var(--gold-2)", fontSize: ".78rem", marginTop: ".35rem" }}>
+                Chargement des ressources du module...
+              </p>
+            )}
+            {!loadingResources && source === "SCRIPT" && !youtubeUrl && moduleId && (
+              <p style={{ color: "var(--bad)", fontSize: ".78rem", marginTop: ".35rem" }}>
+                ⚠️ Aucun script vidéo (YouTube) trouvé pour ce module.
+              </p>
+            )}
+            {!loadingResources && source === "PDF" && !pdfResourceId && moduleId && (
+              <p style={{ color: "var(--bad)", fontSize: ".78rem", marginTop: ".35rem" }}>
+                ⚠️ Aucun document PDF trouvé pour ce module.
+              </p>
+            )}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: ".5rem" }}>

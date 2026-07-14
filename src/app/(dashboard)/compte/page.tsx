@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { adminAccountApi } from "@/lib/endpoints";
-import type { Paginated, User } from "@/lib/types";
+import { adminAccountApi, socialLinksApi } from "@/lib/endpoints";
+import type { Paginated, SocialLinksConfig, User } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, errorMessage } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 
@@ -45,7 +45,7 @@ function Avatar({ user, size = 64 }: { user: User; size?: number }) {
   );
 }
 
-type Tab = "profil" | "equipe";
+type Tab = "profil" | "equipe" | "reseaux";
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
@@ -92,6 +92,15 @@ export default function ComptePage() {
   const [resetPwdTarget,   setResetPwdTarget]   = useState<User | null>(null);
   const [deleteTarget,     setDeleteTarget]     = useState<User | null>(null);
 
+  // ── État onglet Réseaux sociaux ───────────────────────────────────────────
+  const [socialForm, setSocialForm] = useState<SocialLinksConfig>({
+    facebook_url: "", instagram_url: "", youtube_url: "", tiktok_url: "",
+  });
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialSaving,  setSocialSaving]  = useState(false);
+  const [socialError,   setSocialError]   = useState("");
+  const [socialInfo,    setSocialInfo]    = useState("");
+
   const loadAdmins = useCallback(async () => {
     try {
       const { data } = await adminAccountApi.listAdmins();
@@ -102,6 +111,15 @@ export default function ComptePage() {
   useEffect(() => {
     if (activeTab === "equipe") loadAdmins();
   }, [activeTab, loadAdmins]);
+
+  useEffect(() => {
+    if (activeTab !== "reseaux") return;
+    setSocialError(""); setSocialInfo(""); setSocialLoading(true);
+    socialLinksApi.get()
+      .then((r) => setSocialForm(r.data))
+      .catch((e) => {})
+      .finally(() => setSocialLoading(false));
+  }, [activeTab]);
 
   // ── Actions Profil ─────────────────────────────────────────────────────────
 
@@ -185,6 +203,29 @@ export default function ComptePage() {
     }
   };
 
+
+  const saveSocialLinks = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSocialError(""); setSocialInfo("");
+    const invalid = Object.values(socialForm)
+      .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      .some((v) => !v.startsWith("http://") && !v.startsWith("https://"));
+    if (invalid) {
+      setSocialError("Chaque lien renseigné doit commencer par http:// ou https://.");
+      return;
+    }
+    setSocialSaving(true);
+    try {
+      const { data } = await socialLinksApi.update(socialForm);
+      setSocialForm(data);
+      setSocialInfo("Liens de réseaux sociaux mis à jour.");
+    } catch (e) {
+      setSocialError(errorMessage(e));
+    } finally {
+      setSocialSaving(false);
+    }
+  };
+
   // ── Style onglets ─────────────────────────────────────────────────────────
 
   const tabStyle = (key: Tab) => ({
@@ -261,6 +302,10 @@ export default function ComptePage() {
         <button style={tabStyle("equipe")}
                 onClick={() => { setActiveTab("equipe"); }}>
           Équipe admin
+        </button>
+        <button style={tabStyle("reseaux")}
+                onClick={() => { setActiveTab("reseaux"); }}>
+          Réseaux sociaux
         </button>
       </div>
 
@@ -537,6 +582,31 @@ export default function ComptePage() {
             </div>
           </div>
         </>
+      )}
+
+
+      {/* ════════════════════════════════════════════════════════════════════
+          ONGLET 3 — RÉSEAUX SOCIAUX
+      ════════════════════════════════════════════════════════════════════ */}
+      {activeTab === "reseaux" && (
+        <Card>
+          <h2 style={{ fontFamily: "var(--serif)", fontSize: "1.1rem", marginBottom: "1rem" }}>
+            Liens de réseaux sociaux
+          </h2>
+          <Alert>{socialError}</Alert>
+          <Alert kind="success">{socialInfo}</Alert>
+          {socialLoading ? (
+            <div style={{ color: "var(--muted)", fontSize: "0.88rem" }}>Chargement des liens…</div>
+          ) : (
+            <form onSubmit={saveSocialLinks} style={{ maxWidth: 620 }}>
+              <Input label="Facebook" value={socialForm.facebook_url} placeholder="https://facebook.com/..." onChange={(e) => setSocialForm({ ...socialForm, facebook_url: e.target.value })} />
+              <Input label="Instagram" value={socialForm.instagram_url} placeholder="https://instagram.com/..." onChange={(e) => setSocialForm({ ...socialForm, instagram_url: e.target.value })} />
+              <Input label="YouTube" value={socialForm.youtube_url} placeholder="https://youtube.com/..." onChange={(e) => setSocialForm({ ...socialForm, youtube_url: e.target.value })} />
+              <Input label="TikTok" value={socialForm.tiktok_url} placeholder="https://tiktok.com/..." onChange={(e) => setSocialForm({ ...socialForm, tiktok_url: e.target.value })} />
+              <Button type="submit" loading={socialSaving}>Enregistrer</Button>
+            </form>
+          )}
+        </Card>
       )}
 
       {/* ── Modales équipe ── */}
