@@ -237,7 +237,8 @@ export const qroReviewApi = {
   },
   decide: async (id: number, decision: "VALIDER" | "INVALIDER"): Promise<{ simulated: boolean }> => {
     try {
-      await api.post(`/admin/quiz/qro-review/${id}/decide/`, { decision });
+      const backendDecision = decision === "VALIDER" ? "VALIDATED" : "REJECTED";
+      await api.post(`/admin/quiz/qro-review/${id}/decide/`, { decision: backendDecision });
       return { simulated: false };
     } catch {
       await new Promise((r) => setTimeout(r, 350));

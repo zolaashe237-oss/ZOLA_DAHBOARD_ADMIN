@@ -249,6 +249,9 @@ export interface AIGenerationConfig {
   course?: number | null;
   module_title?: string;
   formation_title?: string;
+  moduleId?: number | null;
+  source_ref?: string;
+  source_text?: string;
 }
 
 /** Question telle que retournée par l'IA, avant publication (id client uniquement). */

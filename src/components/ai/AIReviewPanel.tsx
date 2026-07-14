@@ -8,7 +8,7 @@ import { aiQuizApi, quizApi } from "@/lib/endpoints";
 import type {
   AIDifficulty, AIGeneratedQuestion, AIGenerationConfig, Branche, QuizChoice, QuizItem,
 } from "@/lib/types";
-import { AIDemoBadge, NIVEAU_LABEL } from "./AIBadges";
+import { AIDemoBadge, NIVEAU_LABEL, NiveauBadge } from "./AIBadges";
 import { AIThinkingInline } from "./AIThinking";
 
 const NIVEAUX: AIDifficulty[] = ["FACILE", "INTERMEDIAIRE", "DIFFICILE"];
@@ -277,14 +277,24 @@ export function AIReviewPanel({
                  onChange={(e) => setThreshold(Number(e.target.value))} />
         </label>
         <label style={{ display: "block" }}>
-          <span className="field-label">Rang dans le parcours</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ".25rem" }}>
+            <span className="field-label" style={{ marginBottom: 0 }}>Rang</span>
+            {rangSuggere !== null && rangSuggere !== undefined && (
+              <span style={{ fontSize: ".68rem", color: "var(--muted-2)" }} title="Rang suggéré par l'IA">
+                (IA: {rangSuggere})
+              </span>
+            )}
+          </div>
           <input className="input" style={{ margin: 0 }} type="number" min={1} value={rang}
                  onChange={(e) => setRang(Number(e.target.value))} />
         </label>
       </div>
 
       <div style={{ marginBottom: "1.3rem" }}>
-        <span className="field-label">Niveau suggéré par l&apos;IA - modifiable</span>
+        <div style={{ display: "flex", alignItems: "center", gap: ".5rem", marginBottom: ".35rem" }}>
+          <span className="field-label" style={{ marginBottom: 0 }}>Niveau suggéré par l&apos;IA :</span>
+          <NiveauBadge niveau={niveauSuggere} />
+        </div>
         <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
           {NIVEAUX.map((n) => (
             <button key={n} type="button" className={`chip press ${niveau === n ? "on" : ""}`} onClick={() => setNiveau(n)}>
