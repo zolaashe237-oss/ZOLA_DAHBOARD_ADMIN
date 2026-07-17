@@ -541,4 +541,6 @@ export const adminMemoirApi = {
     api.get<MemoirSubmissionDetail>(`/admin/memoir/${id}/`),
   update: (id: number, data: { editorial_status?: MemoirEditorialStatus; editorial_notes?: string }) =>
     api.patch<MemoirSubmissionDetail>(`/admin/memoir/${id}/`, data),
+  downloadDocx: (id: number) =>
+    api.get(`/admin/memoir/${id}/docx/`, { responseType: "blob" }),
 };

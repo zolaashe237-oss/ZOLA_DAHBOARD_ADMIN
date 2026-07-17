@@ -33,11 +33,21 @@ function fmtF(n: number) {
 
 // ── Formulaire plan (modal) ───────────────────────────────────────────────────
 
+const KIND_OPTIONS = [
+  { value: "INSCRIPTION",    label: "Droit d'inscription",  hint: "Adhésion permanente au réseau" },
+  { value: "COTISATION",     label: "Cotisation mensuelle", hint: "Maintien de l'accès actif" },
+  { value: "BRANCHE_FEMME",  label: "Accès Branche Femme",  hint: "Paiement unique — accès permanent" },
+  { value: "BRANCHE_ENFANT", label: "Accès Branche Enfant", hint: "Paiement unique — accès permanent" },
+  { value: "DON",            label: "Don volontaire",        hint: "Contribution libre" },
+];
+
 const EMPTY: {
+  kind: string;
   name: string; billing: PlanBilling;
   price_total: number; nb_tranches: number; tranche_amount: number;
   description: string; is_active: boolean; access_levels: string[];
 } = {
+  kind: "COTISATION",
   name: "", billing: "ANNUEL",
   price_total: 0, nb_tranches: 6, tranche_amount: 0,
   description: "", is_active: true, access_levels: ["MEMBRE"],
@@ -81,6 +91,45 @@ function PlanFormModal({
     <Modal title={editing ? "Modifier le plan" : "Nouveau plan"} onClose={onClose} maxWidth={620}>
       <Alert>{error}</Alert>
       <form onSubmit={submit}>
+        {/* Type de plan */}
+        <div style={{ marginBottom: "1rem" }}>
+          <span className="field-label">Type de plan</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}>
+            {KIND_OPTIONS.map((k) => {
+              const active = form.kind === k.value;
+              return (
+                <label key={k.value} style={{
+                  display: "flex", alignItems: "center", gap: "0.6rem",
+                  padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)",
+                  border: `1px solid ${active ? "var(--gold-2)" : "var(--line-soft)"}`,
+                  background: active ? "var(--gold-bg)" : "var(--bg)",
+                  cursor: editing ? "default" : "pointer",
+                  opacity: editing ? 0.6 : 1,
+                }}>
+                  <input
+                    type="radio" name="kind" value={k.value}
+                    checked={active}
+                    disabled={!!editing}
+                    onChange={() => setForm({ ...form, kind: k.value })}
+                    style={{ accentColor: "var(--gold-2)" }}
+                  />
+                  <div>
+                    <div style={{ fontSize: "0.84rem", fontWeight: active ? 700 : 400, color: active ? "var(--gold-2)" : "var(--ink)" }}>
+                      {k.label}
+                    </div>
+                    <div style={{ fontSize: "0.71rem", color: "var(--muted-2)" }}>{k.hint}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {editing && (
+            <p style={{ fontSize: "0.72rem", color: "var(--muted-2)", marginTop: "0.35rem" }}>
+              Le type ne peut pas être modifié après création.
+            </p>
+          )}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0 1rem" }}>
           <Input
             label="Nom du plan" value={form.name} required
@@ -395,6 +444,7 @@ export default function AbonnementsPage() {
           initial={
             formTarget.plan
               ? {
+                  kind:           formTarget.plan.kind,
                   name:           formTarget.plan.name,
                   billing:        formTarget.plan.billing,
                   price_total:    formTarget.plan.price_total,

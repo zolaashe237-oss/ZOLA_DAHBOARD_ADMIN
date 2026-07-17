@@ -571,6 +571,22 @@ export default function FinancePage() {
     }
   };
 
+  const sendReminders = async (userId?: number) => {
+    setError(""); setInfo("");
+    try {
+      const { data } = await financeApi.sendReminders(userId ? { user_id: userId } : undefined);
+      const n = data.reminded ?? 0;
+      setInfo(
+        n === 0
+          ? "Aucun membre en retard à relancer."
+          : `${n} relance${n > 1 ? "s" : ""} envoyée${n > 1 ? "s" : ""} avec succès.`
+      );
+      load();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadPayments(); }, [loadPayments]);
 
@@ -662,8 +678,8 @@ export default function FinancePage() {
       <Card style={{ marginBottom: "1.25rem" }}>
         <LateCotisations
           items={late}
-          onReminder={() => wrap(() => financeApi.sendReminders(), "Relances envoyées !")}
-          onReminderOne={(id) => wrap(() => financeApi.sendReminders({ user_id: id }), "Relance envoyée.")}
+          onReminder={() => sendReminders()}
+          onReminderOne={(id) => sendReminders(id)}
         />
       </Card>
 

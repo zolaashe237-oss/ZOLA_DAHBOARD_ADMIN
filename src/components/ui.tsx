@@ -158,6 +158,106 @@ export function Badge({ children, color = "#c9a227" }: { children: ReactNode; co
   );
 }
 
+export function ConfirmDialog({
+  open, title, body, confirmLabel = "Confirmer", danger = false, loading = false,
+  onConfirm, onCancel,
+}: {
+  open: boolean;
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  loading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9000,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "1rem",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg)",
+          border: "1px solid var(--line-soft)",
+          borderRadius: "var(--radius-sm)",
+          boxShadow: "var(--shadow-lg)",
+          width: "100%", maxWidth: 420,
+          padding: "1.5rem",
+        }}
+      >
+        {/* Icône + titre */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", marginBottom: "0.85rem" }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+            background: danger ? "rgba(192,64,44,0.1)" : "rgba(201,162,39,0.1)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {danger ? (
+              <svg width="18" height="18" fill="none" stroke={danger ? "var(--bad)" : "var(--gold-2)"} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" fill="none" stroke="var(--gold-2)" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--ink)", marginBottom: "0.2rem" }}>
+              {title}
+            </div>
+            <div style={{ fontSize: "0.83rem", color: "var(--muted)", lineHeight: 1.5 }}>
+              {body}
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "1.25rem" }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              padding: "0.45rem 1rem", fontSize: "0.82rem", fontWeight: 600,
+              border: "1px solid var(--line-med)", borderRadius: "var(--radius-sm)",
+              background: "var(--bg-1)", color: "var(--muted)", cursor: "pointer",
+            }}
+          >
+            Annuler
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              padding: "0.45rem 1.1rem", fontSize: "0.82rem", fontWeight: 700,
+              border: "none", borderRadius: "var(--radius-sm)", cursor: loading ? "default" : "pointer",
+              background: danger ? "var(--bad)" : "var(--gold-2)",
+              color: "#fff", opacity: loading ? 0.65 : 1,
+              minWidth: 90, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
+            }}
+          >
+            {loading && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                style={{ animation: "spin 0.8s linear infinite" }}>
+                <path strokeLinecap="round" d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+            )}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const STATUS_COLOR: Record<string, string> = {
   ACTIF:     "#2e9460",
   RESTREINT: "#9a6e10",

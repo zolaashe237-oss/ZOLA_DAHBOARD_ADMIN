@@ -12,7 +12,7 @@ import type {
   Branche, CourseItem, Formation, FormationAcces, FormationNiveau, FormationStatus,
   ModuleItem, QuizItem, ResourceItem,
 } from "@/lib/types";
-import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
+import { Alert, Button, ConfirmDialog, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { QuizEditor } from "@/components/QuizEditor";
 import { FormationCard, COVER_GRAD } from "@/components/FormationCard";
 import { AIGenerateModal, AIGenerateResult, AIGenerateTarget } from "@/components/ai/AIGenerateModal";
@@ -72,6 +72,7 @@ export default function FormationBuilderPage() {
   const [showMeta,          setShowMeta]          = useState(false);
   const [showYtImport,      setShowYtImport]      = useState(false);
   const [publishing,        setPublishing]        = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   // Metadata state (lifted)
   const [meta, setMeta] = useState({
@@ -94,14 +95,13 @@ export default function FormationBuilderPage() {
   const flash = (m: string) => { setError(""); setInfo(m); };
 
   const publishFormation = async () => {
-    if (!confirm("Publier cette formation ? Elle sera visible par les membres.")) return;
     setPublishing(true); setError("");
     try {
       await formationApi.publish(fid);
       flash("Formation publiée avec succès.");
       reload();
     } catch (e) { setError(errorMessage(e)); }
-    finally { setPublishing(false); }
+    finally { setPublishing(false); setShowPublishConfirm(false); }
   };
 
   const reload = useCallback(async () => {
@@ -213,7 +213,7 @@ export default function FormationBuilderPage() {
             <Button
               variant="ghost"
               loading={publishing}
-              onClick={publishFormation}
+              onClick={() => setShowPublishConfirm(true)}
               style={{ padding: "0.4rem 1.1rem", color: "#2e9460", borderColor: "#2e946040" }}
             >
               ✓ Publier
@@ -480,7 +480,7 @@ export default function FormationBuilderPage() {
           </div>
         </div>
         {formation.status !== "PUBLISHED" && (
-          <Button loading={publishing} onClick={publishFormation}>
+          <Button loading={publishing} onClick={() => setShowPublishConfirm(true)}>
             ✓ Publier la formation
           </Button>
         )}
@@ -528,6 +528,16 @@ export default function FormationBuilderPage() {
           onPublished={(msg) => { setAiResult(null); flash(msg); reload(); }}
         />
       )}
+
+      <ConfirmDialog
+        open={showPublishConfirm}
+        title="Publier cette formation ?"
+        body="Elle sera immédiatement visible par les membres. Cette action peut être annulée en repassant la formation en brouillon."
+        confirmLabel="Publier"
+        loading={publishing}
+        onConfirm={publishFormation}
+        onCancel={() => setShowPublishConfirm(false)}
+      />
     </div>
   );
 }
@@ -848,15 +858,16 @@ function ChapterCard({
   onEpisodeChange?: (ep: PendingEpisode | null) => void;
 }) {
   const draggingEp = useRef<number | null>(null);
-  const [dragOverEp,      setDragOverEp]      = useState<number | null>(null);
-  const [editingTitle,    setEditingTitle]    = useState(false);
-  const [chapterTitle,    setChapterTitle]    = useState(module.title);
-  const [savingTitle,     setSavingTitle]     = useState(false);
+  const [dragOverEp,           setDragOverEp]           = useState<number | null>(null);
+  const [editingTitle,         setEditingTitle]         = useState(false);
+  const [chapterTitle,         setChapterTitle]         = useState(module.title);
+  const [savingTitle,          setSavingTitle]          = useState(false);
+  const [showDelChapterConfirm, setShowDelChapterConfirm] = useState(false);
 
   const delChapter = async () => {
-    if (!confirm(`Supprimer le chapitre « ${module.title} » et tous ses épisodes ?`)) return;
     try { await moduleApi.remove(module.id); onInfo("Chapitre supprimé."); onReload(); }
     catch (e) { onError(errorMessage(e)); }
+    finally { setShowDelChapterConfirm(false); }
   };
 
   const saveChapterTitle = async () => {
@@ -951,7 +962,7 @@ function ChapterCard({
           {module.is_gratuit ? "✓ GRATUIT" : "Gratuit ?"}
         </button>
         <button
-          onClick={delChapter}
+          onClick={() => setShowDelChapterConfirm(true)}
           style={{ background: "none", border: "none", color: "#b0977a", cursor: "pointer", fontSize: "0.73rem", flexShrink: 0 }}
         >
           Supprimer
@@ -1077,6 +1088,16 @@ function ChapterCard({
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDelChapterConfirm}
+        title={`Supprimer « ${module.title} » ?`}
+        body="Ce chapitre et tous ses épisodes seront définitivement supprimés."
+        confirmLabel="Supprimer"
+        danger
+        onConfirm={delChapter}
+        onCancel={() => setShowDelChapterConfirm(false)}
+      />
     </div>
   );
 }
@@ -1091,13 +1112,14 @@ function EpisodeItem({
   resources:     ResourceItem[];
   onReload: () => void; onError: (s: string) => void; onInfo: (s: string) => void;
 }) {
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [newTitle,     setNewTitle]     = useState(course.title);
-  const [showAddForm,  setShowAddForm]  = useState(false);
-  const [addKind,      setAddKind]      = useState<ContentKind>("VIDEO");
-  const [ytUrl,        setYtUrl]        = useState("");
-  const [mediaFile,    setMediaFile]    = useState<File | null>(null);
-  const [savingUrl,    setSavingUrl]    = useState(false);
+  const [editingTitle,    setEditingTitle]    = useState(false);
+  const [newTitle,        setNewTitle]        = useState(course.title);
+  const [showAddForm,     setShowAddForm]     = useState(false);
+  const [addKind,         setAddKind]         = useState<ContentKind>("VIDEO");
+  const [ytUrl,           setYtUrl]           = useState("");
+  const [mediaFile,       setMediaFile]       = useState<File | null>(null);
+  const [savingUrl,       setSavingUrl]       = useState(false);
+  const [showDelEpConfirm, setShowDelEpConfirm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const videoRes  = resources.find((r) => r.resource_type === "VIDEO");
@@ -1106,9 +1128,9 @@ function EpisodeItem({
   const youtubeUrl = videoRes?.video_source === "YOUTUBE" ? videoRes.youtube_url : null;
 
   const del = async () => {
-    if (!confirm(`Supprimer l'épisode « ${course.title} » ?`)) return;
     try { await courseApi.remove(course.id); onInfo("Épisode supprimé."); onReload(); }
     catch (e) { onError(errorMessage(e)); }
+    finally { setShowDelEpConfirm(false); }
   };
 
   const saveTitle = async () => {
@@ -1279,7 +1301,7 @@ function EpisodeItem({
 
         {/* Delete */}
         <button
-          onClick={del}
+          onClick={() => setShowDelEpConfirm(true)}
           style={{
             background: "none", border: "1px solid #f0d8d0", borderRadius: 4,
             color: "#b53a2a", cursor: "pointer", fontSize: "0.68rem",
@@ -1360,6 +1382,16 @@ function EpisodeItem({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={showDelEpConfirm}
+        title={`Supprimer « ${course.title} » ?`}
+        body="Cet épisode et ses ressources seront définitivement supprimés."
+        confirmLabel="Supprimer"
+        danger
+        onConfirm={del}
+        onCancel={() => setShowDelEpConfirm(false)}
+      />
     </div>
   );
 }

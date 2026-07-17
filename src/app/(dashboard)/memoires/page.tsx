@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { adminMemoirApi } from "@/lib/endpoints";
 import type { MemoirAnswerEntry, MemoirEditorialStatus, MemoirSubmission, MemoirSubmissionDetail } from "@/lib/types";
 import { Alert, Button, Card, errorMessage } from "@/components/ui";
@@ -209,6 +209,17 @@ function AnswerBlock({ qkey, answer }: { qkey: string; answer: MemoirAnswerEntry
   );
 }
 
+// ── Workflow éditorial ────────────────────────────────────────────────────────
+
+const WORKFLOW_STEPS = ["pending", "in_progress", "review", "completed"] as const;
+type WorkflowStep = typeof WORKFLOW_STEPS[number];
+
+const NEXT_STEP_LABEL: Partial<Record<MemoirEditorialStatus, string>> = {
+  in_progress: "Prendre en charge",
+  review:      "Envoyer en relecture",
+  completed:   "Valider & clore",
+};
+
 // ── Panneau latéral de détail ──────────────────────────────────────────────────
 
 function DetailDrawer({
@@ -220,41 +231,79 @@ function DetailDrawer({
   onClose: () => void;
   onUpdate: (updated: MemoirSubmission) => void;
 }) {
-  const [editStatus, setEditStatus]   = useState<MemoirEditorialStatus>(detail.editorial_status);
-  const [editNotes, setEditNotes]     = useState(detail.editorial_notes);
-  const [saving, setSaving]           = useState(false);
-  const [saveErr, setSaveErr]         = useState<string | null>(null);
-  const [saved, setSaved]             = useState(false);
+  const [editStatus, setEditStatus]     = useState<MemoirEditorialStatus>(detail.editorial_status);
+  const [editNotes, setEditNotes]       = useState(detail.editorial_notes);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [notesSaving, setNotesSaving]   = useState(false);
+  const [saveErr, setSaveErr]           = useState<string | null>(null);
+  const [notesSaved, setNotesSaved]     = useState(false);
+  const [downloading, setDownloading]   = useState(false);
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Workflow derived
+  const isArchived  = editStatus === "archived";
+  const workflowIdx = WORKFLOW_STEPS.indexOf(editStatus as WorkflowStep);
+  const nextStatus: MemoirEditorialStatus | null =
+    !isArchived && workflowIdx >= 0 && workflowIdx < WORKFLOW_STEPS.length - 1
+      ? WORKFLOW_STEPS[workflowIdx + 1] as MemoirEditorialStatus
+      : null;
+
+  async function handleDownloadDocx() {
+    setDownloading(true);
+    try {
+      const { data } = await adminMemoirApi.downloadDocx(detail.id);
+      const url = URL.createObjectURL(new Blob([data]));
+      const a = document.createElement("a");
+      const name = detail.user_name.replace(/\s+/g, "_");
+      a.href = url;
+      a.download = `memoire_${name}_${detail.id}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const chapters = groupByChapter(detail.answers ?? {});
   const chapNums = Object.keys(chapters).sort((a, b) => parseInt(a) - parseInt(b));
   const totalAnswered = chapNums.reduce((sum, c) => sum + chapters[c].length, 0);
 
-  async function saveChanges() {
-    setSaving(true);
+  async function changeStatus(newStatus: MemoirEditorialStatus) {
+    setStatusSaving(true);
     setSaveErr(null);
     try {
-      const { data } = await adminMemoirApi.update(detail.id, {
-        editorial_status: editStatus,
-        editorial_notes:  editNotes,
-      });
+      const { data } = await adminMemoirApi.update(detail.id, { editorial_status: newStatus });
+      setEditStatus(newStatus);
       onUpdate(data);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
     } catch (e) {
       setSaveErr(errorMessage(e));
     } finally {
-      setSaving(false);
+      setStatusSaving(false);
     }
   }
 
-  // Auto-save notes after 2 s of inactivity
+  async function saveNotes(notes: string) {
+    setNotesSaving(true);
+    setSaveErr(null);
+    try {
+      const { data } = await adminMemoirApi.update(detail.id, { editorial_notes: notes });
+      onUpdate(data);
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
+    } catch (e) {
+      setSaveErr(errorMessage(e));
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
   function handleNotesChange(v: string) {
     setEditNotes(v);
-    setSaved(false);
+    setNotesSaved(false);
     if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
-    notesTimerRef.current = setTimeout(saveChanges, 2000);
+    notesTimerRef.current = setTimeout(() => saveNotes(v), 2000);
   }
 
   return (
@@ -300,17 +349,38 @@ function DetailDrawer({
                 <strong style={{ color: "var(--ink)" }}>{totalAnswered}</strong> réponses complétées
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                fontSize: "1.25rem", color: "var(--muted)", lineHeight: 1,
-                padding: "0.25rem", flexShrink: 0,
-              }}
-              aria-label="Fermer"
-            >
-              ✕
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+              <button
+                onClick={handleDownloadDocx}
+                disabled={downloading}
+                style={{
+                  display: "flex", alignItems: "center", gap: "0.4rem",
+                  fontSize: "0.75rem", fontWeight: 700,
+                  color: downloading ? "var(--muted)" : "var(--gold-2)",
+                  background: "var(--gold-bg)", border: "1px solid var(--line)",
+                  borderRadius: "var(--radius-sm)", padding: "0.35rem 0.75rem",
+                  cursor: downloading ? "default" : "pointer", transition: "opacity 0.15s",
+                }}
+                title="Télécharger le mémoire en Word"
+              >
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a1 1 0 001 1h16a1 1 0 001-1v-3" />
+                </svg>
+                {downloading ? "…" : ".docx"}
+              </button>
+              <button
+                onClick={onClose}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: "1.25rem", color: "var(--muted)", lineHeight: 1,
+                  padding: "0.25rem",
+                }}
+                aria-label="Fermer"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         </div>
 
@@ -320,68 +390,163 @@ function DetailDrawer({
           borderBottom: "1px solid var(--line-soft)",
           background: "var(--bg-1)",
         }}>
-          <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", flexWrap: "wrap" }}>
-            {/* Statut */}
-            <div style={{ flex: "0 0 220px" }}>
-              <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--muted-2)",
-                              textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "0.35rem" }}>
-                Statut éditorial
-              </label>
-              <select
-                value={editStatus}
-                onChange={(e) => {
-                  setEditStatus(e.target.value as MemoirEditorialStatus);
-                  setSaved(false);
-                }}
-                style={{
-                  width: "100%", padding: "0.45rem 0.7rem", borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--line-med)", background: "var(--bg)",
-                  fontSize: "0.82rem", color: "var(--ink)", cursor: "pointer",
-                }}
-              >
-                {EDITORIAL_STATUSES.map((s) => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
+
+          {/* ── Stepper ── */}
+          <div style={{ marginBottom: "0.9rem" }}>
+            <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--muted-2)",
+                          textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.75rem" }}>
+              Statut éditorial
             </div>
 
-            {/* Notes */}
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--muted-2)",
-                              textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "0.35rem" }}>
-                Notes internes
-              </label>
-              <textarea
-                value={editNotes}
-                onChange={(e) => handleNotesChange(e.target.value)}
-                rows={2}
-                placeholder="Remarques pour l'équipe éditoriale…"
-                style={{
-                  width: "100%", padding: "0.45rem 0.7rem", borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--line-med)", background: "var(--bg)",
-                  fontSize: "0.82rem", color: "var(--ink)", resize: "vertical",
-                  fontFamily: "inherit", boxSizing: "border-box",
-                }}
-              />
+            <div style={{ display: "flex", alignItems: "flex-start" }}>
+              {WORKFLOW_STEPS.flatMap((step, idx) => {
+                const s       = getStatus(step as MemoirEditorialStatus);
+                const isPast  = !isArchived && workflowIdx > idx;
+                const isCurr  = !isArchived && editStatus === step;
+                const isLast  = idx === WORKFLOW_STEPS.length - 1;
+                const label   = step === "in_progress" ? "En cours" : s.label;
+
+                const items: React.ReactNode[] = [
+                  <div key={`s-${step}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.28rem", flexShrink: 0 }}>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: "50%",
+                      background: isPast ? "var(--ok)" : isCurr ? s.color : "var(--bg-2)",
+                      border: `2px solid ${isPast ? "var(--ok)" : isCurr ? s.color : "var(--line-med)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "0.6rem", fontWeight: 800,
+                      color: (isPast || isCurr) ? "#fff" : "var(--muted-2)",
+                      transition: "background .2s, border-color .2s",
+                    }}>
+                      {isPast ? "✓" : idx + 1}
+                    </div>
+                    <span style={{
+                      fontSize: "0.57rem", fontWeight: isCurr ? 700 : 400,
+                      color: isCurr ? s.color : isPast ? "var(--ok)" : "var(--muted-2)",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {label}
+                    </span>
+                  </div>,
+                ];
+
+                if (!isLast) {
+                  items.push(
+                    <div key={`l-${idx}`} style={{
+                      flex: 1, height: 2, marginTop: 13,
+                      background: isPast ? "var(--ok)" : "var(--line-soft)",
+                      transition: "background .2s",
+                    }} />
+                  );
+                }
+                return items;
+              })}
             </div>
+
+            {isArchived && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.7rem",
+                padding: "0.38rem 0.75rem", background: "var(--bad-bg)",
+                borderRadius: "var(--radius-sm)", border: "1px solid rgba(192,64,44,0.28)",
+              }}>
+                <span style={{ fontSize: "0.75rem", color: "var(--bad)", fontWeight: 700 }}>Archivé</span>
+                <span style={{ fontSize: "0.73rem", color: "var(--muted)" }}>Ce mémoire a été archivé.</span>
+              </div>
+            )}
+
+            {editStatus === "completed" && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.7rem",
+                padding: "0.38rem 0.75rem", background: "var(--ok-bg)",
+                borderRadius: "var(--radius-sm)", border: "1px solid rgba(46,148,96,0.28)",
+              }}>
+                <span style={{ fontSize: "0.75rem", color: "var(--ok)", fontWeight: 700 }}>✓ Terminé</span>
+                <span style={{ fontSize: "0.73rem", color: "var(--muted)" }}>Ce mémoire a été validé et clôturé.</span>
+              </div>
+            )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.65rem" }}>
-            <Button
-              onClick={saveChanges}
-              loading={saving}
-              style={{ fontSize: "0.8rem", padding: "0.4rem 1rem" }}
-            >
-              Enregistrer
-            </Button>
-            {saved && (
-              <span style={{ fontSize: "0.74rem", color: "var(--ok)", fontWeight: 600 }}>
-                ✓ Sauvegardé
-              </span>
+          {/* ── Boutons d'action ── */}
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", marginBottom: "1.1rem", alignItems: "center" }}>
+            {nextStatus && (
+              <button
+                onClick={() => changeStatus(nextStatus)}
+                disabled={statusSaving}
+                style={{
+                  padding: "0.44rem 1rem", fontSize: "0.79rem", fontWeight: 700,
+                  background: "var(--gold-2)", color: "#fff",
+                  border: "none", borderRadius: "var(--radius-sm)",
+                  cursor: statusSaving ? "default" : "pointer",
+                  opacity: statusSaving ? 0.65 : 1,
+                  display: "flex", alignItems: "center", gap: "0.35rem",
+                }}
+              >
+                {statusSaving ? "…" : `${NEXT_STEP_LABEL[nextStatus]} →`}
+              </button>
             )}
+
+            {!isArchived && editStatus !== "completed" && (
+              <button
+                onClick={() => changeStatus("archived")}
+                disabled={statusSaving}
+                style={{
+                  padding: "0.44rem 0.9rem", fontSize: "0.78rem", fontWeight: 600,
+                  background: "none", color: "var(--bad)",
+                  border: "1px solid rgba(192,64,44,0.4)", borderRadius: "var(--radius-sm)",
+                  cursor: statusSaving ? "default" : "pointer",
+                  opacity: statusSaving ? 0.65 : 1,
+                }}
+              >
+                Archiver
+              </button>
+            )}
+
+            {isArchived && (
+              <button
+                onClick={() => changeStatus("pending")}
+                disabled={statusSaving}
+                style={{
+                  padding: "0.44rem 0.9rem", fontSize: "0.78rem", fontWeight: 600,
+                  background: "none", color: "var(--muted)",
+                  border: "1px solid var(--line-med)", borderRadius: "var(--radius-sm)",
+                  cursor: statusSaving ? "default" : "pointer",
+                  opacity: statusSaving ? 0.65 : 1,
+                }}
+              >
+                ↩ Restaurer
+              </button>
+            )}
+
             {saveErr && (
-              <span style={{ fontSize: "0.74rem", color: "var(--bad)" }}>{saveErr}</span>
+              <span style={{ fontSize: "0.73rem", color: "var(--bad)" }}>{saveErr}</span>
             )}
+          </div>
+
+          {/* ── Notes internes ── */}
+          <div>
+            <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--muted-2)",
+                            textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "0.35rem" }}>
+              Notes internes
+            </label>
+            <textarea
+              value={editNotes}
+              onChange={(e) => handleNotesChange(e.target.value)}
+              rows={2}
+              placeholder="Remarques pour l'équipe éditoriale…"
+              style={{
+                width: "100%", padding: "0.45rem 0.7rem", borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--line-med)", background: "var(--bg)",
+                fontSize: "0.82rem", color: "var(--ink)", resize: "vertical",
+                fontFamily: "inherit", boxSizing: "border-box",
+              }}
+            />
+            <div style={{ height: "1.1rem", marginTop: "0.2rem" }}>
+              {notesSaving && (
+                <span style={{ fontSize: "0.71rem", color: "var(--muted)" }}>Sauvegarde…</span>
+              )}
+              {notesSaved && !notesSaving && (
+                <span style={{ fontSize: "0.71rem", color: "var(--ok)", fontWeight: 600 }}>✓ Notes sauvegardées</span>
+              )}
+            </div>
           </div>
         </div>
 
