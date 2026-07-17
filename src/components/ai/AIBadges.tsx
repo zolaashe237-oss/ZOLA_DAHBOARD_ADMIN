@@ -56,8 +56,15 @@ export function AIDemoBadge({ compact = false }: { compact?: boolean }) {
 
 // ── Icône source d'extraction (G-02 / G-07) ───────────────────────────────────
 
-export function SourceIcon({ source }: { source: "SCRIPT" | "PDF" | null | undefined }) {
+export function SourceIcon({ source }: { source: "SCRIPT" | "PDF" | "MULTI_YOUTUBE" | null | undefined }) {
   if (!source) return <span style={{ color: "var(--muted-2)" }}>-</span>;
+  if (source === "MULTI_YOUTUBE") {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: ".3rem", fontSize: ".8rem", color: "var(--muted)" }}>
+        ▶▶ Tous chapitres
+      </span>
+    );
+  }
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: ".3rem", fontSize: ".8rem", color: "var(--muted)" }}>
       {source === "SCRIPT" ? "▶" : "▤"} {source === "SCRIPT" ? "Script vidéo" : "PDF"}

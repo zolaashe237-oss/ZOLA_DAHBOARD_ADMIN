@@ -36,15 +36,20 @@ function shuffle<T>(arr: T[]): T[] {
 // ── Banque thématique (contenu Zola Ashé) ───────────────────────────────────────
 
 interface QcmTemplate { text: string; correct: string; distractors: string[]; }
+interface QcmMultiTemplate { text: string; corrects: string[]; distractors: string[]; }
 interface QroTemplate { text: string; criteria: string[]; }
 
-const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
+const THEMES: Record<string, { qcm: QcmTemplate[]; qcmMulti: QcmMultiTemplate[]; qro: QroTemplate[] }> = {
   developpement: {
     qcm: [
       { text: "Quelle est la première étape recommandée pour développer la connaissance de soi ?", correct: "L'observation sans jugement de ses pensées et émotions", distractors: ["La comparaison systématique avec les autres", "L'évitement de toute introspection", "La recherche immédiate de solutions extérieures"] },
       { text: "Parmi les propositions suivantes, laquelle définit le mieux l'intelligence émotionnelle ?", correct: "La capacité à reconnaître et réguler ses émotions et celles des autres", distractors: ["La capacité à cacher ses émotions en toute circonstance", "La maîtrise exclusive du raisonnement logique", "L'absence totale d'émotions négatives"] },
       { text: "Quel est l'objectif principal d'un exercice de gratitude quotidien ?", correct: "Réorienter l'attention vers les aspects positifs du vécu", distractors: ["Ignorer les difficultés rencontrées", "Comparer sa situation à celle des autres", "Éviter de fixer des objectifs"] },
       { text: "Quelle attitude favorise le plus la résilience face à un échec ?", correct: "Considérer l'échec comme une source d'apprentissage", distractors: ["Éviter désormais toute nouvelle tentative", "Rejeter la responsabilité sur autrui", "Minimiser l'importance de l'objectif initial"] },
+    ],
+    qcmMulti: [
+      { text: "Quelles pratiques contribuent à renforcer la résilience personnelle ? (Plusieurs réponses correctes)", corrects: ["Cultiver un réseau de soutien social", "Adopter une vision de croissance face aux obstacles"], distractors: ["Éviter toute situation incertaine", "Rejeter systématiquement les retours négatifs"] },
+      { text: "Parmi ces éléments, lesquels font partie de l'intelligence émotionnelle ? (Plusieurs réponses correctes)", corrects: ["La conscience de soi", "L'empathie envers autrui"], distractors: ["L'absence de tout ressenti négatif", "La maîtrise exclusive du raisonnement abstrait"] },
     ],
     qro: [
       { text: "Décrivez une situation récente où vous avez pratiqué l'observation sans jugement de vos émotions, et expliquez ce que cela vous a appris.", criteria: ["Illustre une situation concrète et personnelle", "Distingue clairement l'observation du jugement", "Formule un apprentissage ou une prise de conscience"] },
@@ -57,6 +62,9 @@ const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
       { text: "La méditation de pleine conscience consiste principalement à :", correct: "Observer ses pensées sans s'y attacher", distractors: ["Vider totalement l'esprit de toute pensée", "Penser uniquement à des choses positives", "Réciter des mantras à voix haute en continu"] },
       { text: "Quel est le rôle de la respiration dans une pratique méditative guidée ?", correct: "Servir d'ancrage pour ramener l'attention au moment présent", distractors: ["Accélérer le rythme cardiaque pour rester éveillé", "N'a aucun rôle particulier", "Remplacer la concentration mentale"] },
     ],
+    qcmMulti: [
+      { text: "Quels sont les bénéfices reconnus d'une pratique régulière de la méditation ? (Plusieurs réponses correctes)", corrects: ["Réduction du stress et de l'anxiété", "Amélioration de la concentration et de l'attention"], distractors: ["Suppression totale de toutes les pensées négatives", "Remplacement du sommeil réparateur"] },
+    ],
     qro: [
       { text: "Décrivez les sensations physiques et mentales que vous observez généralement dans les deux premières minutes d'une méditation.", criteria: ["Mentionne des sensations physiques concrètes", "Mentionne l'état mental ou émotionnel", "Le ton reste descriptif et non jugeant"] },
     ],
@@ -65,6 +73,9 @@ const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
     qcm: [
       { text: "Combien de portions de légumes sont généralement recommandées par jour pour un adulte ?", correct: "Au moins 5 portions", distractors: ["2 portions suffisent largement", "Il n'existe aucune recommandation précise", "1 portion par semaine"] },
       { text: "Quel principe guide une alimentation équilibrée selon les recommandations abordées dans ce module ?", correct: "La diversité et la modération des groupes alimentaires", distractors: ["L'exclusion totale des féculents", "La consommation exclusive de protéines animales", "Le jeûne prolongé systématique"] },
+    ],
+    qcmMulti: [
+      { text: "Quels aliments sont considérés comme des sources de protéines végétales de qualité ? (Plusieurs réponses correctes)", corrects: ["Les légumineuses (lentilles, pois chiches)", "Le tofu et les produits à base de soja"], distractors: ["Le sucre blanc raffiné", "Les boissons sucrées industrielles"] },
     ],
     qro: [
       { text: "Proposez un exemple de repas équilibré adapté à une famille, en justifiant vos choix nutritionnels.", criteria: ["Le repas proposé est cohérent et réaliste", "Les groupes alimentaires principaux sont représentés", "La justification nutritionnelle est correcte"] },
@@ -75,6 +86,9 @@ const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
       { text: "Dans la démarche spirituelle présentée, que désigne la notion d'« ancrage » ?", correct: "Le fait de se relier consciemment au moment présent et à ses racines", distractors: ["Un rituel réservé uniquement aux cérémonies collectives", "Une technique de mémorisation de textes sacrés", "Un exercice physique de renforcement musculaire"] },
       { text: "Quel est l'objectif des rituels du matin évoqués dans ce module ?", correct: "Poser une intention consciente pour la journée", distractors: ["Remplacer le petit-déjeuner", "Éviter tout contact avec autrui avant midi", "Réciter des formules sans réflexion personnelle"] },
     ],
+    qcmMulti: [
+      { text: "Quels éléments caractérisent une pratique spirituelle enracinée dans la tradition africaine ? (Plusieurs réponses correctes)", corrects: ["La connexion à l'énergie des ancêtres", "Le respect du lien entre corps, âme et communauté"], distractors: ["L'individualisme radical sans engagement communautaire", "Le rejet de toute pratique corporelle"] },
+    ],
     qro: [
       { text: "Expliquez comment un rituel simple pratiqué chaque matin peut influencer votre état d'esprit durant la journée.", criteria: ["Décrit un rituel concret et personnel", "Établit un lien logique avec l'état d'esprit", "La réponse est cohérente avec le contenu du module"] },
     ],
@@ -84,6 +98,9 @@ const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
       { text: "Qu'est-ce qui caractérise le leadership bienveillant présenté dans ce module ?", correct: "L'écoute active associée à une prise de décision assumée", distractors: ["L'autorité imposée sans dialogue", "L'évitement systématique de toute décision", "La délégation totale sans suivi"] },
       { text: "Quelle posture favorise une prise de parole en public plus affirmée ?", correct: "La préparation associée à une respiration maîtrisée", distractors: ["L'improvisation totale sans préparation", "L'évitement du contact visuel", "La lecture intégrale d'un texte sans y croire"] },
     ],
+    qcmMulti: [
+      { text: "Quels sont les piliers du leadership au féminin abordés dans ce module ? (Plusieurs réponses correctes)", corrects: ["L'affirmation de soi sans agressivité", "La création d'un réseau de soutien professionnel"], distractors: ["L'imitation des modèles masculins dominants", "L'effacement face aux figures d'autorité"] },
+    ],
     qro: [
       { text: "Décrivez une situation où vous avez dû affirmer votre position en tant que femme leader, et comment vous l'avez gérée.", criteria: ["Situation concrète et pertinente", "Décrit une posture de leadership assumée", "Tire un enseignement ou une réflexion"] },
     ],
@@ -92,6 +109,9 @@ const THEMES: Record<string, { qcm: QcmTemplate[]; qro: QroTemplate[] }> = {
     qcm: [
       { text: "Quelle attitude favorise le développement de l'autonomie chez l'enfant ?", correct: "Laisser l'enfant essayer avant d'intervenir", distractors: ["Faire systématiquement à sa place", "Ignorer ses tentatives", "Le comparer à d'autres enfants"] },
       { text: "Dans l'éducation bienveillante, la fermeté sert principalement à :", correct: "Poser un cadre sécurisant et cohérent", distractors: ["Punir sans explication", "Éviter toute règle", "Contrôler chaque décision de l'enfant"] },
+    ],
+    qcmMulti: [
+      { text: "Quels comportements de l'adulte favorisent la confiance en soi chez l'enfant ? (Plusieurs réponses correctes)", corrects: ["Valoriser les efforts plutôt que le résultat", "Laisser l'enfant vivre ses erreurs sans les dramatiser"], distractors: ["Comparer l'enfant à ses frères et sœurs pour le motiver", "Intervenir immédiatement à chaque difficulté"] },
     ],
     qro: [
       { text: "Donnez un exemple de situation où fermeté et bienveillance ont été appliquées ensemble avec un enfant.", criteria: ["Situation concrète et réaliste", "Illustre à la fois fermeté et bienveillance", "Cohérence avec les principes du module"] },
@@ -115,6 +135,13 @@ function buildQcm(t: QcmTemplate, difficulty: AIDifficulty, order: number): AIGe
   return { client_id: uid("q"), type: "QCM", text: t.text, choices, criteria: [], difficulty, suggested_rank: order };
 }
 
+function buildQcmMulti(t: QcmMultiTemplate, difficulty: AIDifficulty, order: number): AIGeneratedQuestion {
+  const correctSet = new Set(t.corrects);
+  const choicesText = shuffle([...t.corrects, ...t.distractors]);
+  const choices: QuizChoice[] = choicesText.map((text, i) => ({ text, is_correct: correctSet.has(text), order: i + 1 }));
+  return { client_id: uid("q"), type: "QCM_MULTI", text: t.text, choices, criteria: [], difficulty, suggested_rank: order };
+}
+
 function buildQro(t: QroTemplate, difficulty: AIDifficulty, order: number): AIGeneratedQuestion {
   return { client_id: uid("q"), type: "QRO", text: t.text, choices: [], criteria: t.criteria, difficulty, suggested_rank: order };
 }
@@ -123,31 +150,43 @@ function buildQro(t: QroTemplate, difficulty: AIDifficulty, order: number): AIGe
 export function simulateQuestions(config: AIGenerationConfig): AIGeneratedQuestion[] {
   const hint  = `${config.module_title ?? ""} ${config.formation_title ?? ""}`;
   const theme = THEMES[detectTheme(hint)];
+  const nbQcmMulti = config.nb_qcm_multi ?? 0;
 
-  const qcmPool = theme.qcm.length ? theme.qcm : THEMES.developpement.qcm;
-  const qroPool = theme.qro.length ? theme.qro : THEMES.developpement.qro;
+  const qcmPool      = theme.qcm.length      ? theme.qcm      : THEMES.developpement.qcm;
+  const qcmMultiPool = theme.qcmMulti.length ? theme.qcmMulti : THEMES.developpement.qcmMulti;
+  const qroPool      = theme.qro.length      ? theme.qro      : THEMES.developpement.qro;
 
   const qcmPicks = pick(qcmPool, Math.min(config.nb_qcm, qcmPool.length));
   while (qcmPicks.length < config.nb_qcm) qcmPicks.push(pick(THEMES.developpement.qcm, 1)[0]);
 
+  const qcmMultiPicks = pick(qcmMultiPool, Math.min(nbQcmMulti, qcmMultiPool.length));
+  while (qcmMultiPicks.length < nbQcmMulti) qcmMultiPicks.push(pick(THEMES.developpement.qcmMulti, 1)[0]);
+
   const qroPicks = pick(qroPool, Math.min(config.nb_qro, qroPool.length));
   while (qroPicks.length < config.nb_qro) qroPicks.push(pick(THEMES.developpement.qro, 1)[0]);
 
+  const offset1 = qcmPicks.length;
+  const offset2 = offset1 + qcmMultiPicks.length;
   return [
     ...qcmPicks.map((t, i) => buildQcm(t, config.difficulty, i + 1)),
-    ...qroPicks.map((t, i) => buildQro(t, config.difficulty, qcmPicks.length + i + 1)),
+    ...qcmMultiPicks.map((t, i) => buildQcmMulti(t, config.difficulty, offset1 + i + 1)),
+    ...qroPicks.map((t, i) => buildQro(t, config.difficulty, offset2 + i + 1)),
   ];
 }
 
 /** Régénère une question isolée (bouton « Régénérer » dans l'aperçu). */
 export function simulateSingleQuestion(
-  config: AIGenerationConfig, type: "QCM" | "QRO", order: number,
+  config: AIGenerationConfig, type: "QCM" | "QCM_MULTI" | "QRO", order: number,
 ): AIGeneratedQuestion {
   const hint  = `${config.module_title ?? ""} ${config.formation_title ?? ""}`;
   const theme = THEMES[detectTheme(hint)];
   if (type === "QCM") {
     const pool = theme.qcm.length ? theme.qcm : THEMES.developpement.qcm;
     return buildQcm(pick(pool, 1)[0], config.difficulty, order);
+  }
+  if (type === "QCM_MULTI") {
+    const pool = theme.qcmMulti.length ? theme.qcmMulti : THEMES.developpement.qcmMulti;
+    return buildQcmMulti(pick(pool, 1)[0], config.difficulty, order);
   }
   const pool = theme.qro.length ? theme.qro : THEMES.developpement.qro;
   return buildQro(pick(pool, 1)[0], config.difficulty, order);

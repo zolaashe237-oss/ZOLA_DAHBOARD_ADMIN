@@ -17,6 +17,7 @@ import { QuizEditor } from "@/components/QuizEditor";
 import { FormationCard, COVER_GRAD } from "@/components/FormationCard";
 import { AIGenerateModal, AIGenerateResult, AIGenerateTarget } from "@/components/ai/AIGenerateModal";
 import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
+import { YoutubeChapterImportModal } from "@/components/YoutubeChapterImportModal";
 
 type QuizTarget = { quiz: QuizItem | null; course?: number; formation?: number };
 
@@ -69,12 +70,14 @@ export default function FormationBuilderPage() {
   const [aiTarget,          setAiTarget]          = useState<AIGenerateTarget | null>(null);
   const [aiResult,          setAiResult]          = useState<AIGenerateResult | null>(null);
   const [showMeta,          setShowMeta]          = useState(false);
+  const [showYtImport,      setShowYtImport]      = useState(false);
+  const [publishing,        setPublishing]        = useState(false);
 
   // Metadata state (lifted)
   const [meta, setMeta] = useState({
     title: "", description: "", category: "FORMATION" as Formation["category"],
     niveau: "" as FormationNiveau | "", branche: "" as Branche | "",
-    acces: "LIBRE" as FormationAcces, status: "DRAFT" as FormationStatus,
+    acces: "MEMBRES" as FormationAcces, status: "DRAFT" as FormationStatus,
     publish_at: "",
   });
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -90,6 +93,17 @@ export default function FormationBuilderPage() {
 
   const flash = (m: string) => { setError(""); setInfo(m); };
 
+  const publishFormation = async () => {
+    if (!confirm("Publier cette formation ? Elle sera visible par les membres.")) return;
+    setPublishing(true); setError("");
+    try {
+      await formationApi.publish(fid);
+      flash("Formation publiée avec succès.");
+      reload();
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setPublishing(false); }
+  };
+
   const reload = useCallback(async () => {
     try {
       const f = (await formationApi.detail(fid)).data;
@@ -100,7 +114,7 @@ export default function FormationBuilderPage() {
         category: f.category,
         niveau: f.niveau ?? "",
         branche: f.branche ?? "",
-        acces: f.access_subscription_types.length > 0 ? "PAYANTE" : "LIBRE",
+        acces: f.is_public ? "PUBLIC" : f.access_subscription_types.length > 0 ? "PAYANTE" : "MEMBRES",
         status: f.status,
         publish_at: f.publish_at ? f.publish_at.slice(0, 16) : "",
       });
@@ -156,7 +170,7 @@ export default function FormationBuilderPage() {
     formation.category !== meta.category ||
     (formation.niveau ?? "") !== meta.niveau ||
     (formation.branche ?? "") !== meta.branche ||
-    (formation.access_subscription_types.length > 0 ? "PAYANTE" : "LIBRE") !== meta.acces ||
+    (formation.is_public ? "PUBLIC" : formation.access_subscription_types.length > 0 ? "PAYANTE" : "MEMBRES") !== meta.acces ||
     formation.status !== meta.status ||
     !!coverFile;
 
@@ -194,9 +208,21 @@ export default function FormationBuilderPage() {
         }}>
           ← Toutes les formations
         </Link>
-        <Button onClick={saveMeta} loading={savingMeta} disabled={!hasChanges} style={{ padding: "0.4rem 1.2rem" }}>
-          Enregistrer les modifications
-        </Button>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {formation.status !== "PUBLISHED" && (
+            <Button
+              variant="ghost"
+              loading={publishing}
+              onClick={publishFormation}
+              style={{ padding: "0.4rem 1.1rem", color: "#2e9460", borderColor: "#2e946040" }}
+            >
+              ✓ Publier
+            </Button>
+          )}
+          <Button onClick={saveMeta} loading={savingMeta} disabled={!hasChanges} style={{ padding: "0.4rem 1.2rem" }}>
+            Enregistrer les modifications
+          </Button>
+        </div>
       </div>
 
       {/* ── Header formation ── */}
@@ -309,6 +335,7 @@ export default function FormationBuilderPage() {
               onSaved={() => { setPendingChapterTitle(""); reload(); }}
               onError={setError} onInfo={flash}
               onTitleChange={setPendingChapterTitle}
+              onYoutubeImport={() => setShowYtImport(true)}
             />
           </div>
 
@@ -431,6 +458,43 @@ export default function FormationBuilderPage() {
         </div>
       </div>
 
+      {/* ── Publication ── */}
+      <div style={{
+        marginTop: "0.75rem",
+        padding: "1rem 1.25rem",
+        background: formation.status === "PUBLISHED" ? "#f0faf5" : "#fff",
+        border: `1px solid ${formation.status === "PUBLISHED" ? "#2e946040" : "#e8dfc8"}`,
+        borderRadius: "var(--radius)",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap",
+      }}>
+        <div>
+          <div style={{ fontSize: "0.88rem", fontWeight: 700, color: formation.status === "PUBLISHED" ? "#2e9460" : "#2a1800" }}>
+            {formation.status === "PUBLISHED" ? "✓ Formation publiée" : formation.status === "SCHEDULED" ? "⏱ Publication programmée" : "Brouillon — non visible par les membres"}
+          </div>
+          <div style={{ fontSize: "0.74rem", color: "#8b6a3a", marginTop: "0.2rem" }}>
+            {formation.status === "PUBLISHED"
+              ? "Visible dans le catalogue. Modifiez les paramètres pour dépublier."
+              : formation.status === "SCHEDULED" && formation.publish_at
+              ? `Mise en ligne prévue le ${new Date(formation.publish_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.`
+              : "Cliquez sur « Publier » pour rendre cette formation accessible aux membres."}
+          </div>
+        </div>
+        {formation.status !== "PUBLISHED" && (
+          <Button loading={publishing} onClick={publishFormation}>
+            ✓ Publier la formation
+          </Button>
+        )}
+      </div>
+
+      {showYtImport && formation && (
+        <YoutubeChapterImportModal
+          formationId={fid}
+          formationTitle={formation.title}
+          onClose={() => setShowYtImport(false)}
+          onImported={(msg) => { setShowYtImport(false); flash(msg); reload(); }}
+        />
+      )}
+
       {quizTarget && (
         <QuizEditor
           quiz={quizTarget.quiz}
@@ -473,9 +537,15 @@ export default function FormationBuilderPage() {
 function accesToApi(acces: FormationAcces) {
   return {
     access_subscription_types: (acces === "PAYANTE" ? ["MEMBRE"] : []) as ("MEMBRE")[],
-    is_payant: acces === "PAYANTE",
+    is_public: acces === "PUBLIC",
   };
 }
+
+const ACCES_OPTIONS: { value: FormationAcces; label: string; sub: string; color: string }[] = [
+  { value: "PUBLIC",  label: "Public",   sub: "Visiteurs non connectés (landing)",  color: "#2e9460" },
+  { value: "MEMBRES", label: "Membres",  sub: "Tous les membres connectés",          color: "#5b8fd4" },
+  { value: "PAYANTE", label: "Payant",   sub: "Abonnement actif requis",             color: "#c9a227" },
+];
 
 function AccesSelector({ value, onChange }: {
   value: FormationAcces;
@@ -485,10 +555,7 @@ function AccesSelector({ value, onChange }: {
     <div style={{ marginBottom: "1rem" }}>
       <span className="field-label">Accès à la formation</span>
       <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.38rem" }}>
-        {([
-          { value: "LIBRE"   as FormationAcces, icon: "🌐", label: "Gratuit",  sub: "Accessible à tous",          color: "#2e9460" },
-          { value: "PAYANTE" as FormationAcces, icon: "🔑", label: "Payant",   sub: "Réservé aux membres abonnés", color: "#c9a227" },
-        ]).map((o) => {
+        {ACCES_OPTIONS.map((o) => {
           const active = value === o.value;
           return (
             <button key={o.value} type="button" onClick={() => onChange(o.value)} style={{
@@ -496,11 +563,10 @@ function AccesSelector({ value, onChange }: {
               border: active ? `2px solid ${o.color}` : "1.5px solid var(--line-soft)",
               background: active ? `${o.color}12` : "var(--bg-2)", cursor: "pointer", transition: "all .14s",
             }}>
-              <div style={{ fontSize: "1.1rem", marginBottom: "0.14rem" }}>{o.icon}</div>
               <div style={{ fontSize: "0.80rem", fontWeight: 800, color: active ? o.color : "var(--cream)" }}>
                 {o.label}
               </div>
-              <div style={{ fontSize: "0.67rem", color: active ? o.color : "var(--muted-2)", marginTop: "0.1rem" }}>
+              <div style={{ fontSize: "0.67rem", color: active ? o.color : "var(--muted-2)", marginTop: "0.14rem" }}>
                 {o.sub}
               </div>
             </button>
@@ -551,7 +617,7 @@ function FormationMeta({
     description: meta.description.trim(),
     category:    meta.category,
     access_subscription_types: accesToApi(meta.acces).access_subscription_types as ("MEMBRE")[],
-    is_payant:   accesToApi(meta.acces).is_payant,
+    is_public:   accesToApi(meta.acces).is_public,
     cover_url:   displayCoverUrl,
     status:      meta.status,
     publish_at: (() => {
@@ -660,7 +726,7 @@ function FormationMeta({
           <Select label="Branche" value={meta.branche}
                   onChange={(e) => setMeta({ ...meta, branche: e.target.value as Branche | "" })}>
             <option value="">— Branche —</option>
-            <option value="GENERALE">Général</option>
+            <option value="MEMBRE">Membres</option>
             <option value="FEMME">Femme</option>
             <option value="ENFANT">Enfant</option>
           </Select>
@@ -705,10 +771,11 @@ function FormationMeta({
 
 // ── Ajout de chapitre ─────────────────────────────────────────────────────────
 
-function AddChapterForm({ formationId, modules, onSaved, onError, onInfo, onTitleChange }: {
+function AddChapterForm({ formationId, modules, onSaved, onError, onInfo, onTitleChange, onYoutubeImport }: {
   formationId: number; modules: ModuleItem[];
   onSaved: () => void; onError: (s: string) => void; onInfo: (s: string) => void;
   onTitleChange?: (title: string) => void;
+  onYoutubeImport?: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -739,6 +806,25 @@ function AddChapterForm({ formationId, modules, onSaved, onError, onInfo, onTitl
       <Button type="button" variant="ghost" onClick={add} loading={busy} disabled={!title.trim()}>
         + Chapitre
       </Button>
+      {onYoutubeImport && (
+        <button
+          type="button"
+          onClick={onYoutubeImport}
+          title="Importer un chapitre depuis une playlist YouTube"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: "0.3rem",
+            fontSize: "0.76rem", fontWeight: 600,
+            color: "#d4673a", background: "#d4673a0e",
+            border: "1px solid #d4673a35", borderRadius: 6,
+            padding: "0.32rem 0.7rem", cursor: "pointer", flexShrink: 0,
+            transition: "background .12s",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#d4673a1a"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#d4673a0e"; }}
+        >
+          ▶ YouTube
+        </button>
+      )}
     </div>
   );
 }

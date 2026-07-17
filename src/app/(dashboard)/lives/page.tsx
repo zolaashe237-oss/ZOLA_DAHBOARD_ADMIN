@@ -10,13 +10,13 @@ import { ConfirmModal, Modal } from "@/components/Modal";
 // ── Palette ───────────────────────────────────────────────────────────────────
 
 const BRANCHE_COLOR: Record<Branche, string> = {
-  GENERALE: "#c9a227", FEMME: "#b5532a", ENFANT: "#52b083",
+  MEMBRE: "#c9a227", FEMME: "#b5532a", ENFANT: "#52b083",
 };
 const BRANCHE_BG: Record<Branche, string> = {
-  GENERALE: "rgba(201,162,39,0.13)", FEMME: "rgba(181,83,42,0.11)", ENFANT: "rgba(82,176,131,0.11)",
+  MEMBRE: "rgba(201,162,39,0.13)", FEMME: "rgba(181,83,42,0.11)", ENFANT: "rgba(82,176,131,0.11)",
 };
 const BRANCHE_LABEL: Record<Branche, string> = {
-  GENERALE: "Générale", FEMME: "Femmes", ENFANT: "Enfants",
+  MEMBRE: "Membres", FEMME: "Femmes", ENFANT: "Enfants",
 };
 const STATUS_COLOR: Record<LiveStatus, string> = {
   PLANIFIE: "#c9a227", EN_COURS: "#e05555", TERMINE: "#9a9284",

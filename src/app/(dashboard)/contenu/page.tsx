@@ -12,9 +12,9 @@ import { YoutubeImportModal } from "@/components/YoutubeImportModal";
 // ── Groupement par branche ────────────────────────────────────────────────────
 
 const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }[] = [
-  { key: "GENERALE", label: "Membres — Général", color: "#5b8fd4", emoji: "◉" },
-  { key: "FEMME",    label: "Espace Femmes",     color: "#b5532a", emoji: "♀" },
-  { key: "ENFANT",   label: "Espace Enfants",    color: "#52b083", emoji: "◈" },
+  { key: "MEMBRE",  label: "Espace Membres",  color: "#5b8fd4", emoji: "◉" },
+  { key: "FEMME",   label: "Espace Femmes",   color: "#b5532a", emoji: "♀" },
+  { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
 const EMPTY = {
@@ -32,7 +32,7 @@ type FormState = typeof EMPTY;
 function accesToApi(acces: FormationAcces) {
   return {
     access_subscription_types: (acces === "PAYANTE" ? ["MEMBRE"] : []) as ("MEMBRE")[],
-    is_payant: acces === "PAYANTE",
+    is_public: acces === "PUBLIC",
   };
 }
 
@@ -56,7 +56,13 @@ function buildPreview(f: FormState, coverUrl: string): Formation {
   };
 }
 
-// ── Sélecteur d'accès (Gratuit / Payant) ─────────────────────────────────────
+// ── Sélecteur d'accès (Public / Membres / Payant) ────────────────────────────
+
+const ACCES_OPTIONS: { value: FormationAcces; label: string; sub: string; color: string }[] = [
+  { value: "PUBLIC",  label: "Public",   sub: "Visiteurs non connectés (landing)",  color: "#2e9460" },
+  { value: "MEMBRES", label: "Membres",  sub: "Tous les membres connectés",          color: "#5b8fd4" },
+  { value: "PAYANTE", label: "Payant",   sub: "Abonnement actif requis",             color: "#c9a227" },
+];
 
 function AccesSelector({ value, onChange }: {
   value: FormationAcces;
@@ -66,10 +72,7 @@ function AccesSelector({ value, onChange }: {
     <div style={{ marginBottom: "1rem" }}>
       <span className="field-label">Accès à la formation</span>
       <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.38rem" }}>
-        {([
-          { value: "LIBRE"   as FormationAcces, icon: "🌐", label: "Gratuit",  sub: "Accessible à tous",          color: "#2e9460" },
-          { value: "PAYANTE" as FormationAcces, icon: "🔑", label: "Payant",   sub: "Réservé aux membres abonnés", color: "#c9a227" },
-        ]).map((o) => {
+        {ACCES_OPTIONS.map((o) => {
           const active = value === o.value;
           return (
             <button key={o.value} type="button" onClick={() => onChange(o.value)} style={{
@@ -78,11 +81,10 @@ function AccesSelector({ value, onChange }: {
               background: active ? `${o.color}12` : "var(--bg-2)",
               cursor: "pointer", transition: "all .14s",
             }}>
-              <div style={{ fontSize: "1.1rem", marginBottom: "0.14rem" }}>{o.icon}</div>
               <div style={{ fontSize: "0.80rem", fontWeight: 800, color: active ? o.color : "var(--cream)" }}>
                 {o.label}
               </div>
-              <div style={{ fontSize: "0.67rem", color: active ? o.color : "var(--muted-2)", marginTop: "0.1rem" }}>
+              <div style={{ fontSize: "0.67rem", color: active ? o.color : "var(--muted-2)", marginTop: "0.14rem" }}>
                 {o.sub}
               </div>
             </button>
@@ -391,7 +393,7 @@ export default function ContenuPage() {
                 <Select label="Branche" value={form.branche}
                         onChange={(e) => setForm({ ...form, branche: e.target.value as Branche | "" })}>
                   <option value="">— Branche —</option>
-                  <option value="GENERALE">Général</option>
+                  <option value="MEMBRE">Membres</option>
                   <option value="FEMME">Femme</option>
                   <option value="ENFANT">Enfant</option>
                 </Select>
@@ -456,7 +458,7 @@ export default function ContenuPage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {BRANCH_COLS.map((col) => {
-            const colItems = filtered.filter((f) => (f.branche ?? "GENERALE") === col.key);
+            const colItems = filtered.filter((f) => (f.branche ?? "MEMBRE") === col.key);
             return (
               <section key={col.key}>
                 {/* ── En-tête de section ── */}

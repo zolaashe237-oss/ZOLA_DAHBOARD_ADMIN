@@ -25,13 +25,20 @@ function AIQuestionCard({
   onRegenerate: () => void;
   regenerating: boolean;
 }) {
-  const isQcm = q.type === "QCM";
+  const isQcm      = q.type === "QCM";
+  const isQcmMulti = q.type === "QCM_MULTI";
+  const hasChoices  = isQcm || isQcmMulti;
 
   const setChoice = (ci: number, patch: Partial<QuizChoice>) =>
     onChange({ choices: q.choices.map((c, k) => (k === ci ? { ...c, ...patch } : c)) });
 
+  // Radio (QCM) — only one correct
   const markCorrect = (ci: number) =>
     onChange({ choices: q.choices.map((c, k) => ({ ...c, is_correct: k === ci })) });
+
+  // Checkbox (QCM_MULTI) — toggle individual correctness
+  const toggleCorrect = (ci: number) =>
+    onChange({ choices: q.choices.map((c, k) => (k === ci ? { ...c, is_correct: !c.is_correct } : c)) });
 
   const addChoice = () =>
     onChange({ choices: [...q.choices, { text: "", is_correct: false, order: q.choices.length + 1 }] });
@@ -62,11 +69,11 @@ function AIQuestionCard({
           </span>
           <span style={{
             fontSize: ".66rem", fontWeight: 800, borderRadius: 999, padding: ".14rem .55rem",
-            color: isQcm ? "var(--gold-2)" : "#2d61b0",
-            background: isQcm ? "var(--gold-bg)" : "var(--info-bg)",
-            border: `1px solid ${isQcm ? "rgba(201,162,39,.35)" : "rgba(45,97,176,.3)"}`,
+            color: isQcmMulti ? "#8b5cf6" : isQcm ? "var(--gold-2)" : "#2d61b0",
+            background: isQcmMulti ? "rgba(139,92,246,.1)" : isQcm ? "var(--gold-bg)" : "var(--info-bg)",
+            border: `1px solid ${isQcmMulti ? "rgba(139,92,246,.35)" : isQcm ? "rgba(201,162,39,.35)" : "rgba(45,97,176,.3)"}`,
           }}>
-            {isQcm ? "QCM" : "QRO"}
+            {isQcmMulti ? "QCM ☑" : isQcm ? "QCM" : "QRO"}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: ".65rem" }}>
@@ -97,9 +104,16 @@ function AIQuestionCard({
           placeholder="Texte de la question générée…"
         />
 
-        {isQcm ? (
+        {hasChoices ? (
           <>
-            <div className="field-label" style={{ marginBottom: ".45rem" }}>Choix de réponse</div>
+            <div className="field-label" style={{ marginBottom: ".35rem" }}>
+              Choix de réponse
+              {isQcmMulti && (
+                <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "#8b5cf6", fontSize: ".78rem", marginLeft: ".4rem" }}>
+                  — cochez toutes les bonnes réponses (2 ou 3)
+                </span>
+              )}
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: ".4rem", marginBottom: ".45rem" }}>
               {q.choices.map((c, ci) => (
                 <div key={ci} style={{
@@ -115,8 +129,12 @@ function AIQuestionCard({
                     value={c.text}
                     onChange={(e) => setChoice(ci, { text: e.target.value })}
                   />
-                  <label title="Bonne réponse" style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer", fontSize: ".75rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                    <input type="radio" name={`ai-correct-${index}`} checked={c.is_correct} onChange={() => markCorrect(ci)} style={{ accentColor: "var(--ok)", width: 15, height: 15 }} />
+                  <label title={isQcmMulti ? "Bonne réponse (plusieurs possibles)" : "Bonne réponse"} style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer", fontSize: ".75rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {isQcmMulti ? (
+                      <input type="checkbox" checked={c.is_correct} onChange={() => toggleCorrect(ci)} style={{ accentColor: "#8b5cf6", width: 15, height: 15 }} />
+                    ) : (
+                      <input type="radio" name={`ai-correct-${index}`} checked={c.is_correct} onChange={() => markCorrect(ci)} style={{ accentColor: "var(--ok)", width: 15, height: 15 }} />
+                    )}
                     {c.is_correct ? "Correct" : "Réponse"}
                   </label>
                   {q.choices.length > 2 && (
@@ -210,13 +228,16 @@ export function AIReviewPanel({
 
   const valid = title.trim().length > 0 &&
     questions.length > 0 &&
-    questions.every((q) =>
-      q.text.trim() && (
-        q.type === "QCM"
-          ? q.choices.length >= 2 && q.choices.some((c) => c.is_correct) && q.choices.every((c) => c.text.trim())
-          : q.criteria.length >= 1 && q.criteria.every((c) => c.trim())
-      ),
-    );
+    questions.every((q) => {
+      if (!q.text.trim()) return false;
+      if (q.type === "QCM") {
+        return q.choices.length >= 2 && q.choices.some((c) => c.is_correct) && q.choices.every((c) => c.text.trim());
+      }
+      if (q.type === "QCM_MULTI") {
+        return q.choices.length >= 2 && q.choices.filter((c) => c.is_correct).length >= 2 && q.choices.every((c) => c.text.trim());
+      }
+      return q.criteria.length >= 1 && q.criteria.every((c) => c.trim());
+    });
 
   const persist = async (status: "DRAFT" | "PUBLISHED") => {
     setError("");
@@ -228,10 +249,12 @@ export function AIReviewPanel({
         active: status === "PUBLISHED",
         ...(targetCourseId ? { course: targetCourseId, formation: undefined } : { formation: targetFormationId ?? undefined }),
         questions: questions.map((q, qi) => ({
-          text: q.text, multiple: false, order: qi + 1,
+          text: q.text,
+          multiple: q.type === "QCM_MULTI",
+          order: qi + 1,
           type: q.type,
           criteria: q.type === "QRO" ? q.criteria.filter((c) => c.trim()) : [],
-          choices: q.type === "QCM"
+          choices: (q.type === "QCM" || q.type === "QCM_MULTI")
             ? q.choices.map((c, ci) => ({ text: c.text, is_correct: c.is_correct, order: ci + 1 }))
             : [],
         })),

@@ -26,6 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Membres & Contenu",
     items: [
       { href: "/membres",             label: "Membres",          icon: "◎" },
+      { href: "/memoires",            label: "Mémoires",         icon: "◳" },
       { href: "/contenu",             label: "Formations",       icon: "◫" },
       { href: "/quizz",               label: "Quiz & QCM",       icon: "◆", exact: true },
       { href: "/quizz/resultats",     label: "Résultats quiz",   icon: "◌" },

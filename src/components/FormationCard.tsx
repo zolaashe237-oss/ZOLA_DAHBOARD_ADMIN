@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { getMediaUrl } from "@/lib/api";
-import type { Branche, Formation, FormationNiveau, FormationStatus } from "@/lib/types";
+import type { Branche, Formation, FormationAcces, FormationNiveau, FormationStatus } from "@/lib/types";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -34,10 +34,16 @@ export const NIVEAU_COLOR: Record<FormationNiveau, string> = {
   AVANCE:        "#c9674a",
 };
 export const BRANCHE_LABEL: Record<Branche, string> = {
-  GENERALE: "Général", FEMME: "Femme", ENFANT: "Enfant",
+  MEMBRE: "Membres", FEMME: "Femme", ENFANT: "Enfant",
 };
 export const BRANCHE_COLOR: Record<Branche, string> = {
-  GENERALE: "#5b8fd4", FEMME: "#b5532a", ENFANT: "#52b083",
+  MEMBRE: "#5b8fd4", FEMME: "#b5532a", ENFANT: "#52b083",
+};
+export const ACCES_LABEL: Record<FormationAcces, string> = {
+  PUBLIC: "Public", MEMBRES: "Membres", PAYANTE: "Payant",
+};
+export const ACCES_COLOR: Record<FormationAcces, string> = {
+  PUBLIC: "#2e9460", MEMBRES: "#5b8fd4", PAYANTE: "#c9a227",
 };
 
 // ── Composant carte ───────────────────────────────────────────────────────────
@@ -181,7 +187,7 @@ export function FormationCard({
         padding: "1.1rem 1.15rem 0.7rem",
         flex: 1, display: "flex", flexDirection: "column", gap: "0.5rem",
       }}>
-        {/* Eyebrow + branche */}
+        {/* Eyebrow + badges */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{
             fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.11em",
@@ -189,18 +195,36 @@ export function FormationCard({
           }}>
             {CATEGORY_LABEL[f.category]}
           </div>
-          {f.branche && (
-            <span style={{
-              fontSize: "0.65rem", fontWeight: 700,
-              color: BRANCHE_COLOR[f.branche],
-              background: `${BRANCHE_COLOR[f.branche]}18`,
-              border: `1px solid ${BRANCHE_COLOR[f.branche]}40`,
-              padding: "0.10rem 0.44rem", borderRadius: 99,
-              letterSpacing: "0.05em", textTransform: "uppercase",
-            }}>
-              {BRANCHE_LABEL[f.branche]}
-            </span>
-          )}
+          <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+            {(() => {
+              const acces: FormationAcces = f.is_public ? "PUBLIC"
+                : (f.access_subscription_types?.length ?? 0) > 0 ? "PAYANTE" : "MEMBRES";
+              const color = ACCES_COLOR[acces];
+              return (
+                <span style={{
+                  fontSize: "0.62rem", fontWeight: 700,
+                  color, background: `${color}14`,
+                  border: `1px solid ${color}40`,
+                  padding: "0.10rem 0.44rem", borderRadius: 99,
+                  letterSpacing: "0.05em", textTransform: "uppercase",
+                }}>
+                  {ACCES_LABEL[acces]}
+                </span>
+              );
+            })()}
+            {f.branche && (
+              <span style={{
+                fontSize: "0.65rem", fontWeight: 700,
+                color: BRANCHE_COLOR[f.branche],
+                background: `${BRANCHE_COLOR[f.branche]}18`,
+                border: `1px solid ${BRANCHE_COLOR[f.branche]}40`,
+                padding: "0.10rem 0.44rem", borderRadius: 99,
+                letterSpacing: "0.05em", textTransform: "uppercase",
+              }}>
+                {BRANCHE_LABEL[f.branche]}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Titre */}

@@ -11,9 +11,9 @@ import { BrandLoader } from "@/components/BrandLoader";
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const BRANCHES: { value: Branche; label: string; color: string; icon: string }[] = [
-  { value: "GENERALE", label: "Général",       color: "#5b8fd4", icon: "◉" },
-  { value: "FEMME",    label: "Espace Femmes",  color: "#b5532a", icon: "♀" },
-  { value: "ENFANT",   label: "Espace Enfants", color: "#52b083", icon: "◈" },
+  { value: "MEMBRE",  label: "Membres",        color: "#5b8fd4", icon: "◉" },
+  { value: "FEMME",   label: "Espace Femmes",  color: "#b5532a", icon: "♀" },
+  { value: "ENFANT",  label: "Espace Enfants", color: "#52b083", icon: "◈" },
 ];
 
 // ── Carte quiz (glissable) ────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ function ParcoursCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ParcoursIAPage() {
-  const [branche,    setBranche]    = useState<Branche>("GENERALE");
+  const [branche,    setBranche]    = useState<Branche>("MEMBRE");
   const [items,       setItems]      = useState<QuizItem[]>([]);
   const [formations,  setFormations] = useState<Formation[]>([]);
   const [loading,     setLoading]    = useState(true);

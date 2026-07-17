@@ -21,15 +21,15 @@ const ACCESS_ICON: Record<PdfAccess, string> = {
 };
 
 const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }[] = [
-  { key: "GENERALE", label: "Membres — Général", color: "#5b8fd4", emoji: "◉" },
-  { key: "FEMME",    label: "Espace Femmes",     color: "#b5532a", emoji: "♀" },
-  { key: "ENFANT",   label: "Espace Enfants",    color: "#52b083", emoji: "◈" },
+  { key: "MEMBRE",  label: "Espace Membres",  color: "#5b8fd4", emoji: "◉" },
+  { key: "FEMME",   label: "Espace Femmes",   color: "#b5532a", emoji: "♀" },
+  { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
 const AUDIO_ACCENT: Record<Branche, { bg: string; line: string; text: string; wave: string }> = {
-  GENERALE: { bg: "#1a1400", line: "#c9a227", text: "#c9a227", wave: "#c9a22740" },
-  FEMME:    { bg: "#1a0c08", line: "#b5532a", text: "#b5532a", wave: "#b5532a40" },
-  ENFANT:   { bg: "#081510", line: "#52b083", text: "#52b083", wave: "#52b08340" },
+  MEMBRE:  { bg: "#1a1400", line: "#c9a227", text: "#c9a227", wave: "#c9a22740" },
+  FEMME:   { bg: "#1a0c08", line: "#b5532a", text: "#b5532a", wave: "#b5532a40" },
+  ENFANT:  { bg: "#081510", line: "#52b083", text: "#52b083", wave: "#52b08340" },
 };
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -382,7 +382,7 @@ function AudioPreviewModal({ item, previewUrl, onClose, onEdit, onToggle }: {
 // ── Formulaire ────────────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
-  title: "", description: "", category: "", branche: "GENERALE" as Branche,
+  title: "", description: "", category: "", branche: "MEMBRE" as Branche,
   access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_url: "",
   duration_sec: null as number | null, size_mo: null as number | null,
   audio_format: null as string | null, is_active: true, is_gratuit: false,
@@ -489,7 +489,7 @@ function AudioFormModal({ initial, editing, onClose, onSaved, onError }: {
         <Textarea label="Description" value={form.description} minRows={2} maxLength={300} placeholder="Contenu de cet audio…" onChange={(e) => setForm({ ...form, description: e.target.value })} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 0.85rem" }}>
           <Select label="Branche" value={form.branche} onChange={(e) => setForm({ ...form, branche: e.target.value as Branche })}>
-            <option value="GENERALE">Général</option>
+            <option value="MEMBRE">Membres</option>
             <option value="FEMME">Femmes</option>
             <option value="ENFANT">Enfants</option>
           </Select>

@@ -114,10 +114,11 @@ export type FormationNiveau   = "DEBUTANT" | "INTERMEDIAIRE" | "AVANCE";
 export type VideoSource       = "YOUTUBE" | "UPLOAD";
 
 /**
- * LIBRE   → accessible à tous gratuitement
- * PAYANTE → réservé aux membres ayant payé (des aperçus gratuits restent possibles)
+ * PUBLIC  → visible par les visiteurs non connectés (landing, SEO)
+ * MEMBRES → accessible à tous les membres connectés gratuitement
+ * PAYANTE → réservé aux membres ayant souscrit un abonnement actif
  */
-export type FormationAcces = "LIBRE" | "PAYANTE";
+export type FormationAcces = "PUBLIC" | "MEMBRES" | "PAYANTE";
 
 export interface FormationModulePreview {
   id:             number;
@@ -131,8 +132,8 @@ export interface Formation {
   description: string;
   category: Category;
   access_subscription_types: SubscriptionType[];
-  /** Aucun chapitre ni épisode ne peut être gratuit quand is_payant=true */
-  is_payant?: boolean;
+  /** Visible par les visiteurs non connectés (landing, SEO) */
+  is_public?: boolean;
   cover_url: string;
   cover_key: string;
   status: FormationStatus;
@@ -167,6 +168,8 @@ export interface YoutubeImportPreview {
   playlist_url: string;
   modules: YoutubeImportPreviewModule[];
   total_videos: number;
+  preview_count?: number;   // vidéos affichées (≤ total_videos quand truncated)
+  truncated?: boolean;      // true si l'aperçu est limité
 }
 
 export interface YoutubeImportResult {
@@ -176,6 +179,13 @@ export interface YoutubeImportResult {
   simulated?: boolean;
 }
 
+export interface YoutubeChapterImportResult {
+  module_id: number;
+  module_title: string;
+  formation_id: number;
+  courses_created: number;
+}
+
 export interface ModuleItem {
   id: number;
   formation: number;
@@ -183,7 +193,7 @@ export interface ModuleItem {
   title: string;
   description: string;
   order: number;
-  /** Chapitre accessible gratuitement (aperçu, ignoré si formation is_payant) */
+  /** Chapitre accessible gratuitement (aperçu, ignoré si formation acces=PAYANTE) */
   is_gratuit?: boolean;
   created_at: string;
 }
@@ -194,7 +204,7 @@ export interface CourseItem {
   title: string;
   description: string;
   order: number;
-  /** Épisode accessible gratuitement (aperçu, ignoré si formation is_payant) */
+  /** Épisode accessible gratuitement (aperçu, ignoré si formation acces=PAYANTE) */
   is_gratuit?: boolean;
   created_at: string;
 }
@@ -262,16 +272,18 @@ export interface QuizItem {
 // ── Agent IA - Génération de quiz (Gemini 3.5) ────────────────────────────────
 // Réf. sprint SPR-ZOLA-S06-2026 · Axe 1 · Tâches G-01 à G-07 (back-office admin)
 
-export type AIQuestionType = "QCM" | "QRO";
+export type AIQuestionType = "QCM" | "QCM_MULTI" | "QRO";
 export type AIDifficulty   = "FACILE" | "INTERMEDIAIRE" | "DIFFICILE";
-export type AISourceType   = "SCRIPT" | "PDF";
+export type AISourceType   = "SCRIPT" | "PDF" | "MULTI_YOUTUBE";
 export type AIJobStatus    = "PENDING" | "IN_PROGRESS" | "DONE" | "FAILED";
 export type QROVerdict     = "VALIDE" | "NON_VALIDE" | "A_REVOIR";
 
 export interface AIGenerationConfig {
   nb_questions: number;
   nb_qcm: number;
+  nb_qcm_multi?: number;
   nb_qro: number;
+  ratio_qcm_qro?: number;
   difficulty: AIDifficulty;
   source: AISourceType;
   /** Cible de la génération - au moins un des trois doit être fourni. */
@@ -381,7 +393,7 @@ export interface Paginated<T> {
 // ── Lives / Sessions en direct ──────────────────────────────────────────────
 
 export type LiveStatus = "PLANIFIE" | "EN_COURS" | "TERMINE";
-export type Branche = "GENERALE" | "FEMME" | "ENFANT";
+export type Branche = "MEMBRE" | "FEMME" | "ENFANT";
 export type LivePlatform = "ZOOM" | "YOUTUBE" | "MEET" | "TEAMS";
 
 export interface LiveSession {
@@ -549,4 +561,38 @@ export interface SocialLinksConfig {
   youtube_url: string;
   tiktok_url: string;
   updated_at?: string;
+}
+// ── Mémoires — demandes de rédaction autobiographique ─────────────────────────
+
+export type MemoirEditorialStatus =
+  | "pending"
+  | "in_progress"
+  | "review"
+  | "completed"
+  | "archived";
+
+export interface MemoirAnswerEntry {
+  text: string;
+  audioTranscript: string;
+  imageCaptions: string[];
+  structured: Record<string, string | string[]>;
+  notApplicable: boolean;
+}
+
+export interface MemoirSubmission {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  user_phone: string | null;
+  user_country: string | null;
+  submitted_at: string;
+  updated_at: string;
+  answers_count: number;
+  editorial_status: MemoirEditorialStatus;
+  editorial_notes: string;
+}
+
+export interface MemoirSubmissionDetail extends MemoirSubmission {
+  answers: Record<string, MemoirAnswerEntry>;
 }

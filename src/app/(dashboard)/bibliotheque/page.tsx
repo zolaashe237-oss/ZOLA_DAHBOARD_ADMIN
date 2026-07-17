@@ -31,15 +31,15 @@ const ACCESS_ICON: Record<PdfAccess, string> = {
 };
 
 const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }[] = [
-  { key: "GENERALE", label: "Membres — Général", color: "#5b8fd4", emoji: "◉" },
-  { key: "FEMME",    label: "Espace Femmes",     color: "#b5532a", emoji: "♀" },
-  { key: "ENFANT",   label: "Espace Enfants",    color: "#52b083", emoji: "◈" },
+  { key: "MEMBRE",  label: "Espace Membres",  color: "#5b8fd4", emoji: "◉" },
+  { key: "FEMME",   label: "Espace Femmes",   color: "#b5532a", emoji: "♀" },
+  { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
 const COVER_ACCENT: Record<Branche, { bg: string; line: string; text: string }> = {
-  GENERALE: { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
-  FEMME:    { bg: "#fdf0ec", line: "#b5532a", text: "#8b3520" },
-  ENFANT:   { bg: "#eef8f2", line: "#52b083", text: "#2e7050" },
+  MEMBRE:  { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
+  FEMME:   { bg: "#fdf0ec", line: "#b5532a", text: "#8b3520" },
+  ENFANT:  { bg: "#eef8f2", line: "#52b083", text: "#2e7050" },
 };
 
 // ── Couverture ────────────────────────────────────────────────────────────────
@@ -491,7 +491,7 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
         />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 0.85rem" }}>
           <Select label="Branche" value={form.branche} onChange={(e) => setForm({ ...form, branche: e.target.value as Branche })}>
-            <option value="GENERALE">Général</option>
+            <option value="MEMBRE">Membres</option>
             <option value="FEMME">Femmes</option>
             <option value="ENFANT">Enfants</option>
           </Select>
@@ -790,7 +790,7 @@ function DocCompact({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPrevie
 // ── Formulaire vide ───────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
-  title: "", description: "", category: "", branche: "GENERALE" as Branche,
+  title: "", description: "", category: "", branche: "MEMBRE" as Branche,
   access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_url: "",
   nb_pages: null as number | null, size_mo: null as number | null,
   is_active: true, is_gratuit: false, linked_quiz_id: null as number | null,

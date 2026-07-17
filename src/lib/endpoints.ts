@@ -43,6 +43,7 @@ import type {
   Transaction,
   TransactionKPIs,
   User,
+  YoutubeChapterImportResult,
   YoutubeImportPreview,
   YoutubeImportResult,
 } from "./types";
@@ -173,6 +174,14 @@ export const youtubeImportApi = {
     );
     return { ...data, simulated: false };
   },
+
+  confirmChapter: async (playlistUrl: string, formationId: number): Promise<YoutubeChapterImportResult> => {
+    const { data } = await api.post<YoutubeChapterImportResult>(
+      "/admin/formations/import-youtube/",
+      { playlist_url: playlistUrl, mode: "confirm", import_mode: "chapter", formation_id: formationId },
+    );
+    return data;
+  },
 };
 
 export const moduleApi = {
@@ -256,7 +265,7 @@ export const aiQuizApi = {
 
   /** Bouton « Régénérer » sur une question isolée de l'aperçu (G-03). */
   regenerateQuestion: async (
-    config: AIGenerationConfig, type: "QCM" | "QRO", order: number,
+    config: AIGenerationConfig, type: "QCM" | "QCM_MULTI" | "QRO", order: number,
   ): Promise<{ question: AIGeneratedQuestion; simulated: boolean }> => {
     try {
       const { data } = await api.post<AIGeneratedQuestion>(
@@ -521,4 +530,15 @@ export const socialLinksApi = {
   get: () => api.get<SocialLinksConfig>("/config/social-links/"),
   update: (data: Partial<SocialLinksConfig>) =>
     api.patch<SocialLinksConfig>("/config/social-links/", data),
+};
+// ── Mémoires admin ────────────────────────────────────────────────────────────
+import type { MemoirEditorialStatus, MemoirSubmission, MemoirSubmissionDetail } from "./types";
+
+export const adminMemoirApi = {
+  list: () =>
+    api.get<MemoirSubmission[]>("/admin/memoir/"),
+  detail: (id: number) =>
+    api.get<MemoirSubmissionDetail>(`/admin/memoir/${id}/`),
+  update: (id: number, data: { editorial_status?: MemoirEditorialStatus; editorial_notes?: string }) =>
+    api.patch<MemoirSubmissionDetail>(`/admin/memoir/${id}/`, data),
 };
