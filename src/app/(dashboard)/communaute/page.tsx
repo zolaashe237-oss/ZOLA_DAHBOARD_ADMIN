@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { communityApi } from "@/lib/endpoints";
+import { communityApi, notificationsAdminApi } from "@/lib/endpoints";
 import type { Branche, CommunityChannel, CommunityPost, Paginated, PostStatus, PostType } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
@@ -16,7 +16,7 @@ const CHANNEL_COLORS = ["#c9a227", "#b5532a", "#5fb98a", "#243a85", "#d9a441", "
 const emptyPost    = { title: "", body: "", type: "ANNONCE" as PostType, channel: null as number | null, is_pinned: false };
 const emptyChannel = { name: "", description: "", branche: "MEMBRE" as Branche, color: "#c9a227", is_active: true };
 
-type Tab = "annonces" | "canaux" | "posts";
+type Tab = "annonces" | "canaux" | "posts" | "notifications";
 
 // ── Modal formulaire Post ─────────────────────────────────────────────────────
 
@@ -158,6 +158,93 @@ function ChannelFormModal({
   );
 }
 
+// ── Panneau broadcast notifications système ───────────────────────────────────
+
+function BroadcastPanel({ onDone }: { onDone: (msg: string) => void }) {
+  const [title,      setTitle]      = useState("");
+  const [body,       setBody]       = useState("");
+  const [target,     setTarget]     = useState<"all" | "one">("all");
+  const [userId,     setUserId]     = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
+  const [lastResult, setLastResult] = useState<string>("");
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(""); setLastResult(""); setLoading(true);
+    try {
+      const payload: { title: string; body?: string; user_id?: number } = { title };
+      if (body.trim())           payload.body    = body.trim();
+      if (target === "one" && userId) payload.user_id = parseInt(userId, 10);
+      const { data } = await notificationsAdminApi.broadcast(payload);
+      const n = data.sent;
+      const msg = n === 0
+        ? "Aucun membre actif trouvé pour cette cible."
+        : `${n} notification${n > 1 ? "s" : ""} envoyée${n > 1 ? "s" : ""}.`;
+      setLastResult(msg);
+      onDone(msg);
+      setTitle(""); setBody(""); setTarget("all"); setUserId("");
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Card style={{ maxWidth: 640 }}>
+      <h3 style={{ marginTop: 0, marginBottom: "1.25rem", fontSize: "1rem", fontWeight: 700 }}>
+        Envoyer une notification système
+      </h3>
+      <p style={{ color: "var(--muted)", fontSize: "0.83rem", marginBottom: "1.25rem" }}>
+        La notification apparaît dans la cloche de chaque membre ciblé en temps réel.
+      </p>
+      <Alert>{error}</Alert>
+      {lastResult && <Alert kind="success">{lastResult}</Alert>}
+      <form onSubmit={send}>
+        <Input
+          label="Titre *"
+          value={title}
+          required
+          placeholder="Ex : Maintenance prévue ce soir à 21h"
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <Textarea
+          label="Message (optionnel)"
+          value={body}
+          minRows={3}
+          placeholder="Détails supplémentaires…"
+          onChange={(e) => setBody(e.target.value)}
+        />
+
+        <div style={{ marginBottom: "1.25rem" }}>
+          <span className="field-label">Destinataires</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.4rem" }}>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.88rem", cursor: "pointer" }}>
+              <input type="radio" name="target" value="all" checked={target === "all"}
+                     onChange={() => { setTarget("all"); setUserId(""); }} />
+              Tous les membres actifs
+            </label>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.88rem", cursor: "pointer" }}>
+              <input type="radio" name="target" value="one" checked={target === "one"}
+                     onChange={() => setTarget("one")} />
+              Membre spécifique (ID)
+            </label>
+          </div>
+          {target === "one" && (
+            <input
+              className="input" type="number" min={1} placeholder="ID du membre"
+              value={userId} required={target === "one"}
+              style={{ marginTop: "0.5rem", maxWidth: 180 }}
+              onChange={(e) => setUserId(e.target.value)}
+            />
+          )}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button type="submit" loading={loading}>Envoyer la notification</Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function CommunautePage() {
@@ -230,9 +317,10 @@ export default function CommunautePage() {
       <div style={{ display: "flex", gap: "0.15rem", marginBottom: "1.75rem",
                     borderBottom: "1px solid var(--line-soft)" }}>
         {([
-          { key: "annonces" as Tab, label: "Annonces admin" },
-          { key: "canaux"   as Tab, label: "Canaux" },
-          { key: "posts"    as Tab, label: `Posts récents (${posts.length})` },
+          { key: "annonces"      as Tab, label: "Annonces admin" },
+          { key: "canaux"        as Tab, label: "Canaux" },
+          { key: "posts"         as Tab, label: `Posts récents (${posts.length})` },
+          { key: "notifications" as Tab, label: "Notifications système" },
         ]).map((t) => (
           <button key={t.key} style={tabStyle(t.key)}
                   onClick={() => { setError(""); setInfo(""); setActiveTab(t.key); }}>
@@ -420,6 +508,11 @@ export default function CommunautePage() {
             )}
           </Card>
         </>
+      )}
+
+      {/* ── ONGLET 4 : NOTIFICATIONS SYSTÈME ── */}
+      {activeTab === "notifications" && (
+        <BroadcastPanel onDone={(msg) => setInfo(msg)} />
       )}
 
       {/* ── Modales ── */}

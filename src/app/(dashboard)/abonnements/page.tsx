@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { plansApi } from "@/lib/endpoints";
-import type { PlanBilling, Paginated, SubscriptionPlan } from "@/lib/types";
+import type { PlanBilling, PlanKind, Paginated, SubscriptionPlan } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 
@@ -33,7 +33,7 @@ function fmtF(n: number) {
 
 // ── Formulaire plan (modal) ───────────────────────────────────────────────────
 
-const KIND_OPTIONS = [
+const KIND_OPTIONS: { value: PlanKind; label: string; hint: string }[] = [
   { value: "INSCRIPTION",    label: "Droit d'inscription",  hint: "Adhésion permanente au réseau" },
   { value: "COTISATION",     label: "Cotisation mensuelle", hint: "Maintien de l'accès actif" },
   { value: "BRANCHE_FEMME",  label: "Accès Branche Femme",  hint: "Paiement unique — accès permanent" },
@@ -42,7 +42,7 @@ const KIND_OPTIONS = [
 ];
 
 const EMPTY: {
-  kind: string;
+  kind: PlanKind;
   name: string; billing: PlanBilling;
   price_total: number; nb_tranches: number; tranche_amount: number;
   description: string; is_active: boolean; access_levels: string[];

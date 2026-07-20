@@ -413,10 +413,12 @@ export interface LiveSession {
 // ── Plans d'abonnement / Tarification ────────────────────────────────────────
 
 export type PlanBilling = "ANNUEL" | "TRANCHES" | "MENSUEL";
+export type PlanKind = "INSCRIPTION" | "COTISATION" | "BRANCHE_FEMME" | "BRANCHE_ENFANT" | "DON";
 
 export interface SubscriptionPlan {
   id: number;
   name: string;
+  kind: PlanKind;
   billing: PlanBilling;
   price_total: number;
   nb_tranches: number;

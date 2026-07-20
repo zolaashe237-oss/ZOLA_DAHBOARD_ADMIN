@@ -534,6 +534,12 @@ export const socialLinksApi = {
 // ── Mémoires admin ────────────────────────────────────────────────────────────
 import type { MemoirEditorialStatus, MemoirSubmission, MemoirSubmissionDetail } from "./types";
 
+// ── Notifications système admin ───────────────────────────────────────────────
+export const notificationsAdminApi = {
+  broadcast: (data: { title: string; body?: string; user_id?: number }) =>
+    api.post<{ sent: number }>("/admin/notifications/broadcast/", data),
+};
+
 export const adminMemoirApi = {
   list: () =>
     api.get<MemoirSubmission[]>("/admin/memoir/"),
