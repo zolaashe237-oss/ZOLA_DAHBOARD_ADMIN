@@ -153,6 +153,7 @@ export default function RevueQROPage() {
     try {
       await qroReviewApi.decide(item.id, decision);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
+
       setInfo(decision === "VALIDER"
         ? `Réponse de ${item.member_name} validée.`
         : `Réponse de ${item.member_name} invalidée.`);

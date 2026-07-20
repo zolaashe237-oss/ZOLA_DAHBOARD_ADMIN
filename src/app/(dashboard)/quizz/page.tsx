@@ -363,7 +363,7 @@ export default function QuizzPage() {
           config={aiReview.config}
           niveauSuggere={aiReview.niveauSuggere}
           rangSuggere={aiReview.rangSuggere}
-targetFormationId={aiReview.targetFormationId}
+          targetFormationId={aiReview.targetFormationId}
           targetCourseId={aiReview.targetCourseId}
           targetBranche={formations.find((f) => f.id === aiReview.targetFormationId)?.branche ?? null}
           onClose={() => setAiReview(null)}
