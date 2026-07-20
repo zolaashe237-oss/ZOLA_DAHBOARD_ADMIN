@@ -8,7 +8,7 @@ import { aiQuizApi, quizApi } from "@/lib/endpoints";
 import type {
   AIDifficulty, AIGeneratedQuestion, AIGenerationConfig, Branche, QuizChoice, QuizItem,
 } from "@/lib/types";
-import { AIDemoBadge, NIVEAU_LABEL, NiveauBadge } from "./AIBadges";
+import { NIVEAU_LABEL, NiveauBadge } from "./AIBadges";
 import { AIThinkingInline } from "./AIThinking";
 
 const NIVEAUX: AIDifficulty[] = ["FACILE", "INTERMEDIAIRE", "DIFFICILE"];
@@ -180,7 +180,7 @@ function AIQuestionCard({
 // ── Panneau principal ─────────────────────────────────────────────────────────
 
 export function AIReviewPanel({
-  initialQuestions, config, niveauSuggere, rangSuggere, simulated,
+  initialQuestions, config, niveauSuggere, rangSuggere,
   targetFormationId, targetCourseId, targetBranche,
   onClose, onPublished,
 }: {
@@ -188,7 +188,6 @@ export function AIReviewPanel({
   config: AIGenerationConfig;
   niveauSuggere: AIDifficulty | null;
   rangSuggere: number | null;
-  simulated: boolean;
   targetFormationId: number | null;
   targetCourseId: number | null;
   targetBranche?: Branche | null;
@@ -203,7 +202,6 @@ export function AIReviewPanel({
   const [niveau, setNiveau]       = useState<AIDifficulty>(niveauSuggere ?? config.difficulty);
   const [rang, setRang]           = useState<number>(rangSuggere ?? 1);
   const [regenerating, setRegenerating] = useState<string | null>(null); // client_id en cours
-  const [demoMode, setDemoMode]   = useState(simulated);
   const [saving, setSaving]       = useState<"DRAFT" | "PUBLISHED" | null>(null);
   const [error, setError]         = useState("");
 
@@ -216,9 +214,8 @@ export function AIReviewPanel({
   const regenerate = async (q: AIGeneratedQuestion) => {
     setRegenerating(q.client_id);
     try {
-      const { question, simulated: wasSim } = await aiQuizApi.regenerateQuestion(config, q.type, q.suggested_rank);
+      const question = await aiQuizApi.regenerateQuestion(config, q.type, q.suggested_rank);
       setQuestions((qs) => qs.map((it) => (it.client_id === q.client_id ? { ...question, client_id: q.client_id } : it)));
-      if (wasSim) setDemoMode(true);
     } catch {
       setError("La régénération de cette question a échoué. Réessayez.");
     } finally {
@@ -278,12 +275,6 @@ export function AIReviewPanel({
   return (
     <Modal onClose={onClose} title="Aperçu et édition - quiz généré par l'IA" maxWidth={720}>
       <Alert>{error}</Alert>
-
-      {demoMode && (
-        <div style={{ marginBottom: "1rem" }}>
-          <AIDemoBadge />
-        </div>
-      )}
 
       {/* ── Infos quiz + niveau/rang (G-04) ── */}
       <div style={{

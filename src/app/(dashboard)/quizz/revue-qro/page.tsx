@@ -5,7 +5,6 @@ import { useCallback, useEffect, useState } from "react";
 import { qroReviewApi } from "@/lib/endpoints";
 import type { AIQROReviewItem } from "@/lib/types";
 import { Alert, Card, Pagination, usePagination } from "@/components/ui";
-import { AIDemoBadge } from "@/components/ai/AIBadges";
 import { BrandLoader } from "@/components/BrandLoader";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -130,7 +129,6 @@ function QROCard({
 export default function RevueQROPage() {
   const [items,     setItems]     = useState<AIQROReviewItem[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [simulated, setSimulated] = useState(false);
   const [error,     setError]     = useState("");
   const [info,      setInfo]      = useState("");
   const [busyId,    setBusyId]    = useState<number | null>(null);
@@ -138,9 +136,8 @@ export default function RevueQROPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const { items: data, simulated: sim } = await qroReviewApi.list();
+      const data = await qroReviewApi.list();
       setItems(data);
-      setSimulated(sim);
     } catch {
       setItems([]);
       setError("Impossible de charger la file de revue QRO.");
@@ -186,7 +183,6 @@ export default function RevueQROPage() {
       <div style={{ display: "flex", gap: ".65rem", marginBottom: "1.3rem", flexWrap: "wrap", alignItems: "center" }}>
         <StatTile label="En attente" value={items.length} color="var(--warn)" />
         <StatTile label="Score IA moyen" value={`${avgScore}/20`} color="var(--gold-2)" />
-        {simulated && <span style={{ marginLeft: "auto" }}><AIDemoBadge /></span>}
       </div>
 
       {loading ? (

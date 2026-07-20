@@ -1,13 +1,5 @@
 // Appels API du back-office. Tout passe par le client `api` (Bearer + refresh auto).
 import { api } from "./api";
-import {
-  getSimulatedJob,
-  simulateSingleQuestion,
-  SIMULATED_AI_HISTORY,
-  SIMULATED_PARCOURS,
-  SIMULATED_QRO_QUEUE,
-  startSimulatedJob,
-} from "./aiSimulation";
 import type {
   AIGeneratedQuestion,
   AIGenerationConfig,
@@ -225,97 +217,66 @@ export const quizApi = {
   create: (data: Partial<QuizItem>) => api.post<QuizItem>("/admin/quizzes/", data),
   update: (id: number, data: Partial<QuizItem>) => api.patch<QuizItem>(`/admin/quizzes/${id}/`, data),
   remove: (id: number) => api.delete(`/admin/quizzes/${id}/`),
-  /** G-05 - parcours progressif : quiz d'une branche, avec secours démo si l'endpoint IA n'est pas encore branché. */
-  listByBranch: async (branche: Branche): Promise<{ items: QuizItem[]; simulated: boolean }> => {
-    try {
-      const { data } = await api.get<List<QuizItem>>("/admin/quizzes/", { params: { branch: branche } });
-      const items = asList(data);
-      if (items.length === 0) throw new Error("no-branch-data");
-      return { items, simulated: false };
-    } catch {
-      return { items: SIMULATED_PARCOURS.filter((q) => q.branche === branche), simulated: true };
-    }
+  listByBranch: async (branche: Branche): Promise<QuizItem[]> => {
+    const { data } = await api.get<List<QuizItem>>("/admin/quizzes/", { params: { branche } });
+    return asList(data);
   },
 };
 
-// ── Agent IA - Génération de quiz (Gemini 3.5) ────────────────────────────────
-// G-01/G-02 : POST generate-ai/ + GET generate-ai/{job_id}/ · G-03 : régénération individuelle
-// Bascule automatique vers le moteur de simulation local (lib/aiSimulation.ts) si le backend
-// IA (Edwin, IAB1-IAB10) ne répond pas encore - voir `simulated` dans la réponse.
+// ── Agent IA - Génération de quiz (Gemini) ────────────────────────────────────
 
 export const aiQuizApi = {
-  generate: async (config: AIGenerationConfig): Promise<{ job_id: string; simulated: boolean }> => {
-    try {
-      const { data } = await api.post<{ job_id: string }>("/admin/quiz/generate-ai/", config);
-      return { job_id: data.job_id, simulated: false };
-    } catch {
-      return { job_id: startSimulatedJob(config), simulated: true };
-    }
+  generate: async (config: AIGenerationConfig): Promise<{ job_id: string }> => {
+    const { data } = await api.post<{ job_id: string }>("/admin/quiz/generate-ai/", config);
+    return { job_id: data.job_id };
   },
 
   status: async (jobId: string): Promise<AIQuizJob> => {
-    if (jobId.startsWith("sim-job")) {
-      const job = getSimulatedJob(jobId);
-      if (!job) throw new Error("Job de génération introuvable.");
-      return job;
-    }
     const { data } = await api.get<AIQuizJob>(`/admin/quiz/generate-ai/${jobId}/`);
     return data;
   },
 
-  /** Bouton « Régénérer » sur une question isolée de l'aperçu (G-03). */
   regenerateQuestion: async (
     config: AIGenerationConfig, type: "QCM" | "QCM_MULTI" | "QRO", order: number,
-  ): Promise<{ question: AIGeneratedQuestion; simulated: boolean }> => {
-    try {
-      const { data } = await api.post<AIGeneratedQuestion>(
-        "/admin/quiz/generate-ai/", { ...config, regenerate_only: type, regenerate_order: order },
-      );
-      return { question: data, simulated: false };
-    } catch {
-      await new Promise((r) => setTimeout(r, 650 + Math.random() * 450));
-      return { question: simulateSingleQuestion(config, type, order), simulated: true };
-    }
+  ): Promise<AIGeneratedQuestion> => {
+    const { data } = await api.post<AIGeneratedQuestion>(
+      "/admin/quiz/generate-ai/", { ...config, regenerate_only: type, regenerate_order: order },
+    );
+    return data;
   },
 };
 
 // ── File de revue QRO ambiguë (G-06) ──────────────────────────────────────────
 
 export const qroReviewApi = {
-  list: async (): Promise<{ items: AIQROReviewItem[]; simulated: boolean }> => {
-    try {
-      const { data } = await api.get<AIQROReviewItem[] | Paginated<AIQROReviewItem>>("/admin/quiz/qro-review/");
-      return { items: asList(data), simulated: false };
-    } catch {
-      return { items: SIMULATED_QRO_QUEUE, simulated: true };
-    }
+  list: async (): Promise<AIQROReviewItem[]> => {
+    const { data } = await api.get<AIQROReviewItem[] | Paginated<AIQROReviewItem>>("/admin/quiz/qro-review/");
+    return asList(data);
   },
-  decide: async (id: number, decision: "VALIDER" | "INVALIDER"): Promise<{ simulated: boolean }> => {
-    try {
-      const backendDecision = decision === "VALIDER" ? "VALIDATED" : "REJECTED";
-      await api.post(`/admin/quiz/qro-review/${id}/decide/`, { decision: backendDecision });
-      return { simulated: false };
-    } catch {
-      await new Promise((r) => setTimeout(r, 350));
-      return { simulated: true };
-    }
+  decide: async (id: number, decision: "VALIDER" | "INVALIDER"): Promise<void> => {
+    const backendDecision = decision === "VALIDER" ? "VALIDATED" : "REJECTED";
+    await api.post(`/admin/quiz/qro-review/${id}/decide/`, { decision: backendDecision });
   },
 };
 
 // ── Historique des générations IA (G-07) ──────────────────────────────────────
 
 export const quizHistoryApi = {
-  list: async (): Promise<{ items: AIQuizHistoryEntry[]; simulated: boolean }> => {
-    try {
-      const { data } = await api.get<AIQuizHistoryEntry[] | Paginated<AIQuizHistoryEntry>>(
-        "/admin/quizzes/", { params: { source: "AI_HISTORY" } },
-      );
-      const items = asList(data);
-      if (items.length === 0) throw new Error("no-history-data");
-      return { items, simulated: false };
-    } catch {
-      return { items: SIMULATED_AI_HISTORY, simulated: true };
-    }
+  list: async (): Promise<AIQuizHistoryEntry[]> => {
+    const { data } = await api.get<QuizItem[] | Paginated<QuizItem>>(
+      "/admin/quizzes/", { params: { generated_by_ai: true } },
+    );
+    return asList(data).map((q): AIQuizHistoryEntry => ({
+      id: q.id,
+      quiz_title: q.title,
+      source_title: "",
+      ai_source: q.ai_source ?? null,
+      generated_by_ai: q.generated_by_ai ?? false,
+      validated_by: null,
+      status: q.status ?? "DRAFT",
+      niveau: q.niveau ?? null,
+      created_at: q.created_at,
+    }));
   },
 };
 

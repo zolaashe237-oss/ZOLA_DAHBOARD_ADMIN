@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formationApi, quizApi, asList } from "@/lib/endpoints";
 import type { Branche, Formation, QuizItem } from "@/lib/types";
 import { Alert, Card } from "@/components/ui";
-import { AIDemoBadge, NiveauBadge } from "@/components/ai/AIBadges";
+import { NiveauBadge } from "@/components/ai/AIBadges";
 import { BrandLoader } from "@/components/BrandLoader";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -100,7 +100,6 @@ export default function ParcoursIAPage() {
   const [items,       setItems]      = useState<QuizItem[]>([]);
   const [formations,  setFormations] = useState<Formation[]>([]);
   const [loading,     setLoading]    = useState(true);
-  const [simulated,   setSimulated]  = useState(false);
   const [error,       setError]      = useState("");
   const [info,        setInfo]       = useState("");
 
@@ -114,9 +113,8 @@ export default function ParcoursIAPage() {
   const load = useCallback(async (b: Branche) => {
     setLoading(true); setError(""); setInfo("");
     try {
-      const { items: data, simulated: sim } = await quizApi.listByBranch(b);
+      const data = await quizApi.listByBranch(b);
       setItems([...data].sort((a, c) => (a.rang ?? 999) - (c.rang ?? 999)));
-      setSimulated(sim);
     } catch {
       setItems([]);
       setError("Impossible de charger le parcours de cette branche.");
@@ -143,10 +141,6 @@ export default function ParcoursIAPage() {
     const withRanks = next.map((q, i) => ({ ...q, rang: i + 1 }));
     setItems(withRanks); // optimiste
 
-    if (simulated) {
-      setInfo("Ordre du parcours mis à jour (mode démonstration - non persisté côté serveur).");
-      return;
-    }
     try {
       const changed = withRanks.filter((q, i) => previous[i]?.id !== q.id);
       await Promise.all(changed.map((q) => quizApi.update(q.id, { rang: q.rang })));
@@ -188,7 +182,6 @@ export default function ParcoursIAPage() {
             <span>{b.icon}</span> {b.label}
           </button>
         ))}
-        {simulated && <span style={{ marginLeft: "auto" }}><AIDemoBadge /></span>}
       </div>
 
       {loading ? (

@@ -14,12 +14,11 @@ interface State {
   niveauSuggere: AIDifficulty | null;
   rangSuggere: number | null;
   error: string;
-  simulated: boolean;
 }
 
 const INITIAL: State = {
   phase: "idle", progress: 0, questions: [], niveauSuggere: null, rangSuggere: null,
-  error: "", simulated: false,
+  error: "",
 };
 
 const POLL_MS = 550;
@@ -51,7 +50,7 @@ export function useAIGeneration() {
             questions: job.questions ?? [],
             niveauSuggere: job.niveau_suggere ?? null,
             rangSuggere: job.rang_suggere ?? null,
-            error: "", simulated: !!job.simulated,
+            error: "",
           });
           return;
         }
@@ -59,7 +58,7 @@ export function useAIGeneration() {
           setState((s) => ({ ...s, phase: "error", error: job.error || "La génération IA a échoué." }));
           return;
         }
-        setState((s) => ({ ...s, progress: job.progress, simulated: !!job.simulated }));
+        setState((s) => ({ ...s, progress: job.progress }));
         timer.current = setTimeout(poll, POLL_MS);
       })
       .catch((e) => {
@@ -80,9 +79,8 @@ export function useAIGeneration() {
     clearTimer();
     setState({ ...INITIAL, phase: "generating" });
     try {
-      const { job_id, simulated } = await aiQuizApi.generate(config);
+      const { job_id } = await aiQuizApi.generate(config);
       jobId.current = job_id;
-      setState((s) => ({ ...s, simulated }));
       timer.current = setTimeout(poll, POLL_MS);
     } catch {
       setState((s) => ({ ...s, phase: "error", error: "Impossible de démarrer la génération IA." }));

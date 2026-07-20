@@ -37,7 +37,6 @@ export interface AIGenerateResult {
   config: AIGenerationConfig;
   niveauSuggere: AIDifficulty | null;
   rangSuggere: number | null;
-  simulated: boolean;
   targetFormationId: number;
   targetCourseId: number | null;
 }
@@ -213,7 +212,6 @@ export function AIGenerateModal({
         config,
         niveauSuggere: gen.niveauSuggere,
         rangSuggere: gen.rangSuggere,
-        simulated: gen.simulated,
         targetFormationId: config.formation ?? Number(formationId),
         targetCourseId: config.course ?? null,
       });

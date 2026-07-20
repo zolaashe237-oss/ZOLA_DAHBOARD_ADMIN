@@ -520,7 +520,6 @@ export default function FormationBuilderPage() {
           config={aiResult.config}
           niveauSuggere={aiResult.niveauSuggere}
           rangSuggere={aiResult.rangSuggere}
-          simulated={aiResult.simulated}
           targetFormationId={aiResult.targetFormationId}
           targetCourseId={aiResult.targetCourseId}
           targetBranche={formation.branche ?? null}

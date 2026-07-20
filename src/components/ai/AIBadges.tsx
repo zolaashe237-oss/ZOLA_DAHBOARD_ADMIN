@@ -38,22 +38,6 @@ export function VerdictBadge({ verdict }: { verdict: QROVerdict }) {
   return <Badge color={VERDICT_COLOR[verdict]}>{VERDICT_LABEL[verdict]}</Badge>;
 }
 
-// ── Pastille « Mode démonstration » ────────────────────────────────────────────
-// Affichée quand une réponse provient du moteur de simulation local (voir
-// lib/aiSimulation.ts) parce que le backend agent IA ne répond pas encore.
-
-export function AIDemoBadge({ compact = false }: { compact?: boolean }) {
-  return (
-    <span
-      className="ai-demo-badge"
-      title="Backend agent IA pas encore branché - contenu généré localement pour la démonstration. Bascule automatique dès que l'API répond."
-    >
-      <span className="ai-demo-badge__dot" />
-      {compact ? "Démo" : "Mode démonstration IA"}
-    </span>
-  );
-}
-
 // ── Icône source d'extraction (G-02 / G-07) ───────────────────────────────────
 
 export function SourceIcon({ source }: { source: "SCRIPT" | "PDF" | "MULTI_YOUTUBE" | null | undefined }) {

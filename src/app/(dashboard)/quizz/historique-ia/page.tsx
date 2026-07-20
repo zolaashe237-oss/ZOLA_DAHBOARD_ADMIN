@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { quizHistoryApi } from "@/lib/endpoints";
 import type { AIQuizHistoryEntry } from "@/lib/types";
 import { Alert, Card, Pagination, usePagination } from "@/components/ui";
-import { AIDemoBadge, NiveauBadge, SourceIcon } from "@/components/ai/AIBadges";
+import { NiveauBadge, SourceIcon } from "@/components/ai/AIBadges";
 import { BrandLoader } from "@/components/BrandLoader";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -19,16 +19,14 @@ type Filter = "ALL" | "AI" | "MANUAL";
 export default function HistoriqueIAPage() {
   const [items,     setItems]     = useState<AIQuizHistoryEntry[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [simulated, setSimulated] = useState(false);
   const [error,     setError]     = useState("");
   const [filter,    setFilter]    = useState<Filter>("ALL");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const { items: data, simulated: sim } = await quizHistoryApi.list();
+      const data = await quizHistoryApi.list();
       setItems([...data].sort((a, b) => b.created_at.localeCompare(a.created_at)));
-      setSimulated(sim);
     } catch {
       setItems([]);
       setError("Impossible de charger l'historique des générations.");
@@ -77,7 +75,6 @@ export default function HistoriqueIAPage() {
             {f.label}
           </button>
         ))}
-        {simulated && <span style={{ marginLeft: "auto" }}><AIDemoBadge /></span>}
       </div>
 
       {loading ? (
