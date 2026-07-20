@@ -5,14 +5,6 @@ import { useEffect, useState } from "react";
 
 import { dashboardApi, financeApi2, transactionsApi, membersApi } from "@/lib/endpoints";
 import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
-import {
-  MOCK_KPIS,
-  MOCK_LATE_COTISATIONS,
-  MOCK_MEMBERS,
-  MOCK_MONTHLY_REVENUE,
-  MOCK_PAYMENT_BREAKDOWN,
-  MOCK_TRANSACTIONS,
-} from "@/lib/mocks";
 import { useAuth } from "@/context/AuthContext";
 import type { DashboardKPIs, LateMember, MonthlyRevenue, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, User } from "@/lib/types";
 
