@@ -88,6 +88,35 @@ export interface QuizResult {
   created_at: string;
 }
 
+export interface QuizResultAnswerChoice {
+  id:         number;
+  text:       string;
+  is_correct: boolean;
+  selected:   boolean;
+}
+
+export interface QuizResultAnswerQuestion {
+  id:          number;
+  text:        string;
+  type:        "QCM" | "QCM_MULTI" | "QRO";
+  choices:     QuizResultAnswerChoice[];
+  criteria:    string[];
+  user_answer: string;
+  is_correct:  boolean | null;
+}
+
+export interface QuizResultAnswers {
+  quiz_title:  string;
+  user_name:   string;
+  user_email:  string;
+  score:       number;
+  max_score:   number;
+  validated:   boolean;
+  attempts:    number;
+  has_answers: boolean;
+  questions:   QuizResultAnswerQuestion[];
+}
+
 export interface MonthlyRevenue {
   label:  string;
   amount: number;

@@ -170,6 +170,25 @@ function AIQuestionCard({
             <button onClick={addCriterion} style={{ background: "none", border: "none", color: "var(--gold-2)", cursor: "pointer", fontSize: ".82rem", fontWeight: 600, padding: ".2rem 0" }}>
               + Ajouter un critère
             </button>
+
+            {/* Aperçu de la zone de réponse membre */}
+            <div style={{ marginTop: ".9rem", padding: ".75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px dashed var(--line-soft)" }}>
+              <div style={{ fontSize: ".7rem", fontWeight: 700, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: ".4rem" }}>
+                Aperçu — zone de réponse membre
+              </div>
+              <textarea
+                disabled
+                placeholder="Le membre rédigera sa réponse ici…"
+                rows={4}
+                style={{
+                  width: "100%", resize: "vertical", boxSizing: "border-box",
+                  background: "var(--bg-1)", border: "1px solid var(--line-soft)",
+                  borderRadius: "var(--radius-sm)", padding: ".6rem .75rem",
+                  fontSize: ".86rem", color: "var(--muted)", fontFamily: "var(--sans)",
+                  cursor: "not-allowed", opacity: 0.7,
+                }}
+              />
+            </div>
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import type {
   AIQuizHistoryEntry,
   AIQuizJob,
   AIQROReviewItem,
+  QuizChoice,
   Article,
   AudioItem,
   AuditEntry,
@@ -28,6 +29,7 @@ import type {
   ProgressionKPIs,
   QuizItem,
   QuizResult,
+  QuizResultAnswers,
   ReportItem,
   ResourceItem,
   SocialLinksConfig,
@@ -118,6 +120,7 @@ export const formationApi = {
   create: (data: Partial<Formation>) => api.post<Formation>("/admin/formations/", data),
   update: (id: number, data: Partial<Formation>) => api.patch<Formation>(`/admin/formations/${id}/`, data),
   remove: (id: number) => api.delete(`/admin/formations/${id}/`),
+  hardDelete: (id: number) => api.delete(`/admin/formations/${id}/hard-delete/`),
   publish: (id: number) => api.post<Formation>(`/admin/formations/${id}/publish/`),
   uploadCover: (id: number, file: File) => {
     const fd = new FormData();
@@ -225,22 +228,75 @@ export const quizApi = {
 
 // ── Agent IA - Génération de quiz (Gemini) ────────────────────────────────────
 
+function toBackendGenerationPayload(config: AIGenerationConfig) {
+  const sourceTypeMap: Record<string, string> = {
+    SCRIPT: "VIDEO_YOUTUBE",
+    PDF: "PDF",
+    MULTI_YOUTUBE: "MULTI_YOUTUBE",
+  };
+  return {
+    module_id: config.moduleId,
+    source_type: sourceTypeMap[config.source] ?? config.source,
+    source_ref: config.source_ref ?? "",
+    source_text: config.source_text ?? "",
+    nb_questions: config.nb_questions,
+    nb_qcm_multi: config.nb_qcm_multi ?? 0,
+    ratio_qcm_qro: config.ratio_qcm_qro,
+    difficulty: config.difficulty,
+    formation_title: config.formation_title ?? "",
+    module_title: config.module_title ?? "",
+  };
+}
+
 export const aiQuizApi = {
   generate: async (config: AIGenerationConfig): Promise<{ job_id: string }> => {
-    const { data } = await api.post<{ job_id: string }>("/admin/quiz/generate-ai/", config);
-    return { job_id: data.job_id };
+    const { data } = await api.post<{ id: string }>(
+      "/admin/quiz/generate-ai/", toBackendGenerationPayload(config),
+    );
+    return { job_id: data.id };
   },
 
   status: async (jobId: string): Promise<AIQuizJob> => {
-    const { data } = await api.get<AIQuizJob>(`/admin/quiz/generate-ai/${jobId}/`);
-    return data;
+    const { data } = await api.get<any>(`/admin/quiz/generate-ai/${jobId}/`);
+    const progressMap: Record<string, number> = { PENDING: 10, IN_PROGRESS: 50, DONE: 100, FAILED: 0 };
+    const questions: AIGeneratedQuestion[] = (data.questions ?? []).map(
+      (q: any, idx: number): AIGeneratedQuestion => {
+        const texts: string[] = q.choices ?? [];
+        const corrIdx: number | null = q.correct_index ?? null;
+        const corrIdxs: number[] = q.correct_indices ?? [];
+        const choices: QuizChoice[] = texts.map((text, i) => ({
+          text,
+          is_correct: q.kind === "QCM_MULTI" ? corrIdxs.includes(i) : i === corrIdx,
+          order: i,
+        }));
+        return {
+          client_id: String(q.id),
+          type: q.kind,
+          text: q.text,
+          choices,
+          criteria: q.criteria ?? [],
+          difficulty: data.suggested_level ?? "INTERMEDIAIRE",
+          suggested_rank: data.suggested_rank ?? (idx + 1),
+        };
+      }
+    );
+    return {
+      job_id: data.id,
+      status: data.status,
+      progress: progressMap[data.status] ?? 0,
+      niveau_suggere: data.suggested_level ?? null,
+      rang_suggere: data.suggested_rank ?? null,
+      questions: data.status === "DONE" ? questions : undefined,
+      error: data.error_message ?? "",
+    };
   },
 
   regenerateQuestion: async (
     config: AIGenerationConfig, type: "QCM" | "QCM_MULTI" | "QRO", order: number,
   ): Promise<AIGeneratedQuestion> => {
     const { data } = await api.post<AIGeneratedQuestion>(
-      "/admin/quiz/generate-ai/", { ...config, regenerate_only: type, regenerate_order: order },
+      "/admin/quiz/generate-ai/",
+      { ...toBackendGenerationPayload(config), regenerate_only: type, regenerate_order: order },
     );
     return data;
   },
@@ -289,6 +345,8 @@ export const setQuizScoreApi = (data: { user_id: number; quiz_id: number; score:
 export const quizResultsApi = {
   list: (params?: { quiz_id?: number; formation_id?: number; search?: string }) =>
     api.get<QuizResult[] | Paginated<QuizResult>>("/admin/quiz/results/", { params }),
+  answers: (id: number) =>
+    api.get<QuizResultAnswers>(`/admin/quiz/results/${id}/answers/`),
 };
 
 export const financeApi2 = {

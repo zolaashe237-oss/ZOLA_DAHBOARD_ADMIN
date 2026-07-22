@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -57,6 +57,7 @@ type PendingEpisode = { moduleId: number; title: string; youtube: string; kind: 
 export default function FormationBuilderPage() {
   const { id } = useParams<{ id: string }>();
   const fid = Number(id);
+  const router = useRouter();
 
   const [formation,         setFormation]         = useState<Formation | null>(null);
   const [modules,           setModules]           = useState<ModuleItem[]>([]);
@@ -73,6 +74,10 @@ export default function FormationBuilderPage() {
   const [showYtImport,      setShowYtImport]      = useState(false);
   const [publishing,        setPublishing]        = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [showDeleteFormationConfirm, setShowDeleteFormationConfirm] = useState(false);
+  const [deletingFormation,          setDeletingFormation]          = useState(false);
+  const [showDeleteExamConfirm,      setShowDeleteExamConfirm]      = useState(false);
+  const [deletingExam,               setDeletingExam]               = useState(false);
 
   // Metadata state (lifted)
   const [meta, setMeta] = useState({
@@ -102,6 +107,29 @@ export default function FormationBuilderPage() {
       reload();
     } catch (e) { setError(errorMessage(e)); }
     finally { setPublishing(false); setShowPublishConfirm(false); }
+  };
+
+  const deleteFormation = async () => {
+    setDeletingFormation(true); setError("");
+    try {
+      await formationApi.hardDelete(fid);
+      router.push("/contenu");
+    } catch (e) {
+      setError(errorMessage(e));
+      setDeletingFormation(false);
+      setShowDeleteFormationConfirm(false);
+    }
+  };
+
+  const deleteExam = async () => {
+    if (!finalExam) return;
+    setDeletingExam(true); setError("");
+    try {
+      await quizApi.remove(finalExam.id);
+      setFinalExam(null);
+      flash("Examen final supprimé.");
+    } catch (e) { setError(errorMessage(e)); }
+    finally { setDeletingExam(false); setShowDeleteExamConfirm(false); }
   };
 
   const reload = useCallback(async () => {
@@ -209,6 +237,17 @@ export default function FormationBuilderPage() {
           ← Toutes les formations
         </Link>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <button
+            onClick={() => setShowDeleteFormationConfirm(true)}
+            style={{
+              background: "rgba(192,64,44,0.07)", color: "#b53a2a",
+              border: "1px solid rgba(192,64,44,0.22)", borderRadius: 6,
+              fontSize: "0.78rem", fontWeight: 600,
+              padding: "0.38rem 0.85rem", cursor: "pointer",
+            }}
+          >
+            🗑 Supprimer
+          </button>
           {formation.status !== "PUBLISHED" && (
             <Button
               variant="ghost"
@@ -430,6 +469,18 @@ export default function FormationBuilderPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
+          {finalExam && (
+            <button
+              onClick={() => setShowDeleteExamConfirm(true)}
+              style={{
+                background: "rgba(192,64,44,0.07)", color: "#b53a2a",
+                border: "1px solid rgba(192,64,44,0.22)", borderRadius: 6,
+                fontSize: "0.78rem", fontWeight: 600, padding: "0.34rem 0.7rem", cursor: "pointer",
+              }}
+            >
+              🗑
+            </button>
+          )}
           <button
             onClick={() => setQuizTarget({ quiz: finalExam, formation: fid })}
             style={{
@@ -453,7 +504,7 @@ export default function FormationBuilderPage() {
               fontSize: "0.78rem", fontWeight: 700, padding: "0.34rem 0.82rem", cursor: "pointer",
             }}
           >
-            ✨ Générer quiz
+            {finalExam ? "✨ Régénérer" : "✨ Générer quiz"}
           </button>
         </div>
       </div>
@@ -536,6 +587,28 @@ export default function FormationBuilderPage() {
         loading={publishing}
         onConfirm={publishFormation}
         onCancel={() => setShowPublishConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showDeleteFormationConfirm}
+        title={`Supprimer « ${formation.title} » ?`}
+        body="Cette action est irréversible. La formation, tous ses chapitres, épisodes, ressources et quiz seront définitivement supprimés."
+        confirmLabel="Supprimer définitivement"
+        danger
+        loading={deletingFormation}
+        onConfirm={deleteFormation}
+        onCancel={() => setShowDeleteFormationConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showDeleteExamConfirm}
+        title="Supprimer l'examen final ?"
+        body="Le quiz de l'examen final sera définitivement supprimé. Vous pourrez en créer un nouveau ultérieurement."
+        confirmLabel="Supprimer l'examen"
+        danger
+        loading={deletingExam}
+        onConfirm={deleteExam}
+        onCancel={() => setShowDeleteExamConfirm(false)}
       />
     </div>
   );
@@ -857,16 +930,26 @@ function ChapterCard({
   onEpisodeChange?: (ep: PendingEpisode | null) => void;
 }) {
   const draggingEp = useRef<number | null>(null);
-  const [dragOverEp,           setDragOverEp]           = useState<number | null>(null);
-  const [editingTitle,         setEditingTitle]         = useState(false);
-  const [chapterTitle,         setChapterTitle]         = useState(module.title);
-  const [savingTitle,          setSavingTitle]          = useState(false);
+  const [dragOverEp,            setDragOverEp]            = useState<number | null>(null);
+  const [editingTitle,          setEditingTitle]          = useState(false);
+  const [chapterTitle,          setChapterTitle]          = useState(module.title);
+  const [savingTitle,           setSavingTitle]           = useState(false);
   const [showDelChapterConfirm, setShowDelChapterConfirm] = useState(false);
+  const [showDelQuizConfirm,    setShowDelQuizConfirm]    = useState(false);
+  const [deletingQuiz,          setDeletingQuiz]          = useState(false);
 
   const delChapter = async () => {
     try { await moduleApi.remove(module.id); onInfo("Chapitre supprimé."); onReload(); }
     catch (e) { onError(errorMessage(e)); }
     finally { setShowDelChapterConfirm(false); }
+  };
+
+  const delChapterQuiz = async () => {
+    if (!chapterQuiz) return;
+    setDeletingQuiz(true);
+    try { await quizApi.remove(chapterQuiz.id); onInfo("Quiz du chapitre supprimé."); onReload(); }
+    catch (e) { onError(errorMessage(e)); }
+    finally { setDeletingQuiz(false); setShowDelQuizConfirm(false); }
   };
 
   const saveChapterTitle = async () => {
@@ -1051,6 +1134,20 @@ function ChapterCard({
           )}
         </div>
         <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+          {chapterQuiz && (
+            <button
+              onClick={() => setShowDelQuizConfirm(true)}
+              title="Supprimer ce quiz"
+              style={{
+                background: "rgba(192,64,44,0.07)", color: "#b53a2a",
+                border: "1px solid rgba(192,64,44,0.22)", borderRadius: 6,
+                width: 28, height: 28, cursor: "pointer", fontSize: "0.78rem",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              🗑
+            </button>
+          )}
           <button
             onClick={() => {
               if (courses.length === 0) { onInfo("Ajoutez d'abord un épisode avant d'ajouter un quiz."); return; }
@@ -1083,10 +1180,21 @@ function ChapterCard({
               padding: "0.28rem 0.7rem", cursor: "pointer",
             }}
           >
-            ✨ Générer quiz
+            {chapterQuiz ? "✨ Régénérer" : "✨ Générer quiz"}
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDelQuizConfirm}
+        title="Supprimer le quiz du chapitre ?"
+        body="Le quiz et toutes ses questions seront définitivement supprimés."
+        confirmLabel="Supprimer"
+        danger
+        loading={deletingQuiz}
+        onConfirm={delChapterQuiz}
+        onCancel={() => setShowDelQuizConfirm(false)}
+      />
 
       <ConfirmDialog
         open={showDelChapterConfirm}

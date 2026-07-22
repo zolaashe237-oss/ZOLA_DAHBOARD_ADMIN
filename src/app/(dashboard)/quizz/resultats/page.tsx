@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { asList, quizResultsApi, resetQuizApi, quizApi, setQuizScoreApi } from "@/lib/endpoints";
-import type { QuizItem, QuizResult } from "@/lib/types";
+import type { QuizItem, QuizResult, QuizResultAnswers } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 
@@ -21,6 +21,7 @@ export default function QuizResultsPage() {
   const [resetting,    setResetting]    = useState<number | null>(null);
   const [resetTarget,  setResetTarget]  = useState<QuizResult | null>(null);
   const [scoreTarget,  setScoreTarget]  = useState<QuizResult | null>(null);
+  const [answersTarget, setAnswersTarget] = useState<QuizResult | null>(null);
   const [loading,      setLoading]      = useState(true);
 
   const load = useCallback(async () => {
@@ -175,6 +176,13 @@ export default function QuizResultsPage() {
                     <Button
                       className="btn-sm"
                       variant="ghost"
+                      onClick={() => setAnswersTarget(r)}
+                    >
+                      Voir les réponses
+                    </Button>
+                    <Button
+                      className="btn-sm"
+                      variant="ghost"
                       onClick={() => setScoreTarget(r)}
                     >
                       Saisir score
@@ -228,7 +236,207 @@ export default function QuizResultsPage() {
           onSaved={load}
         />
       )}
+
+      {answersTarget && (
+        <QuizAnswersModal
+          result={answersTarget}
+          onClose={() => setAnswersTarget(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function QuizAnswersModal({
+  result,
+  onClose,
+}: {
+  result: QuizResult;
+  onClose: () => void;
+}) {
+  const [data, setData]     = useState<QuizResultAnswers | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]   = useState("");
+
+  useEffect(() => {
+    quizResultsApi.answers(result.id)
+      .then((r) => setData(r.data))
+      .catch(() => setError("Impossible de charger les réponses."))
+      .finally(() => setLoading(false));
+  }, [result.id]);
+
+  const scoreColor = (score: number, max: number) => {
+    const pct = (score / max) * 100;
+    if (pct >= 70) return "#5fb98a";
+    if (pct >= 50) return "#d9a441";
+    return "#cf5a3c";
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      title={`Réponses — ${result.user_name}`}
+      maxWidth={680}
+    >
+      {loading && (
+        <p style={{ color: "var(--muted)", textAlign: "center", padding: "2rem 0" }}>
+          Chargement…
+        </p>
+      )}
+      {error && <Alert>{error}</Alert>}
+
+      {data && !loading && (
+        <>
+          {/* En-tête résumé */}
+          <div style={{
+            display: "flex", gap: "1.5rem", flexWrap: "wrap",
+            padding: ".75rem 1rem", background: "var(--bg-2)",
+            borderRadius: "var(--radius)", marginBottom: "1.2rem",
+            border: "1px solid var(--line-soft)", fontSize: ".83rem",
+          }}>
+            <div>
+              <span style={{ color: "var(--muted-2)" }}>Quiz</span>
+              <div style={{ fontWeight: 600, color: "var(--cream)" }}>{data.quiz_title}</div>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted-2)" }}>Score</span>
+              <div style={{ fontWeight: 700, color: scoreColor(data.score, data.max_score) }}>
+                {data.score} / {data.max_score}
+              </div>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted-2)" }}>Résultat</span>
+              <div>
+                <Badge color={data.validated ? "var(--ok)" : "var(--danger)"}>
+                  {data.validated ? "Validé" : "Non validé"}
+                </Badge>
+              </div>
+            </div>
+            <div>
+              <span style={{ color: "var(--muted-2)" }}>Tentatives</span>
+              <div style={{ fontWeight: 600 }}>{data.attempts}</div>
+            </div>
+          </div>
+
+          {!data.has_answers ? (
+            <p style={{ color: "var(--muted)", textAlign: "center", padding: "1.5rem 0", fontSize: ".86rem" }}>
+              Les réponses ne sont pas disponibles pour cette tentative.<br />
+              <span style={{ fontSize: ".78rem", color: "var(--muted-2)" }}>
+                (Les réponses sont enregistrées à partir de maintenant)
+              </span>
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: ".85rem" }}>
+              {data.questions.map((q, i) => (
+                <div key={q.id} style={{
+                  border: "1px solid var(--line-soft)",
+                  borderRadius: "var(--radius)",
+                  overflow: "hidden",
+                }}>
+                  {/* En-tête question */}
+                  <div style={{
+                    display: "flex", alignItems: "flex-start", gap: ".6rem",
+                    padding: ".6rem .85rem", background: "var(--bg-2)",
+                    borderBottom: "1px solid var(--line-soft)",
+                  }}>
+                    <span style={{
+                      flexShrink: 0, marginTop: ".1rem",
+                      fontSize: ".68rem", fontWeight: 800, borderRadius: 999,
+                      padding: ".12rem .45rem", whiteSpace: "nowrap",
+                      color: q.type === "QRO" ? "#2d61b0" : q.type === "QCM_MULTI" ? "#8b5cf6" : "var(--gold-2)",
+                      background: q.type === "QRO" ? "var(--info-bg)" : q.type === "QCM_MULTI" ? "rgba(139,92,246,.1)" : "var(--gold-bg)",
+                      border: `1px solid ${q.type === "QRO" ? "rgba(45,97,176,.3)" : q.type === "QCM_MULTI" ? "rgba(139,92,246,.35)" : "rgba(201,162,39,.35)"}`,
+                    }}>
+                      Q{i + 1} · {q.type}
+                    </span>
+                    <span style={{ fontSize: ".87rem", fontWeight: 500, color: "var(--cream)", lineHeight: 1.4 }}>
+                      {q.text}
+                    </span>
+                    {q.type !== "QRO" && (
+                      <span style={{
+                        marginLeft: "auto", flexShrink: 0,
+                        fontSize: ".72rem", fontWeight: 700,
+                        color: q.is_correct ? "var(--ok)" : "var(--danger)",
+                      }}>
+                        {q.is_correct ? "✓ Juste" : "✗ Faux"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ padding: ".6rem .85rem" }}>
+                    {q.type === "QRO" ? (
+                      <>
+                        {q.criteria.length > 0 && (
+                          <div style={{ marginBottom: ".5rem" }}>
+                            <div style={{ fontSize: ".7rem", fontWeight: 700, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: ".3rem" }}>
+                              Critères d&apos;évaluation
+                            </div>
+                            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                              {q.criteria.map((c, ci) => (
+                                <li key={ci} style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: ".2rem" }}>{c}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div style={{ fontSize: ".7rem", fontWeight: 700, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: ".35rem" }}>
+                          Réponse du membre
+                        </div>
+                        <div style={{
+                          background: "var(--bg-2)", borderRadius: "var(--radius-sm)",
+                          border: "1px solid var(--line-soft)", padding: ".6rem .75rem",
+                          fontSize: ".85rem", color: q.user_answer ? "var(--cream)" : "var(--muted-2)",
+                          fontStyle: q.user_answer ? "normal" : "italic", lineHeight: 1.5, minHeight: "3rem",
+                          whiteSpace: "pre-wrap", wordBreak: "break-word",
+                        }}>
+                          {q.user_answer || "Aucune réponse saisie"}
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: ".3rem" }}>
+                        {q.choices.map((c) => {
+                          const sel = c.selected;
+                          const cor = c.is_correct;
+                          let bg = "transparent";
+                          let border = "var(--line-soft)";
+                          let textColor = "var(--muted)";
+                          if (sel && cor)  { bg = "rgba(82,176,131,.1)";  border = "rgba(82,176,131,.4)";  textColor = "#5fb98a"; }
+                          if (sel && !cor) { bg = "rgba(201,80,58,.08)";  border = "rgba(201,80,58,.35)";  textColor = "#cf5a3c"; }
+                          if (!sel && cor) { bg = "rgba(82,176,131,.05)"; border = "rgba(82,176,131,.25)"; textColor = "var(--muted)"; }
+                          return (
+                            <div key={c.id} style={{
+                              display: "flex", alignItems: "center", gap: ".55rem",
+                              padding: ".38rem .65rem", borderRadius: "var(--radius-sm)",
+                              background: bg, border: `1px solid ${border}`, transition: "all .1s",
+                            }}>
+                              <span style={{
+                                fontSize: ".75rem", width: 16, height: 16, flexShrink: 0,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                borderRadius: "50%", border: `1.5px solid ${border}`,
+                                background: sel ? border : "transparent",
+                                color: sel ? "#fff" : "transparent",
+                                fontWeight: 900,
+                              }}>
+                                {sel ? (cor ? "✓" : "✗") : ""}
+                              </span>
+                              <span style={{ fontSize: ".85rem", color: textColor, flex: 1 }}>{c.text}</span>
+                              {cor && !sel && (
+                                <span style={{ fontSize: ".7rem", color: "#5fb98a", fontWeight: 700, flexShrink: 0 }}>
+                                  ← bonne réponse
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Modal>
   );
 }
 
