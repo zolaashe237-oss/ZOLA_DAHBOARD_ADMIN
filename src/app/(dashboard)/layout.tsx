@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/abonnements",  label: "Abonnements",   icon: "◈" },
       { href: "/finance",      label: "Finance",       icon: "◇" },
       { href: "/transactions", label: "Transactions",  icon: "≡" },
+      { href: "/affiliation",  label: "Affiliation",   icon: "⋈" },
     ],
   },
   {

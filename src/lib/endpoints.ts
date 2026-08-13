@@ -40,6 +40,9 @@ import type {
   YoutubeChapterImportResult,
   YoutubeImportPreview,
   YoutubeImportResult,
+  AffiliateConfig,
+  AffiliateStats,
+  Referral as AffiliateReferral,
 } from "./types";
 
 export const authApi = {
@@ -568,4 +571,18 @@ export const adminMemoirApi = {
     api.patch<MemoirSubmissionDetail>(`/admin/memoir/${id}/`, data),
   downloadDocx: (id: number) =>
     api.get(`/admin/memoir/${id}/docx/`, { responseType: "blob" }),
+};
+
+// ── Affiliation & Parrainage ──────────────────────────────────────────────────
+export const affiliateAdminApi = {
+  getConfig: () =>
+    api.get<AffiliateConfig>("/admin/affiliate/config/"),
+  updateConfig: (data: Partial<AffiliateConfig>) =>
+    api.patch<AffiliateConfig>("/admin/affiliate/config/", data),
+  getStats: () =>
+    api.get<AffiliateStats>("/admin/affiliate/stats/"),
+  listReferrals: (params?: { status?: string; search?: string; page?: number; page_size?: number }) =>
+    api.get<Paginated<AffiliateReferral>>("/admin/affiliate/referrals/", { params }),
+  markPaid: (ids: number[]) =>
+    api.post<{ updated: number }>("/admin/affiliate/referrals/pay/", { ids }),
 };

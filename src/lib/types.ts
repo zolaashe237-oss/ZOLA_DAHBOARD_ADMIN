@@ -1,5 +1,54 @@
 // Types du back-office admin, alignés sur les serializers DRF.
 
+// ── Affiliation / Parrainage ──────────────────────────────────────────────────
+
+export type ReferralStatus = "PENDING" | "VALIDATED" | "PAID";
+
+export interface AffiliateConfig {
+  commission_amount: number;
+  min_withdrawal:    number;
+  whatsapp_number:   string;
+  is_active:         boolean;
+  updated_at:        string;
+}
+
+export interface AffiliateStats {
+  total_referrals:      number;
+  pending_referrals:    number;
+  validated_referrals:  number;
+  paid_referrals:       number;
+  total_commissions:    number;
+  paid_commissions:     number;
+  pending_commissions:  number;
+  top_referrers: {
+    referrer__id:        number;
+    referrer__full_name: string;
+    referrer__email:     string;
+    count:               number;
+    earned:              number;
+  }[];
+}
+
+export interface Referral {
+  id:           number;
+  referrer: {
+    id:            number;
+    full_name:     string;
+    email:         string;
+    referral_code: string | null;
+  };
+  referred: {
+    id:        number;
+    full_name: string;
+    email:     string;
+  } | null;
+  status:       ReferralStatus;
+  commission:   number;
+  created_at:   string;
+  validated_at: string | null;
+  paid_at:      string | null;
+}
+
 export type UserStatus = "ACTIF" | "RESTREINT" | "BLOQUE";
 
 // ── Transactions / Historique des paiements ───────────────────────────────────
@@ -627,3 +676,4 @@ export interface MemoirSubmission {
 export interface MemoirSubmissionDetail extends MemoirSubmission {
   answers: Record<string, MemoirAnswerEntry>;
 }
+
