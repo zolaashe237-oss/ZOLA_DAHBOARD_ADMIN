@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { affiliateAdminApi } from "@/lib/endpoints";
 import type { AffiliateConfig, AffiliateStats, Referral, Paginated } from "@/lib/types";
-import { Alert, Badge, Button, Card, Pagination, errorMessage } from "@/components/ui";
+import { Badge, Button, Card, Pagination, errorMessage } from "@/components/ui";
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
@@ -20,7 +20,76 @@ const STATUS_LABEL: Record<string, string> = {
   PAID:      "Payé",
 };
 
-// ── Composant ─────────────────────────────────────────────────────────────────
+// ── Écran "pas encore déployé" ────────────────────────────────────────────────
+
+function AffiliationComingSoon({ onRetry }: { onRetry: () => void }) {
+  const FEATURES = [
+    { icon: "⚙️", label: "Configuration", desc: "Définissez le montant de la commission, le seuil minimum de retrait et le numéro WhatsApp de contact." },
+    { icon: "📊", label: "Statistiques", desc: "KPIs en temps réel : total parrainages, commissions dues, commissions versées, top parrains." },
+    { icon: "👥", label: "Liste des parrainages", desc: "Tableau paginé avec filtre par statut (En attente / Validé / Payé) et recherche par nom ou email." },
+    { icon: "✅", label: "Validation des paiements", desc: "Sélection en masse des parrainages validés pour les marquer comme payés en un clic." },
+  ];
+
+  return (
+    <div style={{ padding: "24px 32px", maxWidth: 720 }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
+        Affiliation &amp; Parrainage
+      </h1>
+      <p style={{ fontSize: 13, color: "#888", marginBottom: 32 }}>
+        Cette fonctionnalité est en cours de déploiement.
+      </p>
+
+      {/* Bandeau statut */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        background: "#fffbeb", border: "1px solid #f0c040",
+        borderRadius: 8, padding: "14px 18px", marginBottom: 32,
+      }}>
+        <span style={{ fontSize: 20 }}>🚧</span>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: "#92400e", marginBottom: 2 }}>
+            Module non encore activé sur le serveur
+          </p>
+          <p style={{ fontSize: 12, color: "#b45309" }}>
+            Appliquez les migrations Django (<code style={{ background: "#fef3c7", padding: "1px 4px", borderRadius: 3 }}>python manage.py migrate</code>) pour activer ce module.
+          </p>
+        </div>
+      </div>
+
+      {/* Aperçu des fonctionnalités */}
+      <p style={{ fontSize: 12, fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+        Ce que vous trouverez ici
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
+        {FEATURES.map(f => (
+          <div key={f.label} style={{
+            background: "#fff", border: "1px solid #e8eaed",
+            borderRadius: 8, padding: "16px 18px",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span style={{ fontSize: 18 }}>{f.icon}</span>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e" }}>{f.label}</p>
+            </div>
+            <p style={{ fontSize: 12, color: "#888", lineHeight: 1.5 }}>{f.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onRetry}
+        style={{
+          padding: "10px 20px", fontSize: 13, fontWeight: 600,
+          background: "#1a1a2e", color: "#fff", border: "none",
+          borderRadius: 6, cursor: "pointer",
+        }}
+      >
+        Réessayer la connexion
+      </button>
+    </div>
+  );
+}
+
+// ── Composant principal ───────────────────────────────────────────────────────
 
 export default function AffiliationPage() {
   const [config, setConfig] = useState<AffiliateConfig | null>(null);
@@ -46,11 +115,12 @@ export default function AffiliationPage() {
   const [markError, setMarkError] = useState("");
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
 
   // ── Chargement initial ────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
+    setUnavailable(false);
     try {
       const [cfgRes, statsRes] = await Promise.all([
         affiliateAdminApi.getConfig(),
@@ -64,8 +134,8 @@ export default function AffiliationPage() {
         whatsapp_number:   cfgRes.data.whatsapp_number ?? "",
         is_active:         cfgRes.data.is_active,
       });
-    } catch (e) {
-      setError(errorMessage(e));
+    } catch {
+      setUnavailable(true);
     } finally {
       setLoading(false);
     }
@@ -143,7 +213,7 @@ export default function AffiliationPage() {
   };
 
   if (loading) return <p style={{ padding: 32 }}>Chargement…</p>;
-  if (error)   return <Alert kind="error">{error}</Alert>;
+  if (unavailable) return <AffiliationComingSoon onRetry={loadData} />;
 
   const validatedInPage = (referrals?.results ?? []).filter(r => r.status === "VALIDATED");
 
