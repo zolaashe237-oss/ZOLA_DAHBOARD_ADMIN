@@ -8,15 +8,22 @@ import { Alert, Button, errorMessage } from "@/components/ui";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+type QType = "QCM" | "QCM_MULTI" | "QRO";
+
 function emptyQuestion(order: number): QuizQuestion {
   return {
-    text: "", multiple: false, order,
+    text: "", multiple: false, order, type: "QCM",
     choices: [
       { text: "", is_correct: true,  order: 1 },
       { text: "", is_correct: false, order: 2 },
     ],
   };
 }
+
+const DEFAULT_CHOICES = [
+  { text: "", is_correct: true,  order: 1 },
+  { text: "", is_correct: false, order: 2 },
+];
 
 // ── Sous-composant : une question ─────────────────────────────────────────────
 
@@ -28,15 +35,14 @@ function QuestionCard({
   onChange: (patch: Partial<QuizQuestion>) => void;
   onRemove: () => void;
 }) {
+  const qtype: QType = (q.type as QType) ?? "QCM";
+  const isQro = qtype === "QRO";
+
   const setChoice = (ci: number, patch: Partial<QuizQuestion["choices"][number]>) =>
-    onChange({
-      choices: q.choices.map((c, k) => (k === ci ? { ...c, ...patch } : c)),
-    });
+    onChange({ choices: q.choices.map((c, k) => (k === ci ? { ...c, ...patch } : c)) });
 
   const addChoice = () =>
-    onChange({
-      choices: [...q.choices, { text: "", is_correct: false, order: q.choices.length + 1 }],
-    });
+    onChange({ choices: [...q.choices, { text: "", is_correct: false, order: q.choices.length + 1 }] });
 
   const removeChoice = (ci: number) =>
     onChange({ choices: q.choices.filter((_, k) => k !== ci) });
@@ -49,9 +55,34 @@ function QuestionCard({
     }
   };
 
+  function handleTypeChange(t: QType) {
+    if (t === "QRO") {
+      onChange({ type: "QRO", multiple: false, choices: [], criteria: q.criteria ?? [] });
+    } else if (t === "QCM_MULTI") {
+      onChange({ type: "QCM_MULTI", multiple: true, criteria: [],
+        choices: q.choices.length ? q.choices : DEFAULT_CHOICES.map(c => ({ ...c })) });
+    } else {
+      onChange({ type: "QCM", multiple: false, criteria: [],
+        choices: q.choices.length ? q.choices.map((c, k) => ({ ...c, is_correct: k === 0 })) : DEFAULT_CHOICES.map(c => ({ ...c })) });
+    }
+  }
+
+  // Critères QRO : stockés en string[], édités comme texte multiligne
+  const criteriaText = (q.criteria ?? []).join("\n");
+  function handleCriteriaChange(raw: string) {
+    const lines = raw.split("\n").map((l) => l.trimStart()).filter(Boolean);
+    onChange({ criteria: lines });
+  }
+
+  const TYPE_OPTIONS: { value: QType; label: string; hint: string }[] = [
+    { value: "QCM",       label: "QCM",             hint: "Une seule bonne réponse" },
+    { value: "QCM_MULTI", label: "QCM multi",        hint: "Plusieurs bonnes réponses" },
+    { value: "QRO",       label: "Réponse ouverte",  hint: "Corrigée par l'IA (Gemini)" },
+  ];
+
   return (
     <div style={{
-      border: "1px solid var(--line-soft)",
+      border: `1px solid ${isQro ? "rgba(139,92,246,.35)" : "var(--line-soft)"}`,
       borderRadius: "var(--radius)",
       overflow: "hidden",
       marginBottom: ".75rem",
@@ -60,27 +91,37 @@ function QuestionCard({
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: ".65rem 1rem",
-        background: "var(--bg-2)",
-        borderBottom: "1px solid var(--line-soft)",
+        background: isQro ? "rgba(139,92,246,.06)" : "var(--bg-2)",
+        borderBottom: `1px solid ${isQro ? "rgba(139,92,246,.2)" : "var(--line-soft)"}`,
+        flexWrap: "wrap", gap: ".5rem",
       }}>
         <span style={{ fontSize: ".82rem", fontWeight: 600, color: "var(--muted)", letterSpacing: ".04em", textTransform: "uppercase" }}>
           Question {qi + 1}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: ".35rem", cursor: "pointer", fontSize: ".78rem", color: "var(--muted)" }}>
-            <input
-              type="checkbox"
-              checked={q.multiple}
-              onChange={(e) => onChange({ multiple: e.target.checked })}
-              style={{ accentColor: "var(--gold)" }}
-            />
-            Choix multiples
-          </label>
+        <div style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
+          {/* Sélecteur type */}
+          {TYPE_OPTIONS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => handleTypeChange(value)}
+              title={TYPE_OPTIONS.find(o => o.value === value)?.hint}
+              style={{
+                fontSize: ".74rem", fontWeight: 600, padding: ".2rem .55rem",
+                borderRadius: "var(--radius-sm)",
+                border: `1px solid ${qtype === value ? (value === "QRO" ? "rgba(139,92,246,.6)" : "var(--gold)") : "var(--line-soft)"}`,
+                background: qtype === value ? (value === "QRO" ? "rgba(139,92,246,.12)" : "rgba(var(--gold-rgb),.1)") : "transparent",
+                color: qtype === value ? (value === "QRO" ? "rgb(139,92,246)" : "var(--gold-2)") : "var(--muted-2)",
+                cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </button>
+          ))}
           {total > 1 && (
             <button
               onClick={onRemove}
               title="Supprimer cette question"
-              style={{ background: "none", border: "none", color: "var(--muted-2)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: ".15rem" }}
+              style={{ background: "none", border: "none", color: "var(--muted-2)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: ".15rem", marginLeft: ".25rem" }}
             >
               🗑
             </button>
@@ -102,93 +143,86 @@ function QuestionCard({
           />
         </div>
 
-        {/* Zone image (optionnelle) */}
-        <div style={{
-          border: "1.5px dashed var(--line-soft)",
-          borderRadius: "var(--radius-sm)",
-          padding: ".75rem 1rem",
-          display: "flex", alignItems: "center", gap: ".75rem",
-          marginBottom: ".9rem",
-          background: "var(--bg)",
-          cursor: "not-allowed",
-          opacity: .55,
-        }}>
-          <span style={{ fontSize: "1.3rem" }}>☁</span>
-          <div style={{ flex: 1, fontSize: ".78rem", color: "var(--muted)" }}>
-            Choisir un fichier ou glisser-déposer ici.
-            <div style={{ fontSize: ".72rem", color: "var(--muted-2)", marginTop: ".1rem" }}>
-              JPEG, PNG — jusqu&apos;à 10 Mo
+        {/* QRO : critères d'évaluation IA */}
+        {isQro ? (
+          <div style={{ marginBottom: ".75rem" }}>
+            <div className="field-label" style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
+              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "rgb(139,92,246)" }} />
+              Critères d&apos;évaluation IA
+              <span style={{ fontSize: ".72rem", color: "var(--muted-2)", fontWeight: 400 }}>(un critère par ligne)</span>
+            </div>
+            <textarea
+              className="input"
+              rows={4}
+              placeholder={"Doit mentionner X\nDoit expliquer Y\nDoit citer Z"}
+              value={criteriaText}
+              onChange={(e) => handleCriteriaChange(e.target.value)}
+              style={{ resize: "vertical", margin: 0, fontFamily: "monospace", fontSize: ".84rem" }}
+            />
+            <div style={{ fontSize: ".74rem", color: "rgb(139,92,246)", marginTop: ".35rem" }}>
+              ✦ Gemini évaluera la réponse du membre selon ces critères.
             </div>
           </div>
-          <button
-            disabled
-            className="btn btn-ghost btn-sm"
-            style={{ opacity: 1, cursor: "not-allowed" }}
-          >
-            Parcourir
-          </button>
-        </div>
-
-        {/* Réponses */}
-        <div className="field-label" style={{ marginBottom: ".45rem" }}>Réponses</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: ".4rem", marginBottom: ".45rem" }}>
-          {q.choices.map((c, ci) => (
-            <div key={ci} style={{
-              display: "flex", alignItems: "center", gap: ".5rem",
-              padding: ".4rem .55rem",
-              background: c.is_correct ? "rgba(82,176,131,.08)" : "transparent",
-              border: `1px solid ${c.is_correct ? "rgba(82,176,131,.25)" : "var(--line-soft)"}`,
-              borderRadius: "var(--radius-sm)",
-              transition: "all .15s",
-            }}>
-              {/* Input texte */}
-              <input
-                className="input"
-                style={{ flex: 1, margin: 0, background: "transparent", border: "none",
-                         boxShadow: "none", padding: ".3rem .4rem", fontSize: ".86rem" }}
-                placeholder={`Option ${ci + 1}`}
-                value={c.text}
-                onChange={(e) => setChoice(ci, { text: e.target.value })}
-              />
-              {/* Radio / Checkbox — marque la bonne réponse */}
-              <label
-                title={q.multiple ? "Bonne réponse" : "Bonne réponse (une seule)"}
-                style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer",
-                         fontSize: ".75rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)",
-                         whiteSpace: "nowrap", flexShrink: 0 }}
-              >
-                <input
-                  type={q.multiple ? "checkbox" : "radio"}
-                  name={`correct-${qi}`}
-                  checked={c.is_correct}
-                  onChange={(e) => markCorrect(ci, e.target.checked)}
-                  style={{ accentColor: "var(--ok)", width: 15, height: 15 }}
-                />
-                {c.is_correct ? "Correct" : "Réponse"}
-              </label>
-              {/* Supprimer */}
-              {q.choices.length > 2 && (
-                <button
-                  onClick={() => removeChoice(ci)}
-                  title="Retirer cette option"
-                  style={{ background: "none", border: "none", color: "var(--muted-2)",
-                           cursor: "pointer", fontSize: ".9rem", lineHeight: 1, flexShrink: 0 }}
-                >
-                  🗑
-                </button>
-              )}
+        ) : (
+          <>
+            {/* Réponses QCM */}
+            <div className="field-label" style={{ marginBottom: ".45rem" }}>Réponses</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: ".4rem", marginBottom: ".45rem" }}>
+              {q.choices.map((c, ci) => (
+                <div key={ci} style={{
+                  display: "flex", alignItems: "center", gap: ".5rem",
+                  padding: ".4rem .55rem",
+                  background: c.is_correct ? "rgba(82,176,131,.08)" : "transparent",
+                  border: `1px solid ${c.is_correct ? "rgba(82,176,131,.25)" : "var(--line-soft)"}`,
+                  borderRadius: "var(--radius-sm)",
+                  transition: "all .15s",
+                }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1, margin: 0, background: "transparent", border: "none",
+                             boxShadow: "none", padding: ".3rem .4rem", fontSize: ".86rem" }}
+                    placeholder={`Option ${ci + 1}`}
+                    value={c.text}
+                    onChange={(e) => setChoice(ci, { text: e.target.value })}
+                  />
+                  <label
+                    title={q.multiple ? "Bonne réponse" : "Bonne réponse (une seule)"}
+                    style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer",
+                             fontSize: ".75rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)",
+                             whiteSpace: "nowrap", flexShrink: 0 }}
+                  >
+                    <input
+                      type={q.multiple ? "checkbox" : "radio"}
+                      name={`correct-${qi}`}
+                      checked={c.is_correct}
+                      onChange={(e) => markCorrect(ci, e.target.checked)}
+                      style={{ accentColor: "var(--ok)", width: 15, height: 15 }}
+                    />
+                    {c.is_correct ? "Correct" : "Réponse"}
+                  </label>
+                  {q.choices.length > 2 && (
+                    <button
+                      onClick={() => removeChoice(ci)}
+                      title="Retirer cette option"
+                      style={{ background: "none", border: "none", color: "var(--muted-2)",
+                               cursor: "pointer", fontSize: ".9rem", lineHeight: 1, flexShrink: 0 }}
+                    >
+                      🗑
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-
-        <button
-          onClick={addChoice}
-          style={{ background: "none", border: "none", color: "var(--gold-2)", cursor: "pointer",
-                   fontSize: ".82rem", fontWeight: 600, padding: ".2rem 0",
-                   display: "flex", alignItems: "center", gap: ".3rem" }}
-        >
-          + Ajouter une réponse
-        </button>
+            <button
+              onClick={addChoice}
+              style={{ background: "none", border: "none", color: "var(--gold-2)", cursor: "pointer",
+                       fontSize: ".82rem", fontWeight: 600, padding: ".2rem 0",
+                       display: "flex", alignItems: "center", gap: ".3rem" }}
+            >
+              + Ajouter une réponse
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -262,8 +296,10 @@ export function QuizEditor({
         library_pdf: libraryPdfId ? Number(libraryPdfId) : null,
         questions: questions.map((q, qi) => ({
           text: q.text, multiple: q.multiple, order: qi + 1,
+          type: q.type ?? "QCM",
+          criteria: q.criteria ?? [],
           ...(q.id ? { id: q.id } : {}),
-          choices: q.choices.map((c, ci) => ({
+          choices: (q.type === "QRO" ? [] : q.choices).map((c, ci) => ({
             text: c.text, is_correct: c.is_correct, order: ci + 1,
             ...(c.id ? { id: c.id } : {}),
           })),
@@ -288,11 +324,11 @@ export function QuizEditor({
 
   const valid = title.trim().length > 0 &&
     questions.length > 0 &&
-    questions.every(
-      (q) => q.text.trim() &&
-        q.choices.some((c) => c.is_correct) &&
-        q.choices.every((c) => c.text.trim()),
-    );
+    questions.every((q) => {
+      if (!q.text.trim()) return false;
+      if (q.type === "QRO") return true; // pas de choix requis pour QRO
+      return q.choices.some((c) => c.is_correct) && q.choices.every((c) => c.text.trim());
+    });
 
   return (
     /* Backdrop */
