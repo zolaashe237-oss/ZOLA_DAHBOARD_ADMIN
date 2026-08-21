@@ -116,11 +116,13 @@ export default function AffiliationPage() {
 
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // ── Chargement initial ────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
     setUnavailable(false);
+    setLoadError(null);
     try {
       const [cfgRes, statsRes] = await Promise.all([
         affiliateAdminApi.getConfig(),
@@ -134,8 +136,14 @@ export default function AffiliationPage() {
         whatsapp_number:   cfgRes.data.whatsapp_number ?? "",
         is_active:         cfgRes.data.is_active,
       });
-    } catch {
-      setUnavailable(true);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      // 404 / 503 / 501 / pas de réponse = endpoint vraiment absent
+      if (!status || status === 404 || status === 503 || status === 501) {
+        setUnavailable(true);
+      } else {
+        setLoadError(errorMessage(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -214,6 +222,21 @@ export default function AffiliationPage() {
 
   if (loading) return <p style={{ padding: 32 }}>Chargement…</p>;
   if (unavailable) return <AffiliationComingSoon onRetry={loadData} />;
+  if (loadError) return (
+    <div style={{ padding: 32, maxWidth: 480 }}>
+      <p style={{ fontSize: 13, color: "#cf5a3c", marginBottom: 16 }}>{loadError}</p>
+      <button
+        onClick={loadData}
+        style={{
+          padding: "10px 20px", fontSize: 13, fontWeight: 600,
+          background: "#1a1a2e", color: "#fff", border: "none",
+          borderRadius: 6, cursor: "pointer",
+        }}
+      >
+        Réessayer
+      </button>
+    </div>
+  );
 
   const validatedInPage = (referrals?.results ?? []).filter(r => r.status === "VALIDATED");
 
