@@ -12,7 +12,7 @@ import { YoutubeImportModal } from "@/components/YoutubeImportModal";
 // ── Groupement par branche ────────────────────────────────────────────────────
 
 const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }[] = [
-  { key: "GENERALE", label: "Membres — Général", color: "#5b8fd4", emoji: "◉" },
+  { key: "MEMBRE", label: "Membres — Général", color: "#5b8fd4", emoji: "◉" },
   { key: "FEMME",    label: "Espace Femmes",     color: "#b5532a", emoji: "♀" },
   { key: "ENFANT",   label: "Espace Enfants",    color: "#52b083", emoji: "◈" },
 ];
@@ -391,7 +391,7 @@ export default function ContenuPage() {
                 <Select label="Branche" value={form.branche}
                         onChange={(e) => setForm({ ...form, branche: e.target.value as Branche | "" })}>
                   <option value="">— Branche —</option>
-                  <option value="GENERALE">Général</option>
+                  <option value="MEMBRE">Général</option>
                   <option value="FEMME">Femme</option>
                   <option value="ENFANT">Enfant</option>
                 </Select>
@@ -456,7 +456,10 @@ export default function ContenuPage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {BRANCH_COLS.map((col) => {
-            const colItems = filtered.filter((f) => (f.branche ?? "GENERALE") === col.key);
+            const colItems = filtered.filter((f) => {
+              const b = f.branche === "GENERALE" ? "MEMBRE" : (f.branche ?? "MEMBRE");
+              return b === col.key;
+            });
             return (
               <section key={col.key}>
                 {/* ── En-tête de section ── */}

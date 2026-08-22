@@ -33,11 +33,11 @@ export const NIVEAU_COLOR: Record<FormationNiveau, string> = {
   INTERMEDIAIRE: "#d9a441",
   AVANCE:        "#c9674a",
 };
-export const BRANCHE_LABEL: Record<Branche, string> = {
-  GENERALE: "Général", FEMME: "Femme", ENFANT: "Enfant",
+export const BRANCHE_LABEL: Record<string, string> = {
+  MEMBRE: "Général", GENERALE: "Général", FEMME: "Femme", ENFANT: "Enfant",
 };
-export const BRANCHE_COLOR: Record<Branche, string> = {
-  GENERALE: "#5b8fd4", FEMME: "#b5532a", ENFANT: "#52b083",
+export const BRANCHE_COLOR: Record<string, string> = {
+  MEMBRE: "#5b8fd4", GENERALE: "#5b8fd4", FEMME: "#b5532a", ENFANT: "#52b083",
 };
 
 // ── Composant carte ───────────────────────────────────────────────────────────
@@ -55,8 +55,9 @@ export function FormationCard({
   onRemove:     (f: Formation) => void;
   preview?:     boolean;
 }) {
-  const modules     = f.modules_preview ?? [];
-  const PREVIEW_MAX = 3;
+  const modules       = f.modules_preview ?? [];
+  const totalEpisodes = f.courses_count ?? f.nb_episodes ?? f.total_courses ?? 0;
+  const PREVIEW_MAX   = 3;
 
   return (
     <div
@@ -162,7 +163,7 @@ export function FormationCard({
           display: "flex", alignItems: "flex-end", justifyContent: "space-between",
         }}>
           <span style={{ color: "#fff", fontSize: "0.76rem", fontWeight: 600 }}>
-            {f.module_count} chap. · {f.nb_episodes} épisode{f.nb_episodes !== 1 ? "s" : ""}
+            {f.module_count} chap. · {totalEpisodes} épisode{totalEpisodes !== 1 ? "s" : ""}
           </span>
           {f.nb_gratuits > 0 && (
             <span style={{
@@ -232,7 +233,7 @@ export function FormationCard({
           <span>
             <strong style={{ color: "#3a2510" }}>{f.module_count}</strong> chap.
             {" · "}
-            <strong style={{ color: "#3a2510" }}>{f.nb_episodes}</strong> épisode{f.nb_episodes !== 1 ? "s" : ""}
+            <strong style={{ color: "#3a2510" }}>{totalEpisodes}</strong> épisode{totalEpisodes !== 1 ? "s" : ""}
           </span>
           {f.nb_gratuits > 0 && (
             <span style={{

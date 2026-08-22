@@ -5,14 +5,6 @@ import { useEffect, useState } from "react";
 
 import { dashboardApi, financeApi2, transactionsApi, membersApi } from "@/lib/endpoints";
 import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
-import {
-  MOCK_KPIS,
-  MOCK_LATE_COTISATIONS,
-  MOCK_MEMBERS,
-  MOCK_MONTHLY_REVENUE,
-  MOCK_PAYMENT_BREAKDOWN,
-  MOCK_TRANSACTIONS,
-} from "@/lib/mocks";
 import { useAuth } from "@/context/AuthContext";
 import type { DashboardKPIs, LateMember, MonthlyRevenue, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, User } from "@/lib/types";
 
@@ -331,17 +323,20 @@ export default function DashboardPage() {
   const [range,       setRange]       = useState<DateRange>({ date_from: "", date_to: "" });
 
   useEffect(() => {
-    const params = range.date_from && range.date_to ? range : undefined;
+    const params = range.date_from || range.date_to ? {
+      date_from: range.date_from || undefined,
+      date_to: range.date_to || undefined,
+    } : undefined;
 
     dashboardApi.kpis(params)
       .then((r) => setKpis(r.data))
       .catch(() => {});
 
-    financeApi2.monthlyRevenue()
+    financeApi2.monthlyRevenue(params)
       .then((r) => { if (r.data.length > 0) setRevenue(r.data); })
       .catch(() => {});
 
-    financeApi2.paymentBreakdown()
+    financeApi2.paymentBreakdown(params)
       .then((r) => { if (r.data.length > 0) setBreakdown(r.data); })
       .catch(() => {});
 

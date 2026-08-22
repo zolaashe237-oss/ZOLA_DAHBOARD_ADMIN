@@ -7,6 +7,7 @@ import {
   asList, billingPaymentsApi, dashboardApi, downloadBlob,
   financeApi, financeApi2, membersApi, transactionsApi,
 } from "@/lib/endpoints";
+import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 import type {
   DashboardKPIs, LateMember, MonthlyRevenue, Paginated, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, TransactionKPIs, User,
 } from "@/lib/types";
@@ -489,6 +490,7 @@ export default function FinancePage() {
   const [paymentsPage,  setPaymentsPage]  = useState(1);
   const [paymentsPageSize, setPaymentsPageSize] = useState(10);
 
+  const [period, setPeriod] = useState<DateRange>({ date_from: "", date_to: "" });
   const [paymentFilters, setPaymentFilters] = useState({
     kind: "ALL", status: "ALL", date_from: "", date_to: "",
   });
@@ -499,12 +501,17 @@ export default function FinancePage() {
   const [exonerate, setExonerate] = useState({ user_id: "", reason: "" });
 
   const load = useCallback(async () => {
+    const periodParams = period.date_from || period.date_to ? {
+      date_from: period.date_from || undefined,
+      date_to: period.date_to || undefined,
+    } : undefined;
+
     const [dashboardRes, revRes, membersRes, lateRes, bdRes, kpisRes] = await Promise.allSettled([
-      dashboardApi.kpis(),
-      financeApi2.monthlyRevenue(),
+      dashboardApi.kpis(periodParams),
+      financeApi2.monthlyRevenue(periodParams),
       membersApi.list(),
       financeApi2.lateCotisations(),
-      financeApi2.paymentBreakdown(),
+      financeApi2.paymentBreakdown(periodParams),
       transactionsApi.kpis(),
     ]);
     if (dashboardRes.status === "fulfilled") {
@@ -532,7 +539,7 @@ export default function FinancePage() {
     ) setBreakdown(bdRes.value.data);
     if (kpisRes.status === "fulfilled")
       setKpis(kpisRes.value.data);
-  }, []);
+  }, [period]);
 
   const loadPayments = useCallback(async () => {
     const params: Record<string, string | number> = {
@@ -595,10 +602,13 @@ export default function FinancePage() {
 
   return (
     <div className="fade-up">
-      <div className="page-header">
-        <div className="eyebrow">Administration financière</div>
-        <h1>Finance</h1>
-        <p>Tableau de bord — revenus, cotisations et paiements manuels.</p>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+        <div>
+          <div className="eyebrow">Administration financière</div>
+          <h1>Finance</h1>
+          <p>Tableau de bord — revenus, cotisations et paiements manuels.</p>
+        </div>
+        <DateRangePicker value={period} onChange={(newRange) => setPeriod(newRange)} />
       </div>
 
       <Alert>{error}</Alert>

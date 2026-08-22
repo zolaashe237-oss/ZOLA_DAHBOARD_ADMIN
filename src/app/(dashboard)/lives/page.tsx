@@ -9,14 +9,14 @@ import { ConfirmModal, Modal } from "@/components/Modal";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
-const BRANCHE_COLOR: Record<Branche, string> = {
-  GENERALE: "#c9a227", FEMME: "#b5532a", ENFANT: "#52b083",
+const BRANCHE_COLOR: Record<string, string> = {
+  MEMBRE: "#c9a227", GENERALE: "#c9a227", FEMME: "#b5532a", ENFANT: "#52b083",
 };
-const BRANCHE_BG: Record<Branche, string> = {
-  GENERALE: "rgba(201,162,39,0.13)", FEMME: "rgba(181,83,42,0.11)", ENFANT: "rgba(82,176,131,0.11)",
+const BRANCHE_BG: Record<string, string> = {
+  MEMBRE: "rgba(201,162,39,0.13)", GENERALE: "rgba(201,162,39,0.13)", FEMME: "rgba(181,83,42,0.11)", ENFANT: "rgba(82,176,131,0.11)",
 };
-const BRANCHE_LABEL: Record<Branche, string> = {
-  GENERALE: "Générale", FEMME: "Femmes", ENFANT: "Enfants",
+const BRANCHE_LABEL: Record<string, string> = {
+  MEMBRE: "Générale", GENERALE: "Générale", FEMME: "Femmes", ENFANT: "Enfants",
 };
 const STATUS_COLOR: Record<LiveStatus, string> = {
   PLANIFIE: "#c9a227", EN_COURS: "#e05555", TERMINE: "#9a9284",
@@ -95,7 +95,7 @@ const LIVE_VIEWS: { key: LiveView; icon: string; label: string }[] = [
 const EMPTY = {
   title: "", description: "", scheduled_at: "",
   status: "PLANIFIE" as LiveStatus, platform: "ZOOM" as LivePlatform,
-  link: "", branche: "GENERALE" as Branche, replay_url: "",
+  link: "", branche: "MEMBRE" as Branche, replay_url: "",
 };
 
 function LiveFormModal({ initial, editing, onClose, onSaved }: {
@@ -136,7 +136,7 @@ function LiveFormModal({ initial, editing, onClose, onSaved }: {
           </Select>
           <Select label="Branche cible" value={form.branche}
                   onChange={(e) => setForm({...form, branche: e.target.value as Branche})}>
-            <option value="GENERALE">Générale</option>
+            <option value="MEMBRE">Générale</option>
             <option value="FEMME">Femmes</option>
             <option value="ENFANT">Enfants</option>
           </Select>
@@ -744,7 +744,7 @@ export default function LivesPage() {
         <div style={{ width:130 }}>
           <Select label="" value={filterBranche} onChange={(e) => setFilterBranche(e.target.value)}>
             <option value="ALL">Toutes les branches</option>
-            <option value="GENERALE">Générale</option>
+            <option value="MEMBRE">Générale</option>
             <option value="FEMME">Femmes</option>
             <option value="ENFANT">Enfants</option>
           </Select>
@@ -798,7 +798,7 @@ export default function LivesPage() {
       {/* ── Légende branches (calendriers seulement) ── */}
       {calView && (
         <div style={{ display:"flex", gap:"0.75rem", marginBottom:"0.75rem" }}>
-          {(["GENERALE","FEMME","ENFANT"] as Branche[]).map((b) => (
+          {(["MEMBRE","FEMME","ENFANT"] as Branche[]).map((b) => (
             <span key={b} style={{ display:"flex", alignItems:"center", gap:5, fontSize:"0.73rem", color:"var(--muted)" }}>
               <span style={{ width:8, height:8, borderRadius:"50%", background:BRANCHE_COLOR[b], display:"inline-block" }} />
               {BRANCHE_LABEL[b]}

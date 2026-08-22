@@ -660,7 +660,7 @@ function FormationMeta({
           <Select label="Branche" value={meta.branche}
                   onChange={(e) => setMeta({ ...meta, branche: e.target.value as Branche | "" })}>
             <option value="">— Branche —</option>
-            <option value="GENERALE">Général</option>
+            <option value="MEMBRE">Général</option>
             <option value="FEMME">Femme</option>
             <option value="ENFANT">Enfant</option>
           </Select>

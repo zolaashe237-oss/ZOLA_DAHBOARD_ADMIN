@@ -322,9 +322,11 @@ export const quizResultsApi = {
 };
 
 export const financeApi2 = {
-  monthlyRevenue:   () => api.get<MonthlyRevenue[]>("/admin/finance/monthly/"),
+  monthlyRevenue:   (params?: { date_from?: string; date_to?: string }) =>
+    api.get<MonthlyRevenue[]>("/admin/finance/monthly/", { params }),
   lateCotisations:  () => api.get<LateMember[] | Paginated<LateMember>>("/admin/finance/late/"),
-  paymentBreakdown: () => api.get<PaymentBreakdown[]>("/admin/finance/breakdown/"),
+  paymentBreakdown: (params?: { date_from?: string; date_to?: string }) =>
+    api.get<PaymentBreakdown[]>("/admin/finance/breakdown/", { params }),
 };
 
 /** Normalise une réponse liste paginée ou non en tableau. */
