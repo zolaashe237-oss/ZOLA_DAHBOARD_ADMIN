@@ -10,7 +10,7 @@ import { ConfirmModal, Modal } from "@/components/Modal";
 const POST_TYPE_COLOR: Record<PostType, string>   = { ANNONCE: "#c9a227", DISCUSSION: "#5fb98a", QUESTION: "#243a85" };
 const POST_TYPE_LABEL: Record<PostType, string>   = { ANNONCE: "Annonce", DISCUSSION: "Discussion", QUESTION: "Question" };
 const POST_STATUS_COLOR: Record<PostStatus, string> = { PUBLIE: "#5fb98a", MODERE: "#d9a441", ARCHIVE: "#7d7264" };
-const BRANCHE_COLOR: Record<Branche, string>      = { MEMBRE: "#c9a227", FEMME: "#b5532a", ENFANT: "#5fb98a" };
+const BRANCHE_COLOR: Record<string, string>      = { MEMBRE: "#c9a227", GENERALE: "#c9a227", FEMME: "#b5532a", ENFANT: "#5fb98a" };
 const CHANNEL_COLORS = ["#c9a227", "#b5532a", "#5fb98a", "#243a85", "#d9a441", "#a89b86"];
 
 const emptyPost    = { title: "", body: "", type: "ANNONCE" as PostType, channel: null as number | null, is_pinned: false };

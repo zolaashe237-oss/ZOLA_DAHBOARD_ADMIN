@@ -458,7 +458,10 @@ export default function ContenuPage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {BRANCH_COLS.map((col) => {
-            const colItems = filtered.filter((f) => (f.branche ?? "MEMBRE") === col.key);
+            const colItems = filtered.filter((f) => {
+              const b = f.branche === "GENERALE" ? "MEMBRE" : (f.branche ?? "MEMBRE");
+              return b === col.key;
+            });
             return (
               <section key={col.key}>
                 {/* ── En-tête de section ── */}

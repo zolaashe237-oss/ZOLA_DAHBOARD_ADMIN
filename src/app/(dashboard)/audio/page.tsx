@@ -26,10 +26,11 @@ const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }
   { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
-const AUDIO_ACCENT: Record<Branche, { bg: string; line: string; text: string; wave: string }> = {
-  MEMBRE:  { bg: "#1a1400", line: "#c9a227", text: "#c9a227", wave: "#c9a22740" },
-  FEMME:   { bg: "#1a0c08", line: "#b5532a", text: "#b5532a", wave: "#b5532a40" },
-  ENFANT:  { bg: "#081510", line: "#52b083", text: "#52b083", wave: "#52b08340" },
+const AUDIO_ACCENT: Record<string, { bg: string; line: string; text: string; wave: string }> = {
+  MEMBRE:   { bg: "#1a1400", line: "#c9a227", text: "#c9a227", wave: "#c9a22740" },
+  GENERALE: { bg: "#1a1400", line: "#c9a227", text: "#c9a227", wave: "#c9a22740" },
+  FEMME:    { bg: "#1a0c08", line: "#b5532a", text: "#b5532a", wave: "#b5532a40" },
+  ENFANT:   { bg: "#081510", line: "#52b083", text: "#52b083", wave: "#52b08340" },
 };
 
 const FORMAT_LABEL: Record<string, string> = {

@@ -323,17 +323,20 @@ export default function DashboardPage() {
   const [range,       setRange]       = useState<DateRange>({ date_from: "", date_to: "" });
 
   useEffect(() => {
-    const params = range.date_from && range.date_to ? range : undefined;
+    const params = range.date_from || range.date_to ? {
+      date_from: range.date_from || undefined,
+      date_to: range.date_to || undefined,
+    } : undefined;
 
     dashboardApi.kpis(params)
       .then((r) => setKpis(r.data))
       .catch(() => {});
 
-    financeApi2.monthlyRevenue()
+    financeApi2.monthlyRevenue(params)
       .then((r) => { if (r.data.length > 0) setRevenue(r.data); })
       .catch(() => {});
 
-    financeApi2.paymentBreakdown()
+    financeApi2.paymentBreakdown(params)
       .then((r) => { if (r.data.length > 0) setBreakdown(r.data); })
       .catch(() => {});
 

@@ -222,6 +222,8 @@ export interface Formation {
   niveau:           FormationNiveau | null;
   branche:          Branche | null;
   nb_episodes:      number;
+  courses_count?:   number;
+  total_courses?:   number;
   nb_gratuits:      number;
   modules_preview?: FormationModulePreview[];
   created_at: string;
@@ -471,7 +473,7 @@ export interface Paginated<T> {
 // ── Lives / Sessions en direct ──────────────────────────────────────────────
 
 export type LiveStatus = "PLANIFIE" | "EN_COURS" | "TERMINE";
-export type Branche = "MEMBRE" | "FEMME" | "ENFANT";
+export type Branche = "MEMBRE" | "FEMME" | "ENFANT" | "GENERALE";
 export type LivePlatform = "ZOOM" | "YOUTUBE" | "MEET" | "TEAMS";
 
 export interface LiveSession {

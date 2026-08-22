@@ -36,10 +36,11 @@ const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }
   { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
-const COVER_ACCENT: Record<Branche, { bg: string; line: string; text: string }> = {
-  MEMBRE:  { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
-  FEMME:   { bg: "#fdf0ec", line: "#b5532a", text: "#8b3520" },
-  ENFANT:  { bg: "#eef8f2", line: "#52b083", text: "#2e7050" },
+const COVER_ACCENT: Record<string, { bg: string; line: string; text: string }> = {
+  MEMBRE:   { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
+  GENERALE: { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
+  FEMME:    { bg: "#fdf0ec", line: "#b5532a", text: "#8b3520" },
+  ENFANT:   { bg: "#eef8f2", line: "#52b083", text: "#2e7050" },
 };
 
 // ── Couverture ────────────────────────────────────────────────────────────────
