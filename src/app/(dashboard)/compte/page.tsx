@@ -88,6 +88,7 @@ export default function ComptePage() {
   const [teamError,    setTeamError]    = useState("");
   const [teamInfo,     setTeamInfo]     = useState("");
   const [tempPwd,         setTempPwd]         = useState<{ id: number; pwd: string } | null>(null);
+  const [tempPwdVisible,  setTempPwdVisible]  = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [resetPwdTarget,   setResetPwdTarget]   = useState<User | null>(null);
   const [deleteTarget,     setDeleteTarget]     = useState<User | null>(null);
@@ -420,16 +421,45 @@ export default function ComptePage() {
 
           {/* Mot de passe temporaire généré */}
           {tempPwd && (
-            <div style={{ background: "rgba(201,162,39,0.12)", border: "1px solid rgba(201,162,39,0.4)",
+            <div style={{ background: "rgba(201,162,39,0.10)", border: "1px solid rgba(201,162,39,0.38)",
                           borderRadius: "var(--radius)", padding: "0.85rem 1.1rem",
-                          marginBottom: "1.25rem", fontSize: "0.88rem" }}>
-              <strong style={{ color: "var(--gold-2)" }}>Mot de passe temporaire généré</strong>
-              <div style={{ fontFamily: "monospace", fontSize: "1.1rem", color: "var(--cream)",
-                            marginTop: "0.35rem", letterSpacing: "0.1em" }}>
-                {tempPwd.pwd}
+                          marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                <strong style={{ fontSize: "0.82rem", color: "var(--gold-2)" }}>Mot de passe temporaire généré</strong>
+                <button onClick={() => { setTempPwd(null); setTempPwdVisible(false); }} style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "var(--muted)", fontSize: "0.8rem", padding: "0 0.25rem",
+                }}>✕</button>
               </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginTop: "0.25rem" }}>
-                Transmettez ce mot de passe à l&apos;admin concerné. Il ne s&apos;affichera qu&apos;une fois.
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  readOnly
+                  type={tempPwdVisible ? "text" : "password"}
+                  value={tempPwd.pwd}
+                  style={{
+                    fontFamily: "monospace", fontSize: "1rem", flex: 1,
+                    background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+                    borderRadius: "var(--radius-sm)", padding: "0.4rem 0.6rem",
+                    color: "var(--cream)", letterSpacing: tempPwdVisible ? "0.1em" : undefined,
+                  }}
+                />
+                <button onClick={() => setTempPwdVisible(v => !v)} style={{
+                  background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+                  borderRadius: "var(--radius-sm)", padding: "0.4rem 0.7rem",
+                  cursor: "pointer", fontSize: "0.78rem", color: "var(--muted)", whiteSpace: "nowrap",
+                }}>
+                  {tempPwdVisible ? "Masquer" : "Afficher"}
+                </button>
+                <button onClick={() => { navigator.clipboard.writeText(tempPwd.pwd); }} style={{
+                  background: "var(--gold-bg)", border: "1px solid rgba(201,162,39,0.35)",
+                  borderRadius: "var(--radius-sm)", padding: "0.4rem 0.7rem",
+                  cursor: "pointer", fontSize: "0.78rem", color: "var(--gold-2)", whiteSpace: "nowrap",
+                }}>
+                  Copier
+                </button>
+              </div>
+              <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "0.3rem" }}>
+                Transmettez-le à l&apos;admin concerné en privé. Il disparaîtra dans 60 secondes.
               </div>
             </div>
           )}
@@ -637,6 +667,8 @@ export default function ComptePage() {
           onConfirm={async () => {
             const { data } = await adminAccountApi.resetAdminPassword(resetPwdTarget.id);
             setTempPwd({ id: resetPwdTarget.id, pwd: data.temp_password });
+            setTempPwdVisible(false);
+            setTimeout(() => setTempPwd(null), 60_000);
             setResetPwdTarget(null);
           }}
         />

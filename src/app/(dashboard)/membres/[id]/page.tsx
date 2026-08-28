@@ -249,6 +249,8 @@ export default function MemberDetailPage() {
   const [error,        setError]        = useState("");
   const [info,         setInfo]         = useState("");
   const [busy,         setBusy]         = useState("");
+  const [tempPwd,      setTempPwd]      = useState<string | null>(null);
+  const [pwdVisible,   setPwdVisible]   = useState(false);
 
   const [showBlockDlg,    setShowBlockDlg]    = useState(false);
   const [showWarnDlg,     setShowWarnDlg]     = useState(false);
@@ -298,6 +300,52 @@ export default function MemberDetailPage() {
 
       <Alert>{error}</Alert>
       {info && <Alert kind="success">{info}</Alert>}
+
+      {/* ── Mot de passe temporaire ── */}
+      {tempPwd && (
+        <div style={{
+          background: "rgba(201,162,39,0.10)", border: "1px solid rgba(201,162,39,0.38)",
+          borderRadius: "var(--radius)", padding: "0.85rem 1.1rem", marginBottom: "1rem",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+            <strong style={{ fontSize: "0.82rem", color: "var(--gold-2)" }}>Mot de passe temporaire</strong>
+            <button onClick={() => setTempPwd(null)} style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--muted)", fontSize: "0.8rem", padding: "0 0.25rem",
+            }}>✕</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <input
+              readOnly
+              type={pwdVisible ? "text" : "password"}
+              value={tempPwd}
+              style={{
+                fontFamily: "monospace", fontSize: "1rem", flex: 1,
+                background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+                borderRadius: "var(--radius-sm)", padding: "0.4rem 0.6rem",
+                color: "var(--cream)", letterSpacing: pwdVisible ? "0.1em" : undefined,
+              }}
+            />
+            <button onClick={() => setPwdVisible(v => !v)} style={{
+              background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+              borderRadius: "var(--radius-sm)", padding: "0.4rem 0.7rem",
+              cursor: "pointer", fontSize: "0.78rem", color: "var(--muted)", whiteSpace: "nowrap",
+            }}>
+              {pwdVisible ? "Masquer" : "Afficher"}
+            </button>
+            <button onClick={() => { navigator.clipboard.writeText(tempPwd); }} style={{
+              background: "var(--gold-bg)", border: "1px solid rgba(201,162,39,0.35)",
+              borderRadius: "var(--radius-sm)", padding: "0.4rem 0.7rem",
+              cursor: "pointer", fontSize: "0.78rem", color: "var(--gold-2)", whiteSpace: "nowrap",
+            }}>
+              Copier
+            </button>
+          </div>
+          <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: "0.3rem" }}>
+            Transmettez-le en privé. Il disparaîtra dans 60 secondes.
+          </div>
+        </div>
+      )}
 
       {/* ── En-tête membre ── */}
       <Card style={{ marginBottom: "1rem" }}>
@@ -667,7 +715,9 @@ export default function MemberDetailPage() {
           onClose={() => setShowResetDlg(false)}
           onConfirm={async () => {
             const { data } = await membersApi.resetPassword(userId);
-            setInfo(`MDP temporaire : ${data.temp_password}`);
+            setTempPwd(data.temp_password);
+            setPwdVisible(false);
+            setTimeout(() => setTempPwd(null), 60_000);
             setShowResetDlg(false);
           }}
         />
