@@ -138,9 +138,8 @@ function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string)
     try {
       await moderationApi.createAdminPost({
         title: title.trim(),
-        body: body.trim(),
-        type: "ANNONCE",
-        is_admin_post: true,
+        text: body.trim(),
+        is_announcement: true,
         is_pinned: isPinned,
       });
       setTitle("");

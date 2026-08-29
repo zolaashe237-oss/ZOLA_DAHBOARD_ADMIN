@@ -267,7 +267,7 @@ export default function ContenuPage() {
   };
 
   const doRemove = async (f: Formation) => {
-    try { await formationApi.remove(f.id); load(); setInfo("Formation supprimée."); }
+    try { await formationApi.hardDelete(f.id); load(); setInfo("Formation supprimée définitivement."); }
     catch (e) { setError(errorMessage(e)); }
   };
 
