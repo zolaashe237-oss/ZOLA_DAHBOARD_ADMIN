@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { libraryApi, quizApi } from "@/lib/endpoints";
 import type { Formation, LibraryPdf, QuizItem, QuizQuestion } from "@/lib/types";
 import { Alert, Button, errorMessage } from "@/components/ui";
+import { Modal } from "@/components/Modal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,6 @@ function QuestionCard({
     }
   }
 
-  // Critères QRO : stockés en string[], édités comme texte multiligne
   const criteriaText = (q.criteria ?? []).join("\n");
   function handleCriteriaChange(raw: string) {
     const lines = raw.split("\n").map((l) => l.trimStart()).filter(Boolean);
@@ -75,9 +75,9 @@ function QuestionCard({
   }
 
   const TYPE_OPTIONS: { value: QType; label: string; hint: string }[] = [
-    { value: "QCM",       label: "QCM",             hint: "Une seule bonne réponse" },
-    { value: "QCM_MULTI", label: "QCM multi",        hint: "Plusieurs bonnes réponses" },
-    { value: "QRO",       label: "Réponse ouverte",  hint: "Corrigée par l'IA (Gemini)" },
+    { value: "QCM",       label: "QCM",            hint: "Une seule bonne réponse" },
+    { value: "QCM_MULTI", label: "QCM multi",       hint: "Plusieurs bonnes réponses" },
+    { value: "QRO",       label: "Réponse ouverte", hint: "Corrigée par l'IA (Gemini)" },
   ];
 
   return (
@@ -85,33 +85,34 @@ function QuestionCard({
       border: `1px solid ${isQro ? "rgba(139,92,246,.35)" : "var(--line-soft)"}`,
       borderRadius: "var(--radius)",
       overflow: "hidden",
-      marginBottom: ".75rem",
+      marginBottom: ".65rem",
     }}>
-      {/* En-tête question */}
+      {/* En-tête */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: ".65rem 1rem",
+        padding: ".55rem .9rem",
         background: isQro ? "rgba(139,92,246,.06)" : "var(--bg-2)",
         borderBottom: `1px solid ${isQro ? "rgba(139,92,246,.2)" : "var(--line-soft)"}`,
-        flexWrap: "wrap", gap: ".5rem",
+        flexWrap: "wrap", gap: ".4rem",
       }}>
-        <span style={{ fontSize: ".82rem", fontWeight: 600, color: "var(--muted)", letterSpacing: ".04em", textTransform: "uppercase" }}>
-          Question {qi + 1}
+        <span style={{ fontSize: ".75rem", fontWeight: 700, color: "var(--muted)",
+                       letterSpacing: ".06em", textTransform: "uppercase" }}>
+          Q{qi + 1}
         </span>
-        <div style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
-          {/* Sélecteur type */}
+        <div style={{ display: "flex", alignItems: "center", gap: ".35rem" }}>
           {TYPE_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => handleTypeChange(value)}
               title={TYPE_OPTIONS.find(o => o.value === value)?.hint}
+              className={`chip press ${qtype === value ? "on" : ""}`}
               style={{
-                fontSize: ".74rem", fontWeight: 600, padding: ".2rem .55rem",
-                borderRadius: "var(--radius-sm)",
-                border: `1px solid ${qtype === value ? (value === "QRO" ? "rgba(139,92,246,.6)" : "var(--gold)") : "var(--line-soft)"}`,
-                background: qtype === value ? (value === "QRO" ? "rgba(139,92,246,.12)" : "rgba(var(--gold-rgb),.1)") : "transparent",
-                color: qtype === value ? (value === "QRO" ? "rgb(139,92,246)" : "var(--gold-2)") : "var(--muted-2)",
-                cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap",
+                fontSize: ".72rem", padding: ".18rem .5rem",
+                ...(qtype === value && value === "QRO" ? {
+                  background: "rgba(139,92,246,.14)",
+                  borderColor: "rgba(139,92,246,.5)",
+                  color: "rgb(139,92,246)",
+                } : {}),
               }}
             >
               {label}
@@ -121,7 +122,8 @@ function QuestionCard({
             <button
               onClick={onRemove}
               title="Supprimer cette question"
-              style={{ background: "none", border: "none", color: "var(--muted-2)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: ".15rem", marginLeft: ".25rem" }}
+              style={{ background: "none", border: "none", color: "var(--muted-2)",
+                       cursor: "pointer", fontSize: ".9rem", lineHeight: 1, padding: ".15rem", marginLeft: ".1rem" }}
             >
               🗑
             </button>
@@ -129,84 +131,76 @@ function QuestionCard({
         </div>
       </div>
 
-      <div style={{ padding: ".9rem 1rem" }}>
-        {/* Texte de la question */}
-        <div style={{ marginBottom: ".75rem" }}>
-          <div className="field-label">Question</div>
+      <div style={{ padding: ".8rem .9rem" }}>
+        {/* Texte */}
+        <div style={{ marginBottom: ".65rem" }}>
+          <div className="field-label">Intitulé de la question</div>
           <textarea
             className="input"
             rows={2}
-            placeholder="Rédigez votre question ici…"
+            placeholder="Rédigez votre question…"
             value={q.text}
             onChange={(e) => onChange({ text: e.target.value })}
             style={{ resize: "vertical", margin: 0 }}
           />
         </div>
 
-        {/* QRO : critères d'évaluation IA */}
+        {/* QRO */}
         {isQro ? (
-          <div style={{ marginBottom: ".75rem" }}>
+          <div>
             <div className="field-label" style={{ display: "flex", alignItems: "center", gap: ".4rem" }}>
-              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "rgb(139,92,246)" }} />
+              <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "rgb(139,92,246)" }} />
               Critères d&apos;évaluation IA
-              <span style={{ fontSize: ".72rem", color: "var(--muted-2)", fontWeight: 400 }}>(un critère par ligne)</span>
+              <span style={{ fontSize: ".7rem", color: "var(--muted-2)", fontWeight: 400 }}>(un par ligne)</span>
             </div>
             <textarea
               className="input"
-              rows={4}
+              rows={3}
               placeholder={"Doit mentionner X\nDoit expliquer Y\nDoit citer Z"}
               value={criteriaText}
               onChange={(e) => handleCriteriaChange(e.target.value)}
-              style={{ resize: "vertical", margin: 0, fontFamily: "monospace", fontSize: ".84rem" }}
+              style={{ resize: "vertical", margin: 0, fontFamily: "monospace", fontSize: ".83rem" }}
             />
-            <div style={{ fontSize: ".74rem", color: "rgb(139,92,246)", marginTop: ".35rem" }}>
-              ✦ Gemini évaluera la réponse du membre selon ces critères.
+            <div style={{ fontSize: ".73rem", color: "rgb(139,92,246)", marginTop: ".3rem" }}>
+              ✦ Gemini évaluera la réponse selon ces critères.
             </div>
           </div>
         ) : (
           <>
-            {/* Réponses QCM */}
-            <div className="field-label" style={{ marginBottom: ".45rem" }}>Réponses</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: ".4rem", marginBottom: ".45rem" }}>
+            <div className="field-label" style={{ marginBottom: ".4rem" }}>Réponses</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: ".35rem", marginBottom: ".4rem" }}>
               {q.choices.map((c, ci) => (
                 <div key={ci} style={{
-                  display: "flex", alignItems: "center", gap: ".5rem",
-                  padding: ".4rem .55rem",
+                  display: "flex", alignItems: "center", gap: ".45rem",
+                  padding: ".35rem .5rem",
                   background: c.is_correct ? "rgba(82,176,131,.08)" : "transparent",
-                  border: `1px solid ${c.is_correct ? "rgba(82,176,131,.25)" : "var(--line-soft)"}`,
-                  borderRadius: "var(--radius-sm)",
-                  transition: "all .15s",
+                  border: `1px solid ${c.is_correct ? "rgba(82,176,131,.28)" : "var(--line-soft)"}`,
+                  borderRadius: "var(--radius-sm)", transition: "all .15s",
                 }}>
                   <input
                     className="input"
                     style={{ flex: 1, margin: 0, background: "transparent", border: "none",
-                             boxShadow: "none", padding: ".3rem .4rem", fontSize: ".86rem" }}
+                             boxShadow: "none", padding: ".25rem .35rem", fontSize: ".85rem" }}
                     placeholder={`Option ${ci + 1}`}
                     value={c.text}
                     onChange={(e) => setChoice(ci, { text: e.target.value })}
                   />
-                  <label
-                    title={q.multiple ? "Bonne réponse" : "Bonne réponse (une seule)"}
-                    style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer",
-                             fontSize: ".75rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)",
-                             whiteSpace: "nowrap", flexShrink: 0 }}
-                  >
+                  <label style={{ display: "flex", alignItems: "center", gap: ".3rem", cursor: "pointer",
+                                  fontSize: ".74rem", color: c.is_correct ? "var(--ok)" : "var(--muted-2)",
+                                  whiteSpace: "nowrap", flexShrink: 0 }}>
                     <input
                       type={q.multiple ? "checkbox" : "radio"}
                       name={`correct-${qi}`}
                       checked={c.is_correct}
                       onChange={(e) => markCorrect(ci, e.target.checked)}
-                      style={{ accentColor: "var(--ok)", width: 15, height: 15 }}
+                      style={{ accentColor: "var(--ok)", width: 14, height: 14 }}
                     />
                     {c.is_correct ? "Correct" : "Réponse"}
                   </label>
                   {q.choices.length > 2 && (
-                    <button
-                      onClick={() => removeChoice(ci)}
-                      title="Retirer cette option"
-                      style={{ background: "none", border: "none", color: "var(--muted-2)",
-                               cursor: "pointer", fontSize: ".9rem", lineHeight: 1, flexShrink: 0 }}
-                    >
+                    <button onClick={() => removeChoice(ci)} title="Retirer cette option"
+                            style={{ background: "none", border: "none", color: "var(--muted-2)",
+                                     cursor: "pointer", fontSize: ".85rem", lineHeight: 1, flexShrink: 0 }}>
                       🗑
                     </button>
                   )}
@@ -216,7 +210,7 @@ function QuestionCard({
             <button
               onClick={addChoice}
               style={{ background: "none", border: "none", color: "var(--gold-2)", cursor: "pointer",
-                       fontSize: ".82rem", fontWeight: 600, padding: ".2rem 0",
+                       fontSize: ".8rem", fontWeight: 600, padding: ".15rem 0",
                        display: "flex", alignItems: "center", gap: ".3rem" }}
             >
               + Ajouter une réponse
@@ -247,42 +241,31 @@ export function QuizEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [title,       setTitle]       = useState(quiz?.title ?? "");
-  const [threshold,   setThreshold]   = useState(quiz?.pass_threshold ?? 14);
-  const [active,      setActive]      = useState(quiz?.active ?? true);
-  const [formationId, setFormationId] = useState<string>(
-    String(quiz?.formation ?? defaultFormation ?? ""),
-  );
+  const [title,        setTitle]        = useState(quiz?.title ?? "");
+  const [threshold,    setThreshold]    = useState(quiz?.pass_threshold ?? 14);
+  const [active,       setActive]       = useState(quiz?.active ?? true);
+  const [formationId,  setFormationId]  = useState<string>(String(quiz?.formation ?? defaultFormation ?? ""));
   const [libraryPdfId, setLibraryPdfId] = useState<string>(String(quiz?.library_pdf ?? defaultLibraryPdf ?? ""));
-  const [pdfOptions, setPdfOptions] = useState<LibraryPdf[]>([]);
-  const [questions,   setQuestions]   = useState<QuizQuestion[]>(
+  const [pdfOptions,   setPdfOptions]   = useState<LibraryPdf[]>([]);
+  const [questions,    setQuestions]    = useState<QuizQuestion[]>(
     quiz?.questions?.length ? quiz.questions : [emptyQuestion(1)],
   );
-  const [saving,  setSaving]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [error,   setError]   = useState("");
+  const [error,    setError]    = useState("");
 
-  const bodyRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    libraryApi.listActive()
-      .then(setPdfOptions)
-      .catch(() => {});
+    libraryApi.listActive().then(setPdfOptions).catch(() => {});
   }, []);
-
-  // Escape pour fermer
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
 
   const setQ = (i: number, patch: Partial<QuizQuestion>) =>
     setQuestions((qs) => qs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
 
   const addQuestion = () => {
     setQuestions((qs) => [...qs, emptyQuestion(qs.length + 1)]);
-    setTimeout(() => bodyRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 50);
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
   };
 
   const save = async () => {
@@ -326,213 +309,162 @@ export function QuizEditor({
     questions.length > 0 &&
     questions.every((q) => {
       if (!q.text.trim()) return false;
-      if (q.type === "QRO") return true; // pas de choix requis pour QRO
+      if (q.type === "QRO") return true;
       return q.choices.some((c) => c.is_correct) && q.choices.every((c) => c.text.trim());
     });
 
   return (
-    /* Backdrop */
-    <div
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed", inset: 0, zIndex: 200,
-        background: "rgba(8,6,5,.75)",
-        backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "1.25rem",
-        overflowY: "auto",
-      }}
+    <Modal
+      onClose={onClose}
+      title={quiz ? "Modifier le quiz" : "Créer un quiz"}
+      maxWidth={640}
     >
-      {/* Modal */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--bg-1)",
-          border: "1px solid var(--line-soft)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "0 16px 64px rgba(0,0,0,.7)",
-          width: "100%",
-          maxWidth: 620,
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          margin: "auto",
-        }}
-      >
-        {/* ── Header ── */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "1.1rem 1.4rem",
-          borderBottom: "1px solid var(--line-soft)",
-          flexShrink: 0,
-        }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
-            {quiz ? "Modifier le quiz" : "Créer un quiz"}
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Fermer"
-            style={{
-              background: "var(--bg-2)", border: "1px solid var(--line-soft)",
-              color: "var(--muted)", cursor: "pointer",
-              width: 30, height: 30, borderRadius: "50%",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: ".85rem", transition: "all .15s",
-            }}
-          >
-            ✕
-          </button>
+      <Alert>{error}</Alert>
+
+      {/* ── Métadonnées ───────────────────────────────────────────────────── */}
+
+      {/* Titre */}
+      <div style={{ marginBottom: "1rem" }}>
+        <div className="field-label">Titre du quiz</div>
+        <input
+          className="input"
+          placeholder="ex. Examen final — Développement Personnel"
+          value={title}
+          style={{ margin: 0 }}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+
+      {/* Formation */}
+      {!course && (
+        <div style={{ marginBottom: "1rem" }}>
+          <div className="field-label">Formation</div>
+          <select className="select" value={formationId} style={{ margin: 0 }}
+                  onChange={(e) => setFormationId(e.target.value)}>
+            <option value="">— Choisir une formation —</option>
+            {formations.map((f) => <option key={f.id} value={f.id}>{f.title}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Livre PDF */}
+      <div style={{ marginBottom: "1.2rem" }}>
+        <div className="field-label">Livre PDF associé <span style={{ fontWeight: 400, color: "var(--muted-2)" }}>(optionnel)</span></div>
+        <select className="select" value={libraryPdfId} style={{ margin: 0 }}
+                onChange={(e) => setLibraryPdfId(e.target.value)}>
+          <option value="">— Aucun livre associé —</option>
+          {pdfOptions.map((pdf) => <option key={pdf.id} value={pdf.id}>{pdf.title}</option>)}
+        </select>
+      </div>
+
+      {/* Seuil de réussite (slider) + Statut (chips) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.4rem" }}>
+
+        {/* Seuil */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: ".35rem" }}>
+            <span className="field-label" style={{ marginBottom: 0 }}>Seuil de réussite</span>
+            <span style={{ fontSize: ".82rem", fontWeight: 700, color: "var(--gold-2)" }}>{threshold} / 20</span>
+          </div>
+          <input
+            type="range" min={0} max={20} value={threshold}
+            onChange={(e) => setThreshold(Number(e.target.value))}
+            style={{ width: "100%", accentColor: "var(--gold)" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: ".68rem", color: "var(--muted-2)", marginTop: ".15rem" }}>
+            <span>0</span><span>20</span>
+          </div>
         </div>
 
-        {/* ── Corps (scrollable) ── */}
-        <div ref={bodyRef} style={{ overflowY: "auto", padding: "1.2rem 1.4rem", flex: 1 }}>
-          <Alert>{error}</Alert>
-
-          {/* Infos du quiz */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".75rem", marginBottom: "1.1rem" }}>
-            {/* Titre */}
-            <div style={{ gridColumn: "1/-1" }}>
-              <label className="field-label">Titre du quiz</label>
-              <input
-                className="input"
-                placeholder="ex. Examen final — Développement Personnel"
-                value={title}
-                style={{ margin: 0 }}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            {/* Formation (si pas de cours prédéfini) */}
-            {!course && (
-              <div>
-                <label className="field-label">Formation</label>
-                <select
-                  className="select"
-                  value={formationId}
-                  style={{ margin: 0 }}
-                  onChange={(e) => setFormationId(e.target.value)}
-                >
-                  <option value="">— Choisir une formation —</option>
-                  {formations.map((f) => (
-                    <option key={f.id} value={f.id}>{f.title}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-
-
-            <div style={{ gridColumn: "1/-1" }}>
-              <label className="field-label">Livre PDF associé (optionnel)</label>
-              <select
-                className="select"
-                value={libraryPdfId}
-                style={{ margin: 0 }}
-                onChange={(e) => setLibraryPdfId(e.target.value)}
-              >
-                <option value="">— Aucun livre associé —</option>
-                {pdfOptions.map((pdf) => (
-                  <option key={pdf.id} value={pdf.id}>{pdf.title}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Seuil de réussite */}
-            <div>
-              <label className="field-label">Seuil de réussite (sur 20)</label>
-              <input
-                className="input"
-                type="number" min={0} max={20}
-                value={threshold}
-                style={{ margin: 0 }}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-              />
-            </div>
-
-            {/* Statut */}
-            <div style={{ gridColumn: course ? "1/-1" : "auto" }}>
-              <label className="field-label">Statut</label>
-              <select
-                className="select"
-                value={active ? "ACTIVE" : "INACTIVE"}
-                style={{ margin: 0 }}
-                onChange={(e) => setActive(e.target.value === "ACTIVE")}
-              >
-                <option value="ACTIVE">● Actif</option>
-                <option value="INACTIVE">● Inactif</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Séparateur */}
-          <div style={{
-            borderTop: "1px solid var(--line-soft)",
-            margin: "1rem 0",
-            display: "flex", alignItems: "center", gap: ".75rem",
-          }}>
-            <span style={{ fontSize: ".72rem", fontWeight: 600, letterSpacing: ".08em",
-                           textTransform: "uppercase", color: "var(--muted-2)",
-                           background: "var(--bg-1)", padding: "0 .5rem",
-                           marginTop: "-1px", whiteSpace: "nowrap" }}>
-              {questions.length} question{questions.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-
-          {/* Questions */}
-          {questions.map((q, qi) => (
-            <QuestionCard
-              key={qi}
-              q={q} qi={qi} total={questions.length}
-              onChange={(patch) => setQ(qi, patch)}
-              onRemove={() => setQuestions((qs) => qs.filter((_, idx) => idx !== qi))}
-            />
-          ))}
-
-          {/* + Ajouter une question */}
-          <button
-            onClick={addQuestion}
-            style={{
-              width: "100%", background: "none",
-              border: "1.5px dashed var(--line-soft)",
-              color: "var(--gold-2)", cursor: "pointer",
-              padding: ".6rem", borderRadius: "var(--radius-sm)",
-              fontSize: ".86rem", fontWeight: 600,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: ".35rem",
-              transition: "all .15s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--gold)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line-soft)"; }}
-          >
-            + Ajouter une question
-          </button>
-        </div>
-
-        {/* ── Footer ── */}
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "1rem 1.4rem",
-          borderTop: "1px solid var(--line-soft)",
-          flexShrink: 0,
-          gap: ".5rem",
-        }}>
-          <div>
-            {quiz && (
-              <Button variant="danger" loading={deleting} onClick={remove}>
-                Supprimer le quiz
-              </Button>
-            )}
-          </div>
+        {/* Statut chips */}
+        <div>
+          <div className="field-label">Statut</div>
           <div style={{ display: "flex", gap: ".5rem" }}>
-            <Button variant="ghost" onClick={onClose}>Annuler</Button>
-            <Button onClick={save} loading={saving} disabled={!valid}>
-              Enregistrer
-            </Button>
+            <button
+              type="button"
+              className={`chip press ${active ? "on" : ""}`}
+              onClick={() => setActive(true)}
+            >
+              ● Actif
+            </button>
+            <button
+              type="button"
+              className={`chip press ${!active ? "on" : ""}`}
+              onClick={() => setActive(false)}
+            >
+              ● Inactif
+            </button>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* ── Section questions ─────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: ".75rem",
+        paddingBottom: ".65rem",
+        borderBottom: "1px solid var(--line-soft)",
+      }}>
+        <span style={{ fontSize: ".75rem", fontWeight: 700, letterSpacing: ".08em",
+                       textTransform: "uppercase", color: "var(--muted-2)" }}>
+          {questions.length} question{questions.length !== 1 ? "s" : ""}
+        </span>
+        <span style={{ fontSize: ".72rem", color: "var(--muted-2)" }}>
+          {questions.filter(q => q.type === "QRO").length > 0 &&
+            `${questions.filter(q => q.type === "QRO").length} QRO · `}
+          {questions.filter(q => q.type !== "QRO").length} QCM
+        </span>
+      </div>
+
+      {questions.map((q, qi) => (
+        <QuestionCard
+          key={qi}
+          q={q} qi={qi} total={questions.length}
+          onChange={(patch) => setQ(qi, patch)}
+          onRemove={() => setQuestions((qs) => qs.filter((_, idx) => idx !== qi))}
+        />
+      ))}
+
+      {/* + Ajouter une question */}
+      <button
+        onClick={addQuestion}
+        style={{
+          width: "100%", background: "none",
+          border: "1.5px dashed var(--line-soft)",
+          color: "var(--gold-2)", cursor: "pointer",
+          padding: ".55rem", borderRadius: "var(--radius-sm)",
+          fontSize: ".84rem", fontWeight: 600,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: ".35rem",
+          transition: "border-color .15s",
+          marginBottom: "1.5rem",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--gold)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line-soft)"; }}
+      >
+        + Ajouter une question
+      </button>
+
+      {/* ── Actions ───────────────────────────────────────────────────────── */}
+      <div ref={bottomRef} style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        paddingTop: "1rem",
+        borderTop: "1px solid var(--line-soft)",
+        gap: ".5rem",
+      }}>
+        <div>
+          {quiz && (
+            <Button variant="danger" loading={deleting} onClick={remove}>
+              Supprimer
+            </Button>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: ".5rem" }}>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button onClick={save} loading={saving} disabled={!valid}>
+            {quiz ? "Mettre à jour" : "Créer le quiz"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
