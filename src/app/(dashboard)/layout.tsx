@@ -88,7 +88,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   if (loading || !user) return <BrandLoader />;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div style={{ display: "flex", minHeight: "100vh", isolation: "isolate" }}>
 
       {/* ══════════════════════════════════════════════════════
           SIDEBAR
