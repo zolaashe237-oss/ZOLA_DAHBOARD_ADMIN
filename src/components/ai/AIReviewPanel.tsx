@@ -201,6 +201,7 @@ function AIQuestionCard({
 export function AIReviewPanel({
   initialQuestions, config, niveauSuggere, rangSuggere,
   targetFormationId, targetCourseId, targetBranche,
+  targetLibraryPdfId,
   onClose, onPublished,
 }: {
   initialQuestions: AIGeneratedQuestion[];
@@ -210,6 +211,7 @@ export function AIReviewPanel({
   targetFormationId: number | null;
   targetCourseId: number | null;
   targetBranche?: Branche | null;
+  targetLibraryPdfId?: number | null;
   onClose: () => void;
   onPublished: (message: string) => void;
 }) {
@@ -264,6 +266,7 @@ export function AIReviewPanel({
         pass_threshold: threshold,
         active: status === "PUBLISHED",
         ...(targetCourseId ? { course: targetCourseId, formation: undefined } : { formation: targetFormationId ?? undefined }),
+        ...(targetLibraryPdfId ? { library_pdf: targetLibraryPdfId } : {}),
         questions: questions.map((q, qi) => ({
           text: q.text,
           multiple: q.type === "QCM_MULTI",

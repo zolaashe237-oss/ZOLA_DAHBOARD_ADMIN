@@ -354,7 +354,7 @@ export interface QuizItem {
 
 export type AIQuestionType = "QCM" | "QCM_MULTI" | "QRO";
 export type AIDifficulty   = "FACILE" | "INTERMEDIAIRE" | "DIFFICILE";
-export type AISourceType   = "SCRIPT" | "PDF" | "MULTI_YOUTUBE";
+export type AISourceType   = "SCRIPT" | "PDF" | "MULTI_YOUTUBE" | "LIBRARY_PDF" | "AUDIO";
 export type AIJobStatus    = "PENDING" | "IN_PROGRESS" | "DONE" | "FAILED";
 export type QROVerdict     = "VALIDE" | "NON_VALIDE" | "A_REVOIR";
 
@@ -374,6 +374,10 @@ export interface AIGenerationConfig {
   moduleId?: number | null;
   source_ref?: string;
   source_text?: string;
+  /** Identifiant du livre PDF de la bibliothèque (source LIBRARY_PDF). */
+  library_pdf?: number | null;
+  /** Identifiant de l'audio (source AUDIO). */
+  audio_id?: number | null;
 }
 
 /** Question telle que retournée par l'IA, avant publication (id client uniquement). */

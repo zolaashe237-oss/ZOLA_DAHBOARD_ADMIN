@@ -365,6 +365,7 @@ export default function QuizzPage() {
           rangSuggere={aiReview.rangSuggere}
           targetFormationId={aiReview.targetFormationId}
           targetCourseId={aiReview.targetCourseId}
+          targetLibraryPdfId={aiReview.targetLibraryPdfId ?? null}
           targetBranche={formations.find((f) => f.id === aiReview.targetFormationId)?.branche ?? null}
           onClose={() => setAiReview(null)}
           onPublished={(message) => {

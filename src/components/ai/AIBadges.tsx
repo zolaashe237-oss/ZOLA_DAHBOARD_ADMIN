@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui";
-import type { AIDifficulty, QROVerdict } from "@/lib/types";
+import type { AIDifficulty, AISourceType, QROVerdict } from "@/lib/types";
 
 // ── Niveau suggéré par l'IA (G-04) ────────────────────────────────────────────
 
@@ -40,18 +40,20 @@ export function VerdictBadge({ verdict }: { verdict: QROVerdict }) {
 
 // ── Icône source d'extraction (G-02 / G-07) ───────────────────────────────────
 
-export function SourceIcon({ source }: { source: "SCRIPT" | "PDF" | "MULTI_YOUTUBE" | null | undefined }) {
+const SOURCE_META: Record<AISourceType, { icon: string; label: string }> = {
+  SCRIPT:       { icon: "▶",  label: "Script vidéo" },
+  PDF:          { icon: "▤",  label: "PDF module" },
+  MULTI_YOUTUBE:{ icon: "▶▶", label: "Tous chapitres" },
+  LIBRARY_PDF:  { icon: "📚", label: "Livre PDF" },
+  AUDIO:        { icon: "🎵", label: "Audio" },
+};
+
+export function SourceIcon({ source }: { source: AISourceType | null | undefined }) {
   if (!source) return <span style={{ color: "var(--muted-2)" }}>-</span>;
-  if (source === "MULTI_YOUTUBE") {
-    return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: ".3rem", fontSize: ".8rem", color: "var(--muted)" }}>
-        ▶▶ Tous chapitres
-      </span>
-    );
-  }
+  const { icon, label } = SOURCE_META[source] ?? { icon: "?", label: source };
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: ".3rem", fontSize: ".8rem", color: "var(--muted)" }}>
-      {source === "SCRIPT" ? "▶" : "▤"} {source === "SCRIPT" ? "Script vidéo" : "PDF"}
+      {icon} {label}
     </span>
   );
 }
