@@ -59,12 +59,26 @@ export function Modal({
       style={{
         position: "fixed", inset: 0, zIndex: 1000,
         background: "rgba(10,7,4,.72)",
-        display: "grid", placeItems: "center",
-        padding: "1rem",
         backdropFilter: "blur(3px)",
         overflowY: "auto",
       }}
     >
+      {/*
+        Wrapper flex : minHeight 100% garantit que la modale est centrée dans
+        la viewport quand elle est courte, et que l'overlay défile si elle est
+        plus haute que l'écran — sans que le calcul de centrage soit faussé par
+        la hauteur scrollable de l'overlay.
+      */}
+      <div
+        style={{
+          minHeight: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "1.5rem 1rem",
+          boxSizing: "border-box",
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -75,7 +89,7 @@ export function Modal({
           borderRadius: "var(--radius)",
           width: "100%",
           maxWidth,
-          maxHeight: "90vh",
+          maxHeight: "calc(100vh - 3rem)",
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 28px 72px rgba(0,0,0,.6)",
@@ -161,6 +175,7 @@ export function Modal({
           />
         )}
       </div>
+      </div>  {/* /centering wrapper */}
     </div>
   );
 }
