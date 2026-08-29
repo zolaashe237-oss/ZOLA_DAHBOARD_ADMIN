@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui";
 
@@ -19,8 +20,12 @@ export function Modal({
   maxWidth?: number;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [scrolled,   setScrolled]   = useState(false); // header shadow
-  const [hasMore,    setHasMore]    = useState(false); // bottom gradient
+  const [mounted,  setMounted]  = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [hasMore,  setHasMore]  = useState(false);
+
+  // Montage côté client uniquement (portal vers document.body)
+  useEffect(() => { setMounted(true); }, []);
 
   // Keyboard close
   useEffect(() => {
@@ -29,11 +34,17 @@ export function Modal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Lock body scroll
+  // Lock body scroll + compensation scrollbar pour éviter le saut de layout
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
+    const scrollW = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = document.body.style.overflow;
+    const prevPadding  = document.body.style.paddingRight;
+    document.body.style.overflow     = "hidden";
+    if (scrollW > 0) document.body.style.paddingRight = `${scrollW}px`;
+    return () => {
+      document.body.style.overflow     = prevOverflow;
+      document.body.style.paddingRight  = prevPadding;
+    };
   }, []);
 
   // Scroll indicators
@@ -53,7 +64,9 @@ export function Modal({
     return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
   }, []);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -176,7 +189,8 @@ export function Modal({
         )}
       </div>
       </div>  {/* /centering wrapper */}
-    </div>
+    </div>,
+    document.body
   );
 }
 
