@@ -14,8 +14,8 @@ function duration(sec: number | null) {
   return `${m}:${s}`;
 }
 
-function validPlaylist(url: string) {
-  return (url.includes("youtube.com") || url.includes("youtu.be")) && url.includes("list=");
+function validYoutubeUrl(url: string) {
+  return url.includes("youtube.com") || url.includes("youtu.be");
 }
 
 export function YoutubeImportModal({ onClose, onImported }: { onClose: () => void; onImported: (message: string) => void }) {
@@ -28,7 +28,7 @@ export function YoutubeImportModal({ onClose, onImported }: { onClose: () => voi
 
   const analyze = async () => {
     setError(""); setPreview(null);
-    if (!validPlaylist(url)) { setError("Veuillez saisir une URL de playlist YouTube valide (youtube.com ou youtu.be avec list=)."); return; }
+    if (!validYoutubeUrl(url)) { setError("Veuillez saisir une URL YouTube valide (playlist ou vidéo unique)."); return; }
     setLoading(true);
     try {
       const res = await youtubeImportApi.preview(url.trim());
@@ -49,9 +49,9 @@ export function YoutubeImportModal({ onClose, onImported }: { onClose: () => voi
   return (
     <Modal title="Importer depuis YouTube" onClose={onClose} maxWidth={720}>
       <Alert>{error}</Alert>
-      <Input label="URL de playlist YouTube" value={url} placeholder="https://www.youtube.com/playlist?list=..." onChange={(e) => setUrl(e.target.value)} />
+      <Input label="URL YouTube (playlist ou vidéo unique)" value={url} placeholder="https://www.youtube.com/playlist?list=… ou https://youtu.be/…" onChange={(e) => setUrl(e.target.value)} />
       <div style={{ display: "flex", gap: "0.55rem", marginBottom: "1rem" }}>
-        <Button type="button" loading={loading} onClick={analyze}>Analyser la playlist</Button>
+        <Button type="button" loading={loading} onClick={analyze}>Analyser</Button>
         <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
       </div>
       {preview && (

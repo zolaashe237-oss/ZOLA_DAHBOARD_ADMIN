@@ -14,8 +14,8 @@ function duration(sec: number | null) {
   return `${m}:${s}`;
 }
 
-function validPlaylist(url: string) {
-  return (url.includes("youtube.com") || url.includes("youtu.be")) && url.includes("list=");
+function validYoutubeUrl(url: string) {
+  return url.includes("youtube.com") || url.includes("youtu.be");
 }
 
 export function YoutubeChapterImportModal({
@@ -38,8 +38,8 @@ export function YoutubeChapterImportModal({
 
   const analyze = async () => {
     setError(""); setPreview(null);
-    if (!validPlaylist(url)) {
-      setError("Veuillez saisir une URL de playlist YouTube valide (avec list=).");
+    if (!validYoutubeUrl(url)) {
+      setError("Veuillez saisir une URL YouTube valide (playlist ou vidéo unique).");
       return;
     }
     setLoading(true);
@@ -79,15 +79,15 @@ export function YoutubeChapterImportModal({
       <Alert>{error}</Alert>
 
       <Input
-        label="URL de playlist YouTube"
+        label="URL YouTube (playlist ou vidéo unique)"
         value={url}
-        placeholder="https://www.youtube.com/playlist?list=..."
+        placeholder="https://www.youtube.com/playlist?list=… ou https://youtu.be/…"
         onChange={(e) => setUrl(e.target.value)}
       />
 
       <div style={{ display: "flex", gap: "0.55rem", marginBottom: "1rem" }}>
         <Button type="button" loading={loading} onClick={analyze}>
-          Analyser la playlist
+          Analyser
         </Button>
         <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
       </div>
