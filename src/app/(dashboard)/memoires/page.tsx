@@ -143,8 +143,8 @@ function AnswerBlock({ qkey, answer }: { qkey: string; answer: MemoirAnswerEntry
         {answer.audioTranscript && (
           <span style={{ fontSize: "0.62rem", color: "var(--info)", fontWeight: 700 }}>🎙 Audio transcrit</span>
         )}
-        {(answer.imageCaptions?.length ?? 0) > 0 && (
-          <span style={{ fontSize: "0.62rem", color: "var(--muted-2)" }}>📷 {answer.imageCaptions.length} photo{answer.imageCaptions.length > 1 ? "s" : ""}</span>
+        {((answer.imageUrls?.length ?? answer.imageCaptions?.length ?? 0) > 0) && (
+          <span style={{ fontSize: "0.62rem", color: "var(--muted-2)" }}>📷 {(answer.imageUrls?.length ?? answer.imageCaptions?.length ?? 0)} photo{(answer.imageUrls?.length ?? answer.imageCaptions?.length ?? 0) > 1 ? "s" : ""}</span>
         )}
       </div>
 
@@ -192,11 +192,36 @@ function AnswerBlock({ qkey, answer }: { qkey: string; answer: MemoirAnswerEntry
         </div>
       )}
 
-      {/* Légendes photos */}
-      {(answer.imageCaptions?.length ?? 0) > 0 && (
+      {/* Photos */}
+      {(answer.imageUrls?.length ?? 0) > 0 && (
+        <div style={{ marginTop: "0.45rem" }}>
+          <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--muted-2)", marginBottom: "0.35rem", letterSpacing: "0.05em" }}>
+            PHOTOS
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "0.5rem" }}>
+            {answer.imageUrls!.map((url, i) => (
+              <div key={i}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={answer.imageCaptions?.[i] || `Photo ${i + 1}`}
+                  style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)" }}
+                />
+                {answer.imageCaptions?.[i] && (
+                  <p style={{ fontSize: "0.68rem", color: "var(--muted)", marginTop: "0.2rem", textAlign: "center", margin: 0 }}>
+                    {answer.imageCaptions[i]}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Légendes seules si pas d'URL (ancien format) */}
+      {!(answer.imageUrls?.length) && (answer.imageCaptions?.length ?? 0) > 0 && (
         <div style={{ marginTop: "0.45rem" }}>
           <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--muted-2)", marginBottom: "0.2rem", letterSpacing: "0.05em" }}>
-            PHOTOS
+            PHOTOS (légendes)
           </div>
           <ul style={{ margin: 0, paddingLeft: "1rem" }}>
             {answer.imageCaptions.map((c, i) => (

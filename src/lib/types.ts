@@ -670,6 +670,7 @@ export interface MemoirAnswerEntry {
   text: string;
   audioTranscript: string;
   imageCaptions: string[];
+  imageUrls?: string[];
   structured: Record<string, string | string[]>;
   notApplicable: boolean;
 }
