@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.zola-ashe.com" },
+      { protocol: "https", hostname: "*.zola-ashe.com" },
+      { protocol: "https", hostname: "i.ytimg.com" },
+      { protocol: "https", hostname: "img.youtube.com" },
+    ],
+  },
   // Dashboard admin : en-têtes durcis + interdiction d'indexation.
   // Le CSP (nonce dynamique) est géré par src/middleware.ts.
   async headers() {

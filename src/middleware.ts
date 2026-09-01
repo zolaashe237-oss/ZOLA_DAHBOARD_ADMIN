@@ -23,10 +23,11 @@ function buildCsp(nonce: string): string {
       : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     // unsafe-inline nécessaire pour les styles inline du dashboard
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-    `font-src 'self' https://fonts.gstatic.com`,
-    `img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com ${apiOrigin}`,
+    `img-src 'self' data: blob: https://cdn.zola-ashe.com https://*.zola-ashe.com https://i.ytimg.com https://img.youtube.com https://*.r2.cloudflarestorage.com ${apiOrigin}`,
     [
       `connect-src 'self'`,
+      `https://cdn.zola-ashe.com`,
+      `https://*.zola-ashe.com`,
       apiOrigin,
       // En dev : websockets Next.js HMR
       isDev ? "ws://localhost:* http://localhost:*" : "",
