@@ -541,6 +541,7 @@ export const libraryApi = {
   update: (id: number, data: Partial<LibraryPdf>) =>
     api.patch<LibraryPdf>(`/admin/library/${id}/`, data),
   remove: (id: number) => api.delete(`/admin/library/${id}/`),
+  reorder: (ids: number[]) => api.post("/admin/library/reorder/", { ids }),
   upload: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);

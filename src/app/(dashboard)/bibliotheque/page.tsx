@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { asList, libraryApi, quizApi } from "@/lib/endpoints";
 import { getMediaUrl } from "@/lib/api";
-import type { Branche, LibraryPdf, PdfAccess, QuizItem } from "@/lib/types";
+import type { Branche, LibraryCategory, LibraryPdf, PdfAccess, QuizItem } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 
@@ -36,6 +36,21 @@ const BRANCH_COLS: { key: Branche; label: string; color: string; emoji: string }
   { key: "ENFANT",  label: "Espace Enfants",  color: "#52b083", emoji: "◈" },
 ];
 
+const CATEGORIES: LibraryCategory[] = [
+  "Spiritualité",
+  "Développement personnel",
+  "Entrepreneuriat",
+  "Création de contenu",
+];
+
+const CAT_ICON: Record<string, string> = {
+  "Spiritualité":            "✦",
+  "Développement personnel": "◎",
+  "Entrepreneuriat":         "◆",
+  "Création de contenu":     "◐",
+  "":                        "○",
+};
+
 const COVER_ACCENT: Record<string, { bg: string; line: string; text: string }> = {
   MEMBRE:   { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
   GENERALE: { bg: "#f7f2e8", line: "#c9a227", text: "#8b6a1a" },
@@ -58,7 +73,7 @@ function DocCover({ pdf, size = 72 }: { pdf: LibraryPdf; size?: number }) {
       />
     );
   }
-  const { bg, line, text } = COVER_ACCENT[pdf.branche];
+  const { bg, line, text } = COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE;
   const initials = pdf.title.split(" ").filter((w) => /^[A-ZÀ-Öa-z]/i.test(w))
     .slice(0, 2).map((w) => w[0].toUpperCase()).join("");
   return (
@@ -88,37 +103,58 @@ function DocCover({ pdf, size = 72 }: { pdf: LibraryPdf; size?: number }) {
   );
 }
 
-// ── Ligne document ────────────────────────────────────────────────────────────
+// ── Ligne document (avec handle drag-and-drop) ────────────────────────────────
 
-function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }: {
+function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview,
+                  dragging, dragOver,
+                  onDragStart, onDragEnter, onDragEnd }: {
   pdf:             LibraryPdf;
   onEdit:          () => void;
   onToggle:        () => void;
   onToggleGratuit: () => void;
   onDelete:        () => void;
   onPreview:       () => void;
+  dragging:        boolean;
+  dragOver:        boolean;
+  onDragStart:     () => void;
+  onDragEnter:     () => void;
+  onDragEnd:       () => void;
 }) {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: "1rem",
-      padding: "0.75rem 1rem",
-      background: "#fff",
-      border: "1px solid #e8dfc8",
-      borderRadius: "var(--radius)",
-      opacity: pdf.is_active ? 1 : 0.58,
-      transition: "box-shadow .15s, border-color .15s",
-    }}
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => e.preventDefault()}
+      style={{
+        display: "flex", alignItems: "center", gap: "1rem",
+        padding: "0.75rem 1rem",
+        background: dragOver ? "rgba(201,162,39,0.07)" : "#fff",
+        border: `1px solid ${dragOver ? "#c9a227" : "#e8dfc8"}`,
+        borderRadius: "var(--radius)",
+        opacity: dragging ? 0.45 : pdf.is_active ? 1 : 0.58,
+        transition: "box-shadow .15s, border-color .15s, background .12s",
+        cursor: "grab",
+      }}
       onMouseEnter={(e) => {
-        const el = e.currentTarget as HTMLDivElement;
-        el.style.boxShadow = "0 4px 18px rgba(100,60,10,0.10)";
-        el.style.borderColor = "#d4c4a0";
+        if (!dragOver) {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.boxShadow = "0 4px 18px rgba(100,60,10,0.10)";
+          el.style.borderColor = "#d4c4a0";
+        }
       }}
       onMouseLeave={(e) => {
-        const el = e.currentTarget as HTMLDivElement;
-        el.style.boxShadow = "";
-        el.style.borderColor = "#e8dfc8";
+        if (!dragOver) {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.boxShadow = "";
+          el.style.borderColor = "#e8dfc8";
+        }
       }}
     >
+      {/* Handle drag */}
+      <span style={{ fontSize: "0.80rem", color: "#c8b89a", flexShrink: 0, userSelect: "none", cursor: "grab" }}>⠿</span>
+
       {/* Cover — cliquable */}
       <button onClick={onPreview} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
         <DocCover pdf={pdf} size={54} />
@@ -137,7 +173,6 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
           >
             {pdf.title}
           </span>
-          {/* Statut */}
           <span style={{
             fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.06em",
             flexShrink: 0,
@@ -150,18 +185,7 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
           </span>
         </div>
 
-        {/* Catégorie + description */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", marginTop: "0.18rem" }}>
-          {pdf.category && (
-            <span style={{
-              fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.05em",
-              color: "#8b6a3a", background: "rgba(201,162,39,0.10)",
-              border: "1px solid rgba(201,162,39,0.22)",
-              padding: "0.04rem 0.35rem", borderRadius: 99,
-            }}>
-              {pdf.category}
-            </span>
-          )}
           {pdf.description && (
             <span style={{
               fontSize: "0.78rem", color: "#7a6248",
@@ -172,19 +196,13 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
           )}
         </div>
 
-        {/* Méta */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.7rem", marginTop: "0.28rem" }}>
           {pdf.nb_pages !== null && (
-            <span style={{ fontSize: "0.72rem", color: "#a0907a" }}>
-              ☰ {pdf.nb_pages} pages
-            </span>
+            <span style={{ fontSize: "0.72rem", color: "#a0907a" }}>☰ {pdf.nb_pages} pages</span>
           )}
           {pdf.size_mo !== null && (
-            <span style={{ fontSize: "0.72rem", color: "#a0907a" }}>
-              {pdf.size_mo.toFixed(1)} Mo
-            </span>
+            <span style={{ fontSize: "0.72rem", color: "#a0907a" }}>{pdf.size_mo.toFixed(1)} Mo</span>
           )}
-          {/* Badge accès */}
           <span style={{
             fontSize: "0.63rem", fontWeight: 700,
             color: ACCESS_COLOR[pdf.access_level],
@@ -195,8 +213,6 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
           }}>
             {ACCESS_ICON[pdf.access_level]} {ACCESS_LABEL[pdf.access_level]}
           </span>
-
-          {/* Toggle gratuit — visible seulement si accès restreint */}
           {pdf.access_level !== "PUBLIC" && (
             <button
               type="button"
@@ -243,7 +259,6 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
             background: pdf.is_active ? "rgba(201,162,39,0.08)" : "rgba(46,148,96,0.08)",
             border: `1px solid ${pdf.is_active ? "rgba(201,162,39,0.25)" : "rgba(46,148,96,0.25)"}`,
             borderRadius: 5, padding: "0.24rem 0.58rem", cursor: "pointer",
-            transition: "background .14s",
           }}
         >
           {pdf.is_active ? "Dépublier" : "Publier"}
@@ -257,10 +272,7 @@ function DocRow({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }:
             border: "1px solid rgba(192,64,44,0.20)",
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", fontSize: "0.78rem",
-            transition: "background .14s",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(192,64,44,0.15)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(192,64,44,0.07)"; }}
         >
           🗑
         </button>
@@ -279,11 +291,10 @@ function PdfPreviewModal({ pdf, onClose, onEdit, onToggle }: {
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
         <DocCover pdf={pdf} size={120} />
         <div style={{ flex: 1, minWidth: 200 }}>
-          {/* Badges */}
           <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.7rem" }}>
             {pdf.category && (
               <span style={{ fontSize: "0.67rem", fontWeight: 700, color: "#8b6a3a", background: "rgba(201,162,39,0.12)", border: "1px solid rgba(201,162,39,0.25)", padding: "0.06rem 0.38rem", borderRadius: 99 }}>
-                {pdf.category}
+                {CAT_ICON[pdf.category] || "○"} {pdf.category}
               </span>
             )}
             <span style={{ fontSize: "0.67rem", fontWeight: 700, color: ACCESS_COLOR[pdf.access_level], background: `${ACCESS_COLOR[pdf.access_level]}12`, border: `1px solid ${ACCESS_COLOR[pdf.access_level]}30`, padding: "0.06rem 0.38rem", borderRadius: 99 }}>
@@ -324,6 +335,13 @@ function PdfPreviewModal({ pdf, onClose, onEdit, onToggle }: {
 }
 
 // ── Formulaire (modal) ────────────────────────────────────────────────────────
+
+const EMPTY_FORM = {
+  title: "", description: "", category: "" as LibraryCategory, branche: "MEMBRE" as Branche,
+  access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_key: "", cover_url: "",
+  nb_pages: null as number | null, size_mo: null as number | null,
+  is_active: true, is_gratuit: false, linked_quiz_id: null as number | null,
+};
 
 function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   initial:  typeof EMPTY_FORM;
@@ -389,14 +407,11 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
 
   const handleUpload = async (file: File) => {
     if (!file.type.includes("pdf")) { onError("Seuls les fichiers PDF sont acceptés."); return; }
-    // Aperçu immédiat avant même la fin de l'upload
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(file));
     setUploading(true);
     try {
       const { data } = await libraryApi.upload(file);
-      setForm((prev) => ({ ...prev, bucket_key: data.bucket_key, size_mo: data.size_mo ?? null, nb_pages: data.nb_pages ?? null }));
-      // Pré-remplir le titre depuis le nom du fichier si vide
       setForm((prev) => ({
         ...prev,
         bucket_key: data.bucket_key,
@@ -411,7 +426,6 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      // Quand cover_key est défini, ne pas renvoyer cover_url (URL résolue temporaire)
       const payload = { ...form };
       if (payload.cover_key) payload.cover_url = "";
       if (editing) await libraryApi.update(editing, payload);
@@ -427,71 +441,38 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
       {!editing && (
         <>
           {previewUrl ? (
-            /* ── Aperçu PDF + infos ── */
             <div style={{
               display: "flex", gap: "1rem", marginBottom: "1rem",
               padding: "0.75rem", borderRadius: "var(--radius)",
               background: "rgba(201,162,39,0.05)", border: "1px solid rgba(201,162,39,0.22)",
             }}>
-              {/* Embed PDF */}
-              <div style={{
-                width: 160, flexShrink: 0,
-                borderRadius: 6, overflow: "hidden",
-                border: "1px solid rgba(201,162,39,0.30)",
-                background: "#f5f5f5",
-                position: "relative",
-              }}>
+              <div style={{ width: 160, flexShrink: 0, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(201,162,39,0.30)", background: "#f5f5f5", position: "relative" }}>
                 <embed
                   src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`}
                   type="application/pdf"
                   style={{ width: "100%", height: 220, display: "block" }}
                 />
                 {uploading && (
-                  <div style={{
-                    position: "absolute", inset: 0,
-                    background: "rgba(255,255,255,0.80)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "0.78rem", color: "#8b6a3a",
-                  }}>
+                  <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.80)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.78rem", color: "#8b6a3a" }}>
                     Upload…
                   </div>
                 )}
               </div>
-
-              {/* Infos + bouton changer */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: "0.78rem", fontWeight: 700, color: uploading ? "#c9a227" : "#2b8a5e", marginBottom: "0.45rem" }}>
                     {uploading ? "Upload en cours…" : "✓ Fichier prêt"}
                   </div>
-                  {form.nb_pages !== null && (
-                    <div style={{ fontSize: "0.80rem", color: "#7a6248", marginBottom: "0.20rem" }}>
-                      ☰ {form.nb_pages} pages
-                    </div>
-                  )}
-                  {form.size_mo !== null && (
-                    <div style={{ fontSize: "0.80rem", color: "#7a6248" }}>
-                      {form.size_mo.toFixed(1)} Mo
-                    </div>
-                  )}
+                  {form.nb_pages !== null && <div style={{ fontSize: "0.80rem", color: "#7a6248", marginBottom: "0.20rem" }}>☰ {form.nb_pages} pages</div>}
+                  {form.size_mo  !== null && <div style={{ fontSize: "0.80rem", color: "#7a6248" }}>{form.size_mo.toFixed(1)} Mo</div>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  style={{
-                    fontSize: "0.74rem", fontWeight: 600,
-                    color: "#8b6a3a", background: "rgba(139,106,58,0.08)",
-                    border: "1px solid #e8dfc8", borderRadius: 5,
-                    padding: "0.28rem 0.70rem", cursor: "pointer",
-                    alignSelf: "flex-start",
-                  }}
-                >
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  style={{ fontSize: "0.74rem", fontWeight: 600, color: "#8b6a3a", background: "rgba(139,106,58,0.08)", border: "1px solid #e8dfc8", borderRadius: 5, padding: "0.28rem 0.70rem", cursor: "pointer", alignSelf: "flex-start" }}>
                   ↺ Changer de fichier
                 </button>
               </div>
             </div>
           ) : (
-            /* ── Zone drag-drop initiale ── */
             <div
               role="button" tabIndex={0}
               onClick={() => fileRef.current?.click()}
@@ -519,96 +500,53 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
         </>
       )}
 
-      {/* ── Couverture image ── */}
+      {/* Couverture image */}
       <div style={{ marginBottom: "1rem" }}>
         <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.45rem" }}>
           Image de couverture
         </div>
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
-          {/* Aperçu */}
-          <div style={{
-            width: 72, height: 99, flexShrink: 0, borderRadius: 5,
-            border: "1px solid #e8dfc8",
-            background: coverPreviewUrl ? "transparent" : "#f7f2e8",
-            overflow: "hidden", position: "relative",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
+          <div style={{ width: 72, height: 99, flexShrink: 0, borderRadius: 5, border: "1px solid #e8dfc8", background: coverPreviewUrl ? "transparent" : "#f7f2e8", overflow: "hidden", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {coverPreviewUrl ? (
               <img src={coverPreviewUrl} alt="Couverture" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             ) : (
               <span style={{ fontSize: "1.6rem", opacity: 0.25 }}>🖼</span>
             )}
             {coverUploading && (
-              <div style={{
-                position: "absolute", inset: 0,
-                background: "rgba(255,255,255,0.80)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "0.70rem", color: "#8b6a3a",
-              }}>
-                ↑…
-              </div>
+              <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.80)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.70rem", color: "#8b6a3a" }}>↑…</div>
             )}
           </div>
-          {/* Actions */}
           <div style={{ display: "flex", flexDirection: "column", gap: "0.40rem" }}>
-            <button
-              type="button"
-              onClick={() => coverFileRef.current?.click()}
-              style={{
-                fontSize: "0.74rem", fontWeight: 600,
-                color: "#8b6a3a", background: "rgba(139,106,58,0.08)",
-                border: "1px solid #e8dfc8", borderRadius: 5,
-                padding: "0.28rem 0.70rem", cursor: "pointer",
-              }}
-            >
+            <button type="button" onClick={() => coverFileRef.current?.click()}
+              style={{ fontSize: "0.74rem", fontWeight: 600, color: "#8b6a3a", background: "rgba(139,106,58,0.08)", border: "1px solid #e8dfc8", borderRadius: 5, padding: "0.28rem 0.70rem", cursor: "pointer" }}>
               {coverPreviewUrl ? "↺ Changer" : "+ Ajouter une image"}
             </button>
-            {/* Proposition automatique : première page du PDF */}
             {form.bucket_key && (
-              <button
-                type="button"
-                onClick={handleExtractFirstPage}
-                disabled={extractingCover}
-                style={{
-                  fontSize: "0.74rem", fontWeight: 600,
-                  color: extractingCover ? "#a0907a" : "#2b6cb0",
-                  background: extractingCover ? "rgba(160,144,122,0.06)" : "rgba(43,108,176,0.06)",
-                  border: `1px solid ${extractingCover ? "#e8dfc8" : "rgba(43,108,176,0.22)"}`,
-                  borderRadius: 5, padding: "0.28rem 0.70rem",
-                  cursor: extractingCover ? "wait" : "pointer",
-                }}
-              >
+              <button type="button" onClick={handleExtractFirstPage} disabled={extractingCover}
+                style={{ fontSize: "0.74rem", fontWeight: 600, color: extractingCover ? "#a0907a" : "#2b6cb0", background: extractingCover ? "rgba(160,144,122,0.06)" : "rgba(43,108,176,0.06)", border: `1px solid ${extractingCover ? "#e8dfc8" : "rgba(43,108,176,0.22)"}`, borderRadius: 5, padding: "0.28rem 0.70rem", cursor: extractingCover ? "wait" : "pointer" }}>
                 {extractingCover ? "Extraction…" : "☰ Utiliser la page 1"}
               </button>
             )}
             {coverPreviewUrl && (
-              <button
-                type="button"
-                onClick={() => { setCoverPreviewUrl(null); setForm((prev) => ({ ...prev, cover_key: "", cover_url: "" })); }}
-                style={{
-                  fontSize: "0.72rem", color: "#b53a2a",
-                  background: "transparent", border: "none",
-                  padding: 0, cursor: "pointer", textAlign: "left",
-                }}
-              >
+              <button type="button" onClick={() => { setCoverPreviewUrl(null); setForm((prev) => ({ ...prev, cover_key: "", cover_url: "" })); }}
+                style={{ fontSize: "0.72rem", color: "#b53a2a", background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
                 ✕ Supprimer
               </button>
             )}
-            <span style={{ fontSize: "0.68rem", color: "var(--muted)" }}>
-              JPG, PNG, WebP — max 5 Mo
-            </span>
+            <span style={{ fontSize: "0.68rem", color: "var(--muted)" }}>JPG, PNG, WebP — max 5 Mo</span>
           </div>
         </div>
-        <input
-          type="file" accept="image/*" ref={coverFileRef} style={{ display: "none" }}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverUpload(f); e.target.value = ""; }}
-        />
+        <input type="file" accept="image/*" ref={coverFileRef} style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverUpload(f); e.target.value = ""; }} />
       </div>
 
       <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0 0.85rem" }}>
           <Input label="Titre" value={form.title} required onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          <Input label="Catégorie" value={form.category} placeholder="ex: Méditation" onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          <Select label="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as LibraryCategory })}>
+            <option value="">— Sans catégorie —</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{CAT_ICON[c]} {c}</option>)}
+          </Select>
         </div>
         <Textarea
           label="Description" value={form.description} minRows={2} maxLength={300}
@@ -662,6 +600,110 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   );
 }
 
+// ── Groupe catégorie avec drag-and-drop ───────────────────────────────────────
+
+function CategoryGroup({ category, items, setItems, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }: {
+  category:        LibraryCategory | "";
+  items:           LibraryPdf[];
+  setItems:        (updater: (prev: LibraryPdf[]) => LibraryPdf[]) => void;
+  onEdit:          (p: LibraryPdf) => void;
+  onToggle:        (p: LibraryPdf) => void;
+  onToggleGratuit: (p: LibraryPdf) => void;
+  onDelete:        (id: number) => void;
+  onPreview:       (p: LibraryPdf) => void;
+}) {
+  const dragId     = useRef<number | null>(null);
+  const dragOverId = useRef<number | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverIdState, setDragOverIdState] = useState<number | null>(null);
+
+  const handleDrop = useCallback(async () => {
+    if (dragId.current === null || dragOverId.current === null) return;
+    if (dragId.current === dragOverId.current) return;
+
+    const fromIdx = items.findIndex((p) => p.id === dragId.current);
+    const toIdx   = items.findIndex((p) => p.id === dragOverId.current);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...items];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    // Mise à jour optimiste de l'état global
+    setItems((prev) => {
+      const map = new Map(reordered.map((p, i) => [p.id, i]));
+      return prev
+        .map((p) => map.has(p.id) ? { ...p, order: map.get(p.id)! } : p)
+        .sort((a, b) => a.order - b.order || a.id - b.id);
+    });
+
+    dragId.current     = null;
+    dragOverId.current = null;
+    setDraggingId(null);
+    setDragOverIdState(null);
+
+    try {
+      await libraryApi.reorder(reordered.map((p) => p.id));
+    } catch {
+      // On ne rollback pas — le rechargement à la prochaine navigation corrigera
+    }
+  }, [items, setItems]);
+
+  const label = category || "Sans catégorie";
+
+  return (
+    <div style={{ marginBottom: "1rem" }}>
+      {/* En-tête catégorie */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: "0.55rem",
+        marginBottom: "0.45rem",
+        paddingBottom: "0.35rem",
+        borderBottom: "1px solid #f0e8d4",
+      }}>
+        <span style={{ fontSize: "0.78rem", color: "#c9a227" }}>{CAT_ICON[category] || "○"}</span>
+        <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#8b6a3a", flex: 1 }}>{label}</span>
+        <span style={{ fontSize: "0.65rem", color: "#a0907a" }}>
+          {items.length} livre{items.length !== 1 ? "s" : ""}
+          {items.length > 1 && <span style={{ marginLeft: "0.4rem", opacity: 0.7 }}>· glisser pour réordonner</span>}
+        </span>
+      </div>
+
+      {/* Liste triable */}
+      <div
+        style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+      >
+        {items.map((p) => (
+          <DocRow
+            key={p.id} pdf={p}
+            dragging={draggingId === p.id}
+            dragOver={dragOverIdState === p.id}
+            onDragStart={() => { dragId.current = p.id; setDraggingId(p.id); }}
+            onDragEnter={() => { dragOverId.current = p.id; setDragOverIdState(p.id); }}
+            onDragEnd={() => { setDraggingId(null); setDragOverIdState(null); dragId.current = null; dragOverId.current = null; }}
+            onPreview={() => onPreview(p)}
+            onEdit={() => onEdit(p)}
+            onToggle={() => onToggle(p)}
+            onToggleGratuit={() => onToggleGratuit(p)}
+            onDelete={() => onDelete(p.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Formulaire vide ───────────────────────────────────────────────────────────
+
+type ViewMode = "liste" | "grille" | "compact";
+
+const VIEW_MODES: { key: ViewMode; icon: string; label: string }[] = [
+  { key: "liste",   icon: "≡",  label: "Liste"    },
+  { key: "grille",  icon: "⊞",  label: "Grille"   },
+  { key: "compact", icon: "≔",  label: "Compact"  },
+];
+
 // ── Carte grille ─────────────────────────────────────────────────────────────
 
 function DocCard({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }: {
@@ -686,73 +728,35 @@ function DocCard({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }
       onMouseEnter={(e) => { setHovered(true); const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = "0 6px 24px rgba(100,60,10,0.14)"; el.style.borderColor = "#d4c4a0"; }}
       onMouseLeave={(e) => { setHovered(false); const el = e.currentTarget as HTMLDivElement; el.style.boxShadow = ""; el.style.borderColor = "#e8dfc8"; }}
     >
-      {/* Cover */}
-      <div
-        style={{ position: "relative", cursor: "pointer", flexShrink: 0 }}
-        onClick={onPreview}
-      >
+      <div style={{ position: "relative", cursor: "pointer", flexShrink: 0 }} onClick={onPreview}>
         {pdf.cover_url ? (
           <img src={getMediaUrl(pdf.cover_url)} alt={pdf.title}
             style={{ width: "100%", aspectRatio: "2/3", objectFit: "cover", display: "block" }} />
         ) : (
-          <div style={{
-            width: "100%", aspectRatio: "2/3",
-            background: COVER_ACCENT[pdf.branche].bg,
-            borderLeft: `4px solid ${COVER_ACCENT[pdf.branche].line}`,
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center", gap: "0.4rem",
-          }}>
-            <span style={{ fontSize: "2.4rem", fontWeight: 800, color: COVER_ACCENT[pdf.branche].text, opacity: 0.55, lineHeight: 1 }}>
+          <div style={{ width: "100%", aspectRatio: "2/3", background: (COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE).bg, borderLeft: `4px solid ${(COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE).line}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.4rem" }}>
+            <span style={{ fontSize: "2.4rem", fontWeight: 800, color: (COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE).text, opacity: 0.55, lineHeight: 1 }}>
               {pdf.title.split(" ").filter((w) => /^[A-Za-zÀ-ö]/i.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "☰"}
             </span>
             {pdf.category && (
-              <span style={{
-                fontSize: "0.55rem", fontWeight: 700, letterSpacing: "0.14em",
-                textTransform: "uppercase", color: COVER_ACCENT[pdf.branche].text, opacity: 0.55,
-                textAlign: "center", padding: "0 8px",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%",
-              }}>
+              <span style={{ fontSize: "0.55rem", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: (COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE).text, opacity: 0.55, textAlign: "center", padding: "0 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "90%" }}>
                 {pdf.category}
               </span>
             )}
           </div>
         )}
 
-        {/* Overlay badges */}
-        <span style={{
-          position: "absolute", top: 7, right: 7,
-          fontSize: "0.60rem", fontWeight: 700,
-          color: pdf.is_active ? "#2e9460" : "#a0907a",
-          background: "rgba(255,255,255,0.90)",
-          border: `1px solid ${pdf.is_active ? "#2e946040" : "rgba(160,144,122,0.30)"}`,
-          padding: "0.06rem 0.38rem", borderRadius: 99,
-          backdropFilter: "blur(4px)",
-        }}>
+        <span style={{ position: "absolute", top: 7, right: 7, fontSize: "0.60rem", fontWeight: 700, color: pdf.is_active ? "#2e9460" : "#a0907a", background: "rgba(255,255,255,0.90)", border: `1px solid ${pdf.is_active ? "#2e946040" : "rgba(160,144,122,0.30)"}`, padding: "0.06rem 0.38rem", borderRadius: 99, backdropFilter: "blur(4px)" }}>
           {pdf.is_active ? "● Publié" : "○ Masqué"}
         </span>
 
         {pdf.is_gratuit && (
-          <span style={{
-            position: "absolute", bottom: 7, left: 7,
-            fontSize: "0.60rem", fontWeight: 700,
-            color: "#2e9460", background: "rgba(255,255,255,0.90)",
-            border: "1px solid rgba(46,148,96,0.35)",
-            padding: "0.06rem 0.38rem", borderRadius: 99,
-            backdropFilter: "blur(4px)",
-          }}>
+          <span style={{ position: "absolute", bottom: 7, left: 7, fontSize: "0.60rem", fontWeight: 700, color: "#2e9460", background: "rgba(255,255,255,0.90)", border: "1px solid rgba(46,148,96,0.35)", padding: "0.06rem 0.38rem", borderRadius: 99, backdropFilter: "blur(4px)" }}>
             ✓ GRATUIT
           </span>
         )}
 
-        {/* Hover overlay actions */}
         {hovered && (
-          <div style={{
-            position: "absolute", inset: 0,
-            background: "rgba(20,10,0,0.45)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            gap: "0.5rem",
-            backdropFilter: "blur(1px)",
-          }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(20,10,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", backdropFilter: "blur(1px)" }}>
             <button onClick={(e) => { e.stopPropagation(); onPreview(); }}
               style={{ background: "rgba(255,255,255,0.92)", border: "none", borderRadius: 6, padding: "0.35rem 0.60rem", cursor: "pointer", fontSize: "0.76rem", fontWeight: 700, color: "#3a2510" }}>
               Aperçu
@@ -765,20 +769,15 @@ function DocCard({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }
         )}
       </div>
 
-      {/* Corps */}
       <div style={{ padding: "0.65rem 0.70rem 0.55rem", flex: 1, display: "flex", flexDirection: "column", gap: "0.28rem" }}>
-        <div style={{
-          fontSize: "0.82rem", fontWeight: 700, color: "#2a1800", lineHeight: 1.3,
-          overflow: "hidden", display: "-webkit-box",
-          WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-        } as React.CSSProperties}>
+        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#2a1800", lineHeight: 1.3, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } as React.CSSProperties}>
           {pdf.title}
         </div>
 
         <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", alignItems: "center" }}>
           {pdf.category && (
             <span style={{ fontSize: "0.60rem", fontWeight: 700, color: "#8b6a3a", background: "rgba(201,162,39,0.10)", border: "1px solid rgba(201,162,39,0.22)", padding: "0.02rem 0.30rem", borderRadius: 99 }}>
-              {pdf.category}
+              {CAT_ICON[pdf.category]} {pdf.category}
             </span>
           )}
           <span style={{ fontSize: "0.60rem", fontWeight: 700, color: ACCESS_COLOR[pdf.access_level], background: `${ACCESS_COLOR[pdf.access_level]}10`, border: `1px solid ${ACCESS_COLOR[pdf.access_level]}28`, padding: "0.02rem 0.30rem", borderRadius: 99 }}>
@@ -793,23 +792,10 @@ function DocCard({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPreview }
         )}
       </div>
 
-      {/* Footer actions */}
-      <div style={{
-        padding: "0.40rem 0.60rem",
-        borderTop: "1px solid #f5ede0",
-        display: "flex", gap: "0.30rem", justifyContent: "flex-end", alignItems: "center",
-      }}>
+      <div style={{ padding: "0.40rem 0.60rem", borderTop: "1px solid #f5ede0", display: "flex", gap: "0.30rem", justifyContent: "flex-end", alignItems: "center" }}>
         {pdf.access_level !== "PUBLIC" && (
           <button onClick={onToggleGratuit}
-            title={pdf.is_gratuit ? "Retirer l'accès gratuit" : "Accès gratuit"}
-            style={{
-              fontSize: "0.62rem", fontWeight: 700,
-              color: pdf.is_gratuit ? "#2e9460" : "#c8b89a",
-              background: pdf.is_gratuit ? "rgba(46,148,96,0.10)" : "transparent",
-              border: `1px solid ${pdf.is_gratuit ? "rgba(46,148,96,0.28)" : "#e8dfc8"}`,
-              padding: "0.14rem 0.35rem", borderRadius: 99, cursor: "pointer",
-              flex: 1, textAlign: "left",
-            }}>
+            style={{ fontSize: "0.62rem", fontWeight: 700, color: pdf.is_gratuit ? "#2e9460" : "#c8b89a", background: pdf.is_gratuit ? "rgba(46,148,96,0.10)" : "transparent", border: `1px solid ${pdf.is_gratuit ? "rgba(46,148,96,0.28)" : "#e8dfc8"}`, padding: "0.14rem 0.35rem", borderRadius: 99, cursor: "pointer", flex: 1, textAlign: "left" }}>
             {pdf.is_gratuit ? "✓ Gratuit" : "Gratuit ?"}
           </button>
         )}
@@ -836,72 +822,35 @@ function DocCompact({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPrevie
   onDelete:        () => void;
   onPreview:       () => void;
 }) {
-  const { line } = COVER_ACCENT[pdf.branche];
+  const { line } = COVER_ACCENT[pdf.branche] ?? COVER_ACCENT.MEMBRE;
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "8px 1fr auto auto auto auto auto auto",
-      alignItems: "center", gap: "0.65rem",
-      padding: "0.38rem 0.75rem",
-      background: "#fff", borderRadius: 5,
-      border: "1px solid #efe7d5",
-      opacity: pdf.is_active ? 1 : 0.58,
-      transition: "background .12s",
-    }}
+    <div style={{ display: "grid", gridTemplateColumns: "8px 1fr auto auto auto auto auto auto", alignItems: "center", gap: "0.65rem", padding: "0.38rem 0.75rem", background: "#fff", borderRadius: 5, border: "1px solid #efe7d5", opacity: pdf.is_active ? 1 : 0.58, transition: "background .12s" }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#fdf8ef"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#fff"; }}
     >
-      {/* Barre couleur branche */}
       <span style={{ width: 3, height: 20, background: line, borderRadius: 2, display: "block" }} />
-
-      {/* Titre cliquable */}
-      <span
-        onClick={onPreview}
-        style={{
-          fontSize: "0.82rem", fontWeight: 600, color: "#2a1800",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          cursor: "pointer",
-        }}
-      >
+      <span onClick={onPreview} style={{ fontSize: "0.82rem", fontWeight: 600, color: "#2a1800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer" }}>
         {pdf.title}
       </span>
-
-      {/* Catégorie */}
       {pdf.category ? (
         <span style={{ fontSize: "0.63rem", fontWeight: 700, color: "#8b6a3a", background: "rgba(201,162,39,0.10)", border: "1px solid rgba(201,162,39,0.20)", padding: "0.04rem 0.38rem", borderRadius: 99, whiteSpace: "nowrap" }}>
-          {pdf.category}
+          {CAT_ICON[pdf.category]} {pdf.category}
         </span>
       ) : <span />}
-
-      {/* Accès */}
       <span style={{ fontSize: "0.63rem", fontWeight: 700, color: ACCESS_COLOR[pdf.access_level], background: `${ACCESS_COLOR[pdf.access_level]}10`, border: `1px solid ${ACCESS_COLOR[pdf.access_level]}28`, padding: "0.04rem 0.38rem", borderRadius: 99, whiteSpace: "nowrap" }}>
         {ACCESS_ICON[pdf.access_level]} {ACCESS_LABEL[pdf.access_level]}
       </span>
-
-      {/* Pages */}
       <span style={{ fontSize: "0.72rem", color: "#a0907a", whiteSpace: "nowrap" }}>
         {pdf.nb_pages !== null ? `☰ ${pdf.nb_pages}p` : ""}
       </span>
-
-      {/* Gratuit toggle */}
       {pdf.access_level !== "PUBLIC" ? (
-        <button onClick={onToggleGratuit} style={{
-          fontSize: "0.63rem", fontWeight: 700,
-          color: pdf.is_gratuit ? "#2e9460" : "#c8b89a",
-          background: pdf.is_gratuit ? "rgba(46,148,96,0.10)" : "transparent",
-          border: `1px solid ${pdf.is_gratuit ? "rgba(46,148,96,0.28)" : "#e8dfc8"}`,
-          padding: "0.04rem 0.38rem", borderRadius: 99, cursor: "pointer", whiteSpace: "nowrap",
-        }}>
+        <button onClick={onToggleGratuit} style={{ fontSize: "0.63rem", fontWeight: 700, color: pdf.is_gratuit ? "#2e9460" : "#c8b89a", background: pdf.is_gratuit ? "rgba(46,148,96,0.10)" : "transparent", border: `1px solid ${pdf.is_gratuit ? "rgba(46,148,96,0.28)" : "#e8dfc8"}`, padding: "0.04rem 0.38rem", borderRadius: 99, cursor: "pointer", whiteSpace: "nowrap" }}>
           {pdf.is_gratuit ? "✓ Gratuit" : "Gratuit ?"}
         </button>
       ) : <span />}
-
-      {/* Statut */}
       <span style={{ fontSize: "0.63rem", fontWeight: 700, color: pdf.is_active ? "#2e9460" : "#a0907a", whiteSpace: "nowrap" }}>
         {pdf.is_active ? "● Publié" : "○ Masqué"}
       </span>
-
-      {/* Actions */}
       <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
         <button onClick={onEdit} title="Modifier" style={{ width: 24, height: 24, borderRadius: 4, background: "rgba(139,106,58,0.08)", color: "#8b6a3a", border: "1px solid #e8dfc8", cursor: "pointer", fontSize: "0.72rem", display: "flex", alignItems: "center", justifyContent: "center" }}>✎</button>
         <button onClick={onToggle} title={pdf.is_active ? "Dépublier" : "Publier"} style={{ width: 24, height: 24, borderRadius: 4, background: pdf.is_active ? "rgba(201,162,39,0.08)" : "rgba(46,148,96,0.08)", color: pdf.is_active ? "#8b6a1a" : "#2b8a5e", border: `1px solid ${pdf.is_active ? "rgba(201,162,39,0.25)" : "rgba(46,148,96,0.25)"}`, cursor: "pointer", fontSize: "0.78rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -913,24 +862,7 @@ function DocCompact({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPrevie
   );
 }
 
-// ── Formulaire vide ───────────────────────────────────────────────────────────
-
-const EMPTY_FORM = {
-  title: "", description: "", category: "", branche: "MEMBRE" as Branche,
-  access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_key: "", cover_url: "",
-  nb_pages: null as number | null, size_mo: null as number | null,
-  is_active: true, is_gratuit: false, linked_quiz_id: null as number | null,
-};
-
 // ── Page principale ───────────────────────────────────────────────────────────
-
-type ViewMode = "liste" | "grille" | "compact";
-
-const VIEW_MODES: { key: ViewMode; icon: string; label: string }[] = [
-  { key: "liste",   icon: "≡",  label: "Liste"    },
-  { key: "grille",  icon: "⊞",  label: "Grille"   },
-  { key: "compact", icon: "≔",  label: "Compact"  },
-];
 
 export default function BibliothequePage() {
   const [items,        setItems]        = useState<LibraryPdf[]>([]);
@@ -941,17 +873,15 @@ export default function BibliothequePage() {
   const [info,         setInfo]         = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterAccess, setFilterAccess] = useState("ALL");
+  const [filterCat,    setFilterCat]    = useState("ALL");
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [viewMode,     setViewMode]     = useState<ViewMode>(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("library_view") as ViewMode) ?? "liste";
-    }
-    return "liste";
+    try { return (localStorage.getItem("library_view") as ViewMode) ?? "liste"; } catch { return "liste"; }
   });
 
   const changeView = (mode: ViewMode) => {
     setViewMode(mode);
-    localStorage.setItem("library_view", mode);
+    try { localStorage.setItem("library_view", mode); } catch {}
   };
 
   const load = useCallback(async () => {
@@ -987,6 +917,7 @@ export default function BibliothequePage() {
 
   const filtered = items.filter((p) =>
     (filterAccess === "ALL" || p.access_level === filterAccess) &&
+    (filterCat    === "ALL" || p.category === filterCat) &&
     (!filterSearch || p.title.toLowerCase().includes(filterSearch.toLowerCase()) ||
      p.category.toLowerCase().includes(filterSearch.toLowerCase()) ||
      p.description.toLowerCase().includes(filterSearch.toLowerCase()))
@@ -996,7 +927,7 @@ export default function BibliothequePage() {
 
   const initialForEdit = editTarget ? {
     title: editTarget.title, description: editTarget.description,
-    category: editTarget.category, branche: editTarget.branche,
+    category: editTarget.category as LibraryCategory, branche: editTarget.branche,
     access_level: editTarget.access_level, bucket_key: editTarget.bucket_key,
     cover_key: editTarget.cover_key ?? "",
     cover_url: editTarget.cover_url ?? "",
@@ -1024,14 +955,21 @@ export default function BibliothequePage() {
 
       {/* ── Barre filtres + action ── */}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", marginBottom: "1.4rem", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ flex: 1, minWidth: 180 }}>
           <Input
             label="Rechercher" value={filterSearch}
             placeholder="Titre, catégorie, description…"
             onChange={(e) => setFilterSearch(e.target.value)}
           />
         </div>
-        <div style={{ width: 180 }}>
+        <div style={{ width: 200 }}>
+          <Select label="Catégorie" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+            <option value="ALL">Toutes les catégories</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{CAT_ICON[c]} {c}</option>)}
+            <option value="">Sans catégorie</option>
+          </Select>
+        </div>
+        <div style={{ width: 160 }}>
           <Select label="Accès" value={filterAccess} onChange={(e) => setFilterAccess(e.target.value)}>
             <option value="ALL">Tous les accès</option>
             <option value="PUBLIC">🌐 Public</option>
@@ -1067,12 +1005,12 @@ export default function BibliothequePage() {
       </div>
 
       {/* ── Sections par branche ── */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
         {BRANCH_COLS.map((col) => {
-          const colItems = filtered.filter((p) => p.branche === col.key);
+          const branchItems = filtered.filter((p) => p.branche === col.key);
           return (
             <section key={col.key}>
-              {/* En-tête de section */}
+              {/* En-tête branche */}
               <div style={{
                 display: "flex", alignItems: "center", gap: "0.7rem",
                 padding: "0.6rem 1rem",
@@ -1080,69 +1018,97 @@ export default function BibliothequePage() {
                 border: `1px solid ${col.color}28`,
                 borderLeft: `4px solid ${col.color}`,
                 borderRadius: "var(--radius)",
-                marginBottom: "0.75rem",
+                marginBottom: "1rem",
               }}>
                 <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>{col.emoji}</span>
                 <span style={{ fontSize: "0.90rem", fontWeight: 800, color: col.color, flex: 1 }}>
                   {col.label}
                 </span>
-                <span style={{
-                  fontSize: "0.70rem", fontWeight: 700,
-                  background: `${col.color}1a`, color: col.color,
-                  border: `1px solid ${col.color}38`,
-                  padding: "0.10rem 0.52rem", borderRadius: 99,
-                }}>
-                  {colItems.length} document{colItems.length !== 1 ? "s" : ""}
+                <span style={{ fontSize: "0.70rem", fontWeight: 700, background: `${col.color}1a`, color: col.color, border: `1px solid ${col.color}38`, padding: "0.10rem 0.52rem", borderRadius: 99 }}>
+                  {branchItems.length} document{branchItems.length !== 1 ? "s" : ""}
                 </span>
               </div>
 
               {/* Contenu */}
-              {colItems.length === 0 ? (
-                <div style={{
-                  padding: "1.4rem", textAlign: "center",
-                  color: "var(--muted)", fontSize: "0.82rem",
-                  border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)",
-                }}>
+              {branchItems.length === 0 ? (
+                <div style={{ padding: "1.4rem", textAlign: "center", color: "var(--muted)", fontSize: "0.82rem", border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)" }}>
                   Aucun document dans cette section.
                 </div>
               ) : viewMode === "grille" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: "0.75rem" }}>
-                  {colItems.map((p) => (
-                    <DocCard
-                      key={p.id} pdf={p}
-                      onPreview={() => setPreview(p)}
-                      onEdit={() => { setEditTarget(p); setShowForm(true); }}
-                      onToggle={() => toggleActive(p)}
-                      onToggleGratuit={() => toggleGratuit(p)}
-                      onDelete={() => setDeleteTarget(p.id)}
-                    />
-                  ))}
+                /* Mode grille : groupes catégorie (sans DnD) */
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {[...CATEGORIES, "" as LibraryCategory].map((cat) => {
+                    const catItems = branchItems.filter((p) => p.category === cat);
+                    if (catItems.length === 0) return null;
+                    return (
+                      <div key={cat || "__none__"}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.55rem", paddingBottom: "0.30rem", borderBottom: "1px solid #f0e8d4" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#c9a227" }}>{CAT_ICON[cat] || "○"}</span>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#8b6a3a" }}>{cat || "Sans catégorie"}</span>
+                          <span style={{ fontSize: "0.63rem", color: "#a0907a" }}>{catItems.length} livre{catItems.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: "0.75rem" }}>
+                          {catItems.map((p) => (
+                            <DocCard key={p.id} pdf={p}
+                              onPreview={() => setPreview(p)}
+                              onEdit={() => { setEditTarget(p); setShowForm(true); }}
+                              onToggle={() => toggleActive(p)}
+                              onToggleGratuit={() => toggleGratuit(p)}
+                              onDelete={() => setDeleteTarget(p.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : viewMode === "compact" ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.22rem" }}>
-                  {colItems.map((p) => (
-                    <DocCompact
-                      key={p.id} pdf={p}
-                      onPreview={() => setPreview(p)}
-                      onEdit={() => { setEditTarget(p); setShowForm(true); }}
-                      onToggle={() => toggleActive(p)}
-                      onToggleGratuit={() => toggleGratuit(p)}
-                      onDelete={() => setDeleteTarget(p.id)}
-                    />
-                  ))}
+                /* Mode compact : groupes catégorie (sans DnD) */
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                  {[...CATEGORIES, "" as LibraryCategory].map((cat) => {
+                    const catItems = branchItems.filter((p) => p.category === cat);
+                    if (catItems.length === 0) return null;
+                    return (
+                      <div key={cat || "__none__"}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem", paddingBottom: "0.25rem", borderBottom: "1px solid #f0e8d4" }}>
+                          <span style={{ fontSize: "0.75rem", color: "#c9a227" }}>{CAT_ICON[cat] || "○"}</span>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#8b6a3a" }}>{cat || "Sans catégorie"}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.22rem" }}>
+                          {catItems.map((p) => (
+                            <DocCompact key={p.id} pdf={p}
+                              onPreview={() => setPreview(p)}
+                              onEdit={() => { setEditTarget(p); setShowForm(true); }}
+                              onToggle={() => toggleActive(p)}
+                              onToggleGratuit={() => toggleGratuit(p)}
+                              onDelete={() => setDeleteTarget(p.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {colItems.map((p) => (
-                    <DocRow
-                      key={p.id} pdf={p}
-                      onPreview={() => setPreview(p)}
-                      onEdit={() => { setEditTarget(p); setShowForm(true); }}
-                      onToggle={() => toggleActive(p)}
-                      onToggleGratuit={() => toggleGratuit(p)}
-                      onDelete={() => setDeleteTarget(p.id)}
-                    />
-                  ))}
+                /* Mode liste : groupes catégorie avec drag-and-drop */
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {[...CATEGORIES, "" as LibraryCategory].map((cat) => {
+                    const catItems = branchItems.filter((p) => p.category === cat);
+                    if (catItems.length === 0) return null;
+                    return (
+                      <CategoryGroup
+                        key={cat || "__none__"}
+                        category={cat}
+                        items={catItems}
+                        setItems={setItems}
+                        onPreview={(p) => setPreview(p)}
+                        onEdit={(p) => { setEditTarget(p); setShowForm(true); }}
+                        onToggle={toggleActive}
+                        onToggleGratuit={toggleGratuit}
+                        onDelete={(id) => setDeleteTarget(id)}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </section>

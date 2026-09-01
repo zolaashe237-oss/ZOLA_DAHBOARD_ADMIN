@@ -619,11 +619,18 @@ export interface AudioItem {
   updated_at: string;
 }
 
+export type LibraryCategory =
+  | "Spiritualité"
+  | "Développement personnel"
+  | "Entrepreneuriat"
+  | "Création de contenu"
+  | "";
+
 export interface LibraryPdf {
   id: number;
   title: string;
   description: string;
-  category: string;
+  category: LibraryCategory;
   branche: Branche;
   access_level: PdfAccess;
   bucket_key: string;
@@ -632,6 +639,7 @@ export interface LibraryPdf {
   cover_url: string | null;
   nb_pages: number | null;
   size_mo: number | null;
+  order: number;
   is_active: boolean;
   /** F4 - quiz associé à ce document, s'il existe. */
   linked_quiz_id?: number | null;
