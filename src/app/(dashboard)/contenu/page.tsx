@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { asList, formationApi } from "@/lib/endpoints";
 import type { Branche, Formation, FormationAcces, FormationNiveau, FormationStatus } from "@/lib/types";
+import { getMediaUrl } from "@/lib/api";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 import { FormationCard } from "@/components/FormationCard";
@@ -279,7 +280,7 @@ function DraggableBranchList({
 
             {/* Miniature */}
             {cover && (
-              <img src={cover} alt="" style={{ width: 38, height: 38, objectFit: "cover", flexShrink: 0, borderRadius: 3 }} />
+              <img src={getMediaUrl(cover)} alt="" style={{ width: 38, height: 38, objectFit: "cover", flexShrink: 0, borderRadius: 3 }} />
             )}
 
             {/* Titre + statut */}
@@ -364,7 +365,7 @@ function FormationsTable({
                 <td style={{ color: colColor, fontWeight: 700, fontSize: "0.75rem" }}>{idx + 1}</td>
                 <td>
                   {f.cover_url && (
-                    <img src={f.cover_url} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 3, display: "block" }} />
+                    <img src={getMediaUrl(f.cover_url)} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 3, display: "block" }} />
                   )}
                 </td>
                 <td style={{ fontWeight: 600, fontSize: "0.86rem", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
