@@ -184,6 +184,152 @@ function CoverPicker({ previewUrl, onFile }: {
   );
 }
 
+// ── Liste draggable par branche ───────────────────────────────────────────────
+
+function statusLabel(s: FormationStatus) {
+  if (s === "PUBLISHED") return { text: "Publié",    color: "var(--ok)" };
+  if (s === "SCHEDULED") return { text: "Programmé", color: "var(--warn)" };
+  return                        { text: "Brouillon", color: "var(--muted)" };
+}
+
+function DraggableBranchList({
+  items,
+  colColor,
+  onReorder,
+  onPublish,
+  onUnpublish,
+  onRemove,
+}: {
+  items: Formation[];
+  colColor: string;
+  onReorder: (next: Formation[]) => void;
+  onPublish: (f: Formation) => void;
+  onUnpublish: (f: Formation) => void;
+  onRemove: (f: Formation) => void;
+}) {
+  const [dragId,    setDragId]    = useState<number | null>(null);
+  const [overId,    setOverId]    = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: number) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== dragId) setOverId(id);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropId: number) => {
+    e.preventDefault();
+    if (dragId === null || dragId === dropId) { reset(); return; }
+    const fromIdx = items.findIndex((f) => f.id === dragId);
+    const toIdx   = items.findIndex((f) => f.id === dropId);
+    if (fromIdx === -1 || toIdx === -1) { reset(); return; }
+    const next = [...items];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    onReorder(next);
+    reset();
+  };
+
+  const reset = () => { setDragId(null); setOverId(null); };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+      {items.map((f, idx) => {
+        const st    = statusLabel(f.status);
+        const cover = f.cover_url || undefined;
+        const isDragging = f.id === dragId;
+        const isOver     = f.id === overId;
+        return (
+          <div
+            key={f.id}
+            draggable
+            onDragStart={(e) => handleDragStart(e, f.id)}
+            onDragOver={(e)  => handleDragOver(e, f.id)}
+            onDrop={(e)      => handleDrop(e, f.id)}
+            onDragEnd={reset}
+            style={{
+              display: "flex", alignItems: "center", gap: "0.65rem",
+              padding: "0.6rem 0.75rem",
+              background: isDragging ? "var(--bg-2)" : "var(--bg-1)",
+              border: `1px solid ${isOver ? colColor : "var(--line-soft)"}`,
+              borderLeft: `3px solid ${isOver ? colColor : isDragging ? "var(--muted)" : "transparent"}`,
+              borderRadius: "var(--radius-sm)",
+              opacity: isDragging ? 0.45 : 1,
+              cursor: "grab",
+              transition: "border-color .1s, opacity .1s",
+              userSelect: "none",
+            }}
+          >
+            {/* Drag handle */}
+            <span style={{ color: "var(--muted)", fontSize: "1.1rem", lineHeight: 1, flexShrink: 0 }}>⠿</span>
+
+            {/* Order badge */}
+            <span style={{
+              fontSize: "0.64rem", fontWeight: 800, minWidth: "1.5rem",
+              textAlign: "center", padding: "0.1rem 0.3rem", borderRadius: 99,
+              color: colColor, background: `${colColor}18`, border: `1px solid ${colColor}30`,
+              flexShrink: 0,
+            }}>
+              {idx + 1}
+            </span>
+
+            {/* Miniature */}
+            {cover && (
+              <img src={cover} alt="" style={{ width: 38, height: 38, objectFit: "cover", flexShrink: 0, borderRadius: 3 }} />
+            )}
+
+            {/* Titre + statut */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "0.86rem", color: "var(--cream)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {f.title}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.1rem" }}>
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, color: st.color }}>{st.text}</span>
+                <span style={{ fontSize: "0.65rem", color: "var(--muted)" }}>·</span>
+                <span style={{ fontSize: "0.68rem", color: "var(--muted)" }}>{f.module_count} module{f.module_count !== 1 ? "s" : ""}</span>
+                <span style={{ fontSize: "0.65rem", color: "var(--muted)" }}>·</span>
+                <span style={{ fontSize: "0.68rem", color: "var(--muted)" }}>{f.category}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <a
+                href={`/contenu/${f.id}`}
+                style={{
+                  fontSize: "0.70rem", padding: "0.22rem 0.6rem",
+                  border: "1px solid var(--line-soft)", borderRadius: "var(--radius-sm)",
+                  color: "var(--muted)", background: "var(--bg-2)",
+                  textDecoration: "none", cursor: "pointer",
+                  display: "inline-flex", alignItems: "center",
+                }}
+              >
+                ✎ Éditer
+              </a>
+              {f.status === "PUBLISHED" ? (
+                <Button variant="ghost" style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onUnpublish(f)}>
+                  Dépublier
+                </Button>
+              ) : (
+                <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onPublish(f)}>
+                  Publier
+                </Button>
+              )}
+              <Button variant="danger" style={{ fontSize: "0.70rem", padding: "0.22rem 0.45rem" }} onClick={() => onRemove(f)}>
+                ✕
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function ContenuPage() {
@@ -200,6 +346,7 @@ export default function ContenuPage() {
   const [removeTarget, setRemoveTarget] = useState<Formation | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCat,    setFilterCat]    = useState("");
+  const [reordering,   setReordering]   = useState(false);
 
   // Libérer l'URL objet quand on change d'image ou qu'on ferme le formulaire
   const setCover = (file: File, url: string) => {
@@ -271,6 +418,29 @@ export default function ContenuPage() {
     catch (e) { setError(errorMessage(e)); }
   };
 
+  const handleReorder = async (branche: string, next: Formation[]) => {
+    // Mise à jour optimiste locale
+    setItems((prev) => {
+      const others = branche === "PUBLIC"
+        ? prev.filter((f) => !f.is_public)
+        : prev.filter((f) => {
+            if (f.is_public) return true;
+            const b = f.branche === "GENERALE" ? "MEMBRE" : (f.branche ?? "MEMBRE");
+            return b !== branche;
+          });
+      return [...others, ...next];
+    });
+    setReordering(true);
+    try {
+      await formationApi.reorder(next.map((f, i) => ({ id: f.id, order: i })));
+    } catch (e) {
+      setError(errorMessage(e));
+      load(); // rollback
+    } finally {
+      setReordering(false);
+    }
+  };
+
   const filtered = items.filter((f) => {
     if (filterStatus && f.status !== filterStatus) return false;
     if (filterCat    && f.category !== filterCat)  return false;
@@ -294,6 +464,12 @@ export default function ContenuPage() {
 
       <Alert>{error}</Alert>
       {info && <Alert kind="success">{info}</Alert>}
+      {reordering && (
+        <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "2px solid var(--muted)", borderTopColor: "transparent", animation: "spin 0.7s linear infinite" }} />
+          Sauvegarde de l'ordre…
+        </div>
+      )}
 
       {/* ── Barre filtres + action ── */}
       <div style={{
@@ -459,6 +635,7 @@ export default function ContenuPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           {BRANCH_COLS.map((col) => {
             const colItems = filtered.filter((f) => {
+              if (f.is_public) return false;
               const b = f.branche === "GENERALE" ? "MEMBRE" : (f.branche ?? "MEMBRE");
               return b === col.key;
             });
@@ -488,7 +665,7 @@ export default function ContenuPage() {
                   </span>
                 </div>
 
-                {/* ── Grille de cartes ── */}
+                {/* ── Liste triable ── */}
                 {colItems.length === 0 ? (
                   <div style={{
                     padding: "1.6rem", textAlign: "center",
@@ -498,25 +675,73 @@ export default function ContenuPage() {
                     Aucune formation dans cette section.
                   </div>
                 ) : (
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(295px, 1fr))",
-                    gap: "1rem",
-                  }}>
-                    {colItems.map((f) => (
-                      <FormationCard
-                        key={f.id}
-                        formation={f}
-                        onPublish={publish}
-                        onUnpublish={unpublish}
-                        onRemove={setRemoveTarget}
-                      />
-                    ))}
-                  </div>
+                  <DraggableBranchList
+                    items={colItems}
+                    colColor={col.color}
+                    onReorder={(next) => handleReorder(col.key, next)}
+                    onPublish={publish}
+                    onUnpublish={unpublish}
+                    onRemove={setRemoveTarget}
+                  />
                 )}
               </section>
             );
           })}
+
+          {/* ── Section formations publiques ── */}
+          {(() => {
+            const publicItems = filtered.filter((f) => f.is_public);
+            const publicColor = "#2e9460";
+            return (
+              <section>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "0.7rem",
+                  padding: "0.6rem 1rem",
+                  background: `${publicColor}0e`,
+                  border: `1px solid ${publicColor}28`,
+                  borderLeft: `4px solid ${publicColor}`,
+                  borderRadius: "var(--radius)",
+                  marginBottom: "0.9rem",
+                }}>
+                  <span style={{ fontSize: "1.15rem", lineHeight: 1 }}>🌐</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: "0.90rem", fontWeight: 800, color: publicColor, letterSpacing: "0.02em" }}>
+                      Formations publiques
+                    </span>
+                    <div style={{ fontSize: "0.70rem", color: "var(--muted)", marginTop: "0.1rem" }}>
+                      Accessibles à tous — aucun abonnement requis, pas de prérequis séquentiel
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: "0.70rem", fontWeight: 700,
+                    background: `${publicColor}1a`, color: publicColor,
+                    border: `1px solid ${publicColor}38`,
+                    padding: "0.10rem 0.52rem", borderRadius: 99,
+                  }}>
+                    {publicItems.length} formation{publicItems.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                {publicItems.length === 0 ? (
+                  <div style={{
+                    padding: "1.6rem", textAlign: "center",
+                    color: "var(--muted)", fontSize: "0.82rem",
+                    border: "1px dashed var(--line-soft)", borderRadius: "var(--radius)",
+                  }}>
+                    Aucune formation publique. Créez une formation avec l'accès "Public".
+                  </div>
+                ) : (
+                  <DraggableBranchList
+                    items={publicItems}
+                    colColor={publicColor}
+                    onReorder={(next) => handleReorder("PUBLIC", next)}
+                    onPublish={publish}
+                    onUnpublish={unpublish}
+                    onRemove={setRemoveTarget}
+                  />
+                )}
+              </section>
+            );
+          })()}
         </div>
       )}
 

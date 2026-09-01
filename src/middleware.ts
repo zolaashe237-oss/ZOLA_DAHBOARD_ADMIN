@@ -24,7 +24,7 @@ function buildCsp(nonce: string): string {
     // unsafe-inline nécessaire pour les styles inline du dashboard
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' https://fonts.gstatic.com`,
-    `img-src 'self' data: blob:`,
+    `img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com ${apiOrigin}`,
     [
       `connect-src 'self'`,
       apiOrigin,

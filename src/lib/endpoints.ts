@@ -125,6 +125,8 @@ export const formationApi = {
   remove: (id: number) => api.delete(`/admin/formations/${id}/`),
   hardDelete: (id: number) => api.delete(`/admin/formations/${id}/hard-delete/`),
   publish: (id: number) => api.post<Formation>(`/admin/formations/${id}/publish/`),
+  reorder: (items: { id: number; order: number }[]) =>
+    api.post("/admin/formations/reorder/", { items }),
   uploadCover: (id: number, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -547,6 +549,12 @@ export const libraryApi = {
       "/admin/content/upload/",
       fd,
     );
+  },
+  uploadCover: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("content_type", "IMAGE");
+    return api.post<{ bucket_key: string }>("/admin/content/upload/", fd);
   },
 };
 

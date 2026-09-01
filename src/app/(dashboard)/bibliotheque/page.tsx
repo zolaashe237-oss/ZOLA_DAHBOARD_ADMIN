@@ -332,14 +332,19 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   onSaved:  () => void;
   onError:  (s: string) => void;
 }) {
-  const [form,       setForm]       = useState(initial);
-  const [uploading,  setUploading]  = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [dragOver,   setDragOver]   = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [form,           setForm]           = useState(initial);
+  const [uploading,      setUploading]      = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [saving,         setSaving]         = useState(false);
+  const [dragOver,       setDragOver]       = useState(false);
+  const [previewUrl,     setPreviewUrl]     = useState<string | null>(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(
+    initial.cover_url || null
+  );
   const [quizOptions, setQuizOptions] = useState<QuizItem[]>([]);
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef      = useRef<HTMLInputElement>(null);
+  const coverFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     quizApi.listAll()
@@ -350,6 +355,24 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreviewUrl && coverPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(coverPreviewUrl);
+    };
+  }, [coverPreviewUrl]);
+
+  const handleCoverUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) { onError("Seules les images sont acceptées (JPG, PNG, WebP…)."); return; }
+    const objectUrl = URL.createObjectURL(file);
+    setCoverPreviewUrl(objectUrl);
+    setCoverUploading(true);
+    try {
+      const { data } = await libraryApi.uploadCover(file);
+      setForm((prev) => ({ ...prev, cover_key: data.bucket_key }));
+    } catch (e) { onError(errorMessage(e)); }
+    finally { setCoverUploading(false); }
+  };
 
   const handleUpload = async (file: File) => {
     if (!file.type.includes("pdf")) { onError("Seuls les fichiers PDF sont acceptés."); return; }
@@ -479,6 +502,74 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }} />
         </>
       )}
+
+      {/* ── Couverture image ── */}
+      <div style={{ marginBottom: "1rem" }}>
+        <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.45rem" }}>
+          Image de couverture
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+          {/* Aperçu */}
+          <div style={{
+            width: 72, height: 99, flexShrink: 0, borderRadius: 5,
+            border: "1px solid #e8dfc8",
+            background: coverPreviewUrl ? "transparent" : "#f7f2e8",
+            overflow: "hidden", position: "relative",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {coverPreviewUrl ? (
+              <img src={coverPreviewUrl} alt="Couverture" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            ) : (
+              <span style={{ fontSize: "1.6rem", opacity: 0.25 }}>🖼</span>
+            )}
+            {coverUploading && (
+              <div style={{
+                position: "absolute", inset: 0,
+                background: "rgba(255,255,255,0.80)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.70rem", color: "#8b6a3a",
+              }}>
+                ↑…
+              </div>
+            )}
+          </div>
+          {/* Actions */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.40rem" }}>
+            <button
+              type="button"
+              onClick={() => coverFileRef.current?.click()}
+              style={{
+                fontSize: "0.74rem", fontWeight: 600,
+                color: "#8b6a3a", background: "rgba(139,106,58,0.08)",
+                border: "1px solid #e8dfc8", borderRadius: 5,
+                padding: "0.28rem 0.70rem", cursor: "pointer",
+              }}
+            >
+              {coverPreviewUrl ? "↺ Changer" : "+ Ajouter une image"}
+            </button>
+            {coverPreviewUrl && (
+              <button
+                type="button"
+                onClick={() => { setCoverPreviewUrl(null); setForm((prev) => ({ ...prev, cover_key: "", cover_url: "" })); }}
+                style={{
+                  fontSize: "0.72rem", color: "#b53a2a",
+                  background: "transparent", border: "none",
+                  padding: 0, cursor: "pointer", textAlign: "left",
+                }}
+              >
+                ✕ Supprimer
+              </button>
+            )}
+            <span style={{ fontSize: "0.68rem", color: "var(--muted)" }}>
+              JPG, PNG, WebP — max 5 Mo
+            </span>
+          </div>
+        </div>
+        <input
+          type="file" accept="image/*" ref={coverFileRef} style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCoverUpload(f); e.target.value = ""; }}
+        />
+      </div>
 
       <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0 0.85rem" }}>
@@ -792,7 +883,7 @@ function DocCompact({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPrevie
 
 const EMPTY_FORM = {
   title: "", description: "", category: "", branche: "MEMBRE" as Branche,
-  access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_url: "",
+  access_level: "MEMBRE" as PdfAccess, bucket_key: "", cover_key: "", cover_url: "",
   nb_pages: null as number | null, size_mo: null as number | null,
   is_active: true, is_gratuit: false, linked_quiz_id: null as number | null,
 };
@@ -873,6 +964,7 @@ export default function BibliothequePage() {
     title: editTarget.title, description: editTarget.description,
     category: editTarget.category, branche: editTarget.branche,
     access_level: editTarget.access_level, bucket_key: editTarget.bucket_key,
+    cover_key: editTarget.cover_key ?? "",
     cover_url: editTarget.cover_url ?? "",
     nb_pages: editTarget.nb_pages, size_mo: editTarget.size_mo,
     is_active: editTarget.is_active,

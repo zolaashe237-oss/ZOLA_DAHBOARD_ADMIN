@@ -628,6 +628,7 @@ export interface LibraryPdf {
   access_level: PdfAccess;
   bucket_key: string;
   file_url: string | null;
+  cover_key?: string;
   cover_url: string | null;
   nb_pages: number | null;
   size_mo: number | null;
