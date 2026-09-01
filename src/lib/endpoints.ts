@@ -556,6 +556,8 @@ export const libraryApi = {
     fd.append("content_type", "IMAGE");
     return api.post<{ bucket_key: string }>("/admin/content/upload/", fd);
   },
+  pdfFirstPageCover: (bucket_key: string) =>
+    api.post<{ bucket_key: string; preview_url: string }>("/admin/content/pdf-cover/", { bucket_key }),
 };
 
 export const socialLinksApi = {

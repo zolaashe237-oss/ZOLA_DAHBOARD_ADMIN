@@ -332,12 +332,13 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   onSaved:  () => void;
   onError:  (s: string) => void;
 }) {
-  const [form,           setForm]           = useState(initial);
-  const [uploading,      setUploading]      = useState(false);
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [saving,         setSaving]         = useState(false);
-  const [dragOver,       setDragOver]       = useState(false);
-  const [previewUrl,     setPreviewUrl]     = useState<string | null>(null);
+  const [form,            setForm]            = useState(initial);
+  const [uploading,       setUploading]       = useState(false);
+  const [coverUploading,  setCoverUploading]  = useState(false);
+  const [extractingCover, setExtractingCover] = useState(false);
+  const [saving,          setSaving]          = useState(false);
+  const [dragOver,        setDragOver]        = useState(false);
+  const [previewUrl,      setPreviewUrl]      = useState<string | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(
     initial.cover_url || null
   );
@@ -374,6 +375,18 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
     finally { setCoverUploading(false); }
   };
 
+  const handleExtractFirstPage = async () => {
+    if (!form.bucket_key) return;
+    setExtractingCover(true);
+    try {
+      const { data } = await libraryApi.pdfFirstPageCover(form.bucket_key);
+      if (coverPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(coverPreviewUrl);
+      setCoverPreviewUrl(data.preview_url);
+      setForm((prev) => ({ ...prev, cover_key: data.bucket_key, cover_url: "" }));
+    } catch (e) { onError(errorMessage(e)); }
+    finally { setExtractingCover(false); }
+  };
+
   const handleUpload = async (file: File) => {
     if (!file.type.includes("pdf")) { onError("Seuls les fichiers PDF sont acceptés."); return; }
     // Aperçu immédiat avant même la fin de l'upload
@@ -398,8 +411,11 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      if (editing) await libraryApi.update(editing, form);
-      else         await libraryApi.create(form);
+      // Quand cover_key est défini, ne pas renvoyer cover_url (URL résolue temporaire)
+      const payload = { ...form };
+      if (payload.cover_key) payload.cover_url = "";
+      if (editing) await libraryApi.update(editing, payload);
+      else         await libraryApi.create(payload);
       onSaved();
     } catch (e) { onError(errorMessage(e)); }
     finally { setSaving(false); }
@@ -547,6 +563,24 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
             >
               {coverPreviewUrl ? "↺ Changer" : "+ Ajouter une image"}
             </button>
+            {/* Proposition automatique : première page du PDF */}
+            {form.bucket_key && (
+              <button
+                type="button"
+                onClick={handleExtractFirstPage}
+                disabled={extractingCover}
+                style={{
+                  fontSize: "0.74rem", fontWeight: 600,
+                  color: extractingCover ? "#a0907a" : "#2b6cb0",
+                  background: extractingCover ? "rgba(160,144,122,0.06)" : "rgba(43,108,176,0.06)",
+                  border: `1px solid ${extractingCover ? "#e8dfc8" : "rgba(43,108,176,0.22)"}`,
+                  borderRadius: 5, padding: "0.28rem 0.70rem",
+                  cursor: extractingCover ? "wait" : "pointer",
+                }}
+              >
+                {extractingCover ? "Extraction…" : "☰ Utiliser la page 1"}
+              </button>
+            )}
             {coverPreviewUrl && (
               <button
                 type="button"

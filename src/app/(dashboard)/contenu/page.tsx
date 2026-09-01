@@ -330,6 +330,79 @@ function DraggableBranchList({
   );
 }
 
+// ── Vue tableau ──────────────────────────────────────────────────────────────
+
+function FormationsTable({
+  items, colColor, onPublish, onUnpublish, onRemove,
+}: {
+  items: Formation[];
+  colColor: string;
+  onPublish: (f: Formation) => void;
+  onUnpublish: (f: Formation) => void;
+  onRemove: (f: Formation) => void;
+}) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="tbl" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ width: 36 }}>#</th>
+            <th style={{ width: 44 }}></th>
+            <th>Titre</th>
+            <th>Catégorie</th>
+            <th>Statut</th>
+            <th>Modules</th>
+            <th>Créée le</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((f, idx) => {
+            const st = statusLabel(f.status);
+            return (
+              <tr key={f.id}>
+                <td style={{ color: colColor, fontWeight: 700, fontSize: "0.75rem" }}>{idx + 1}</td>
+                <td>
+                  {f.cover_url && (
+                    <img src={f.cover_url} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 3, display: "block" }} />
+                  )}
+                </td>
+                <td style={{ fontWeight: 600, fontSize: "0.86rem", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.title}
+                </td>
+                <td style={{ fontSize: "0.78rem", color: "var(--muted)" }}>{f.category}</td>
+                <td>
+                  <span style={{ fontSize: "0.72rem", fontWeight: 700, color: st.color }}>{st.text}</span>
+                </td>
+                <td style={{ fontSize: "0.78rem", color: "var(--muted)", textAlign: "center" }}>{f.module_count}</td>
+                <td style={{ fontSize: "0.74rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
+                  {new Date(f.created_at).toLocaleDateString("fr-FR")}
+                </td>
+                <td>
+                  <div style={{ display: "flex", gap: "0.3rem", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
+                    <a href={`/contenu/${f.id}`} style={{
+                      fontSize: "0.70rem", padding: "0.22rem 0.6rem",
+                      border: "1px solid var(--line-soft)", borderRadius: "var(--radius-sm)",
+                      color: "var(--muted)", background: "var(--bg-2)", textDecoration: "none",
+                      display: "inline-flex", alignItems: "center",
+                    }}>✎ Éditer</a>
+                    {f.status === "PUBLISHED" ? (
+                      <Button variant="ghost" style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onUnpublish(f)}>Dépublier</Button>
+                    ) : (
+                      <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onPublish(f)}>Publier</Button>
+                    )}
+                    <Button variant="danger" style={{ fontSize: "0.70rem", padding: "0.22rem 0.45rem" }} onClick={() => onRemove(f)}>✕</Button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function ContenuPage() {
@@ -347,6 +420,7 @@ export default function ContenuPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCat,    setFilterCat]    = useState("");
   const [reordering,   setReordering]   = useState(false);
+  const [viewMode,     setViewMode]     = useState<"list" | "grid" | "table">("list");
 
   // Libérer l'URL objet quand on change d'image ou qu'on ferme le formulaire
   const setCover = (file: File, url: string) => {
@@ -494,6 +568,24 @@ export default function ContenuPage() {
             <option value="LIBRE">Accès libre</option>
           </Select>
         </div>
+        {/* ── Toggle vue ── */}
+        <div style={{ display: "flex", gap: "0.2rem", marginBottom: ".85rem", border: "1px solid var(--line-soft)", borderRadius: "var(--radius-sm)", padding: "0.18rem" }}>
+          {(["list", "grid", "table"] as const).map((m) => {
+            const icons = { list: "≡", grid: "⊞", table: "⊟" };
+            const labels = { list: "Liste", grid: "Grille", table: "Tableau" };
+            return (
+              <button key={m} onClick={() => setViewMode(m)} title={labels[m]} style={{
+                background: viewMode === m ? "var(--gold)" : "transparent",
+                color: viewMode === m ? "#1a130a" : "var(--muted)",
+                border: "none", borderRadius: 5, padding: "0.25rem 0.55rem",
+                cursor: "pointer", fontSize: "1rem", lineHeight: 1,
+                fontWeight: viewMode === m ? 700 : 400,
+                transition: "background .14s, color .14s",
+              }}>{icons[m]}</button>
+            );
+          })}
+        </div>
+
         <Button
           variant="ghost"
           style={{ marginBottom: ".85rem" }}
@@ -665,7 +757,7 @@ export default function ContenuPage() {
                   </span>
                 </div>
 
-                {/* ── Liste triable ── */}
+                {/* ── Contenu selon le mode d'affichage ── */}
                 {colItems.length === 0 ? (
                   <div style={{
                     padding: "1.6rem", textAlign: "center",
@@ -674,7 +766,7 @@ export default function ContenuPage() {
                   }}>
                     Aucune formation dans cette section.
                   </div>
-                ) : (
+                ) : viewMode === "list" ? (
                   <DraggableBranchList
                     items={colItems}
                     colColor={col.color}
@@ -683,6 +775,14 @@ export default function ContenuPage() {
                     onUnpublish={unpublish}
                     onRemove={setRemoveTarget}
                   />
+                ) : viewMode === "grid" ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1rem" }}>
+                    {colItems.map((f) => (
+                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                    ))}
+                  </div>
+                ) : (
+                  <FormationsTable items={colItems} colColor={col.color} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
                 )}
               </section>
             );
@@ -729,6 +829,14 @@ export default function ContenuPage() {
                   }}>
                     Aucune formation publique. Créez une formation avec l'accès "Public".
                   </div>
+                ) : viewMode === "grid" ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1rem" }}>
+                    {publicItems.map((f) => (
+                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                    ))}
+                  </div>
+                ) : viewMode === "table" ? (
+                  <FormationsTable items={publicItems} colColor={publicColor} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
                 ) : (
                   <DraggableBranchList
                     items={publicItems}
