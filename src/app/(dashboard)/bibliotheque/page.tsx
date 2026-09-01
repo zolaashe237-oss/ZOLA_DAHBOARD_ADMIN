@@ -43,6 +43,18 @@ const CATEGORIES: LibraryCategory[] = [
   "Création de contenu",
 ];
 
+function normalizeCategory(raw?: string | null): LibraryCategory | "" {
+  if (!raw) return "";
+  const clean = raw.trim().toLowerCase();
+  if (clean.includes("spirit")) return "Spiritualité";
+  if (clean.includes("dév") || clean.includes("dev") || clean.includes("personnel")) return "Développement personnel";
+  if (clean.includes("entrepr")) return "Entrepreneuriat";
+  if (clean.includes("créa") || clean.includes("crea") || clean.includes("contenu")) return "Création de contenu";
+  const found = CATEGORIES.find((c) => c.toLowerCase() === clean);
+  if (found) return found;
+  return (raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1)) as LibraryCategory;
+}
+
 const CAT_ICON: Record<string, string> = {
   "Spiritualité":            "✦",
   "Développement personnel": "◎",
@@ -426,7 +438,7 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      const payload = { ...form };
+      const payload = { ...form, category: normalizeCategory(form.category) };
       if (payload.cover_key) payload.cover_url = "";
       if (editing) await libraryApi.update(editing, payload);
       else         await libraryApi.create(payload);
@@ -887,8 +899,12 @@ export default function BibliothequePage() {
   const load = useCallback(async () => {
     try {
       const { data } = await libraryApi.list();
-      const result = Array.isArray(data) ? data : data.results;
-      setItems(result);
+      const result: LibraryPdf[] = Array.isArray(data) ? data : data.results;
+      const normalized: LibraryPdf[] = result.map((item) => ({
+        ...item,
+        category: normalizeCategory(item.category) as LibraryCategory,
+      }));
+      setItems(normalized);
     } catch (e) { setError(errorMessage(e)); }
   }, []);
 
@@ -915,13 +931,23 @@ export default function BibliothequePage() {
     catch { setItems((prev) => prev.map((item) => item.id === p.id ? { ...item, is_gratuit: p.is_gratuit } : item)); }
   };
 
-  const filtered = items.filter((p) =>
-    (filterAccess === "ALL" || p.access_level === filterAccess) &&
-    (filterCat    === "ALL" || p.category === filterCat) &&
-    (!filterSearch || p.title.toLowerCase().includes(filterSearch.toLowerCase()) ||
-     p.category.toLowerCase().includes(filterSearch.toLowerCase()) ||
-     p.description.toLowerCase().includes(filterSearch.toLowerCase()))
-  );
+  const filtered = items.filter((p) => {
+    const normCat = normalizeCategory(p.category) || "";
+    const matchAccess = filterAccess === "ALL" || p.access_level === filterAccess;
+    const matchCat =
+      filterCat === "ALL"
+        ? true
+        : filterCat === ""
+        ? !normCat
+        : normCat === filterCat || p.category.toLowerCase() === filterCat.toLowerCase();
+    const matchSearch =
+      !filterSearch ||
+      p.title.toLowerCase().includes(filterSearch.toLowerCase()) ||
+      p.category.toLowerCase().includes(filterSearch.toLowerCase()) ||
+      normCat.toLowerCase().includes(filterSearch.toLowerCase()) ||
+      p.description.toLowerCase().includes(filterSearch.toLowerCase());
+    return matchAccess && matchCat && matchSearch;
+  });
 
   const pubCount = items.filter((p) => p.is_active).length;
 
