@@ -424,13 +424,27 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
     setUploading(true);
     try {
       const { data } = await libraryApi.upload(file);
+      const bucketKey = data.bucket_key;
       setForm((prev) => ({
         ...prev,
-        bucket_key: data.bucket_key,
+        bucket_key: bucketKey,
         size_mo: data.size_mo ?? null,
         nb_pages: data.nb_pages ?? null,
         title: prev.title || file.name.replace(/\.pdf$/i, "").replace(/[-_]/g, " "),
       }));
+
+      // Générer automatiquement la couverture depuis la première page
+      setExtractingCover(true);
+      try {
+        const { data: cover } = await libraryApi.pdfFirstPageCover(bucketKey);
+        if (coverPreviewUrl?.startsWith("blob:")) URL.revokeObjectURL(coverPreviewUrl);
+        setCoverPreviewUrl(cover.preview_url);
+        setForm((prev) => ({ ...prev, cover_key: cover.bucket_key, cover_url: "" }));
+      } catch {
+        // Génération silencieuse — l'admin peut toujours le faire manuellement
+      } finally {
+        setExtractingCover(false);
+      }
     } catch (e) { onError(errorMessage(e)); }
     finally { setUploading(false); }
   };
