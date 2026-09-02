@@ -509,7 +509,7 @@ export default function ContenuPage() {
     try {
       await formationApi.reorder(next.map((f, i) => ({ id: f.id, order: i })));
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
       load(); // rollback
     } finally {
       setReordering(false);
