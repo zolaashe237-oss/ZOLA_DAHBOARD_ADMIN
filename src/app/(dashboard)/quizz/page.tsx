@@ -12,11 +12,13 @@ import { AIGenerateModal, type AIGenerateResult, type AIGenerateTarget } from "@
 import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
 
 import { BrandLoader } from "@/components/BrandLoader";
+import { useToast } from "@/components/Toast";
 
 type QuizTarget = { quiz: QuizItem | null; libraryPdf?: number };
 type AIGenerateState = { preset: AIGenerateTarget | null };
 
 export default function QuizzPage() {
+  const { toast } = useToast();
   const [formations,       setFormations]       = useState<Formation[]>([]);
   const [quizzes,          setQuizzes]          = useState<QuizItem[]>([]);
   const [filterFormation,  setFilterFormation]  = useState("");
@@ -24,8 +26,6 @@ export default function QuizzPage() {
   const [filterSearch,     setFilterSearch]     = useState("");
   const [quizTarget,       setQuizTarget]       = useState<QuizTarget | null>(null);
   const [deleteTarget,     setDeleteTarget]     = useState<QuizItem | null>(null);
-  const [error,            setError]            = useState("");
-  const [info,             setInfo]             = useState("");
   const [loading,          setLoading]          = useState(true);
 
   // ── Agent IA (G-01 à G-04) ───────────────────────────────────────────────
@@ -35,7 +35,6 @@ export default function QuizzPage() {
   // ── Chargements ──────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    setError("");
     try {
       const [fRes, qRes] = await Promise.all([
         formationApi.list(),
@@ -44,11 +43,11 @@ export default function QuizzPage() {
       setFormations(asList(fRes.data));
       setQuizzes(asList(qRes.data));
     } catch (e) {
-      setError("Impossible de charger les quiz et formations.");
+      toast("Impossible de charger les quiz et formations.", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -76,12 +75,11 @@ export default function QuizzPage() {
   // ── Suppression ───────────────────────────────────────────────────────────
 
   const doDelete = async (q: QuizItem) => {
-    setError(""); setInfo("");
     try {
       await quizApi.remove(q.id);
-      setInfo(`Quiz « ${q.title} » supprimé.`);
+      toast(`Quiz « ${q.title} » supprimé.`, "success");
       await load();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -106,9 +104,6 @@ export default function QuizzPage() {
           {quizzes.filter((q) => q.active).length} actif{quizzes.filter((q) => q.active).length !== 1 ? "s" : ""}
         </p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── Barre filtres + action ── */}
       <div style={{ display: "flex", gap: ".75rem", alignItems: "flex-end", marginBottom: "1.1rem", flexWrap: "wrap" }}>
@@ -136,14 +131,14 @@ export default function QuizzPage() {
         <Button
           variant="ghost"
           style={{ marginBottom: ".85rem" }}
-          onClick={() => { setQuizTarget({ quiz: null }); setError(""); setInfo(""); }}
+          onClick={() => { setQuizTarget({ quiz: null }); }}
         >
           + Créer un quiz
         </Button>
         <Button
           className="ai-cta"
           style={{ marginBottom: ".85rem" }}
-          onClick={() => { setAiGenerate({ preset: null }); setError(""); setInfo(""); }}
+          onClick={() => { setAiGenerate({ preset: null }); }}
         >
           ✨ Générer avec l&apos;IA
         </Button>
@@ -327,7 +322,7 @@ export default function QuizzPage() {
           onSaved={() => {
             setQuizTarget(null);
             load();
-            setInfo(quizTarget.quiz ? "Quiz mis à jour." : "Quiz créé avec succès.");
+            toast(quizTarget.quiz ? "Quiz mis à jour." : "Quiz créé avec succès.", "success");
           }}
         />
       )}
@@ -371,7 +366,7 @@ export default function QuizzPage() {
           onPublished={(message) => {
             setAiReview(null);
             load();
-            setInfo(message);
+            toast(message, "success");
           }}
         />
       )}

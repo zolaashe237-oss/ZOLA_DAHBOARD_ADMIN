@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { asList, moderationApi } from "@/lib/endpoints";
 import type { ReportItem } from "@/lib/types";
-import { Alert, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
+import { Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -125,15 +126,14 @@ function ReportCard({
 // ── Formulaire annonce admin ─────────────────────────────────────────────────
 
 function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string) => void }) {
+  const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [isPinned, setIsPinned] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
     try {
       await moderationApi.createAdminPost({
@@ -147,7 +147,7 @@ function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string)
       setIsPinned(false);
       onPublished("Annonce admin publiée dans la communauté.");
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setLoading(false);
     }
@@ -161,7 +161,6 @@ function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string)
       <p style={{ margin: "0 0 1rem", color: "var(--muted)", fontSize: ".86rem" }}>
         Publie une annonce officielle dans le fil communautaire.
       </p>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <label style={{ display: "block", marginBottom: ".75rem" }}>
           <span className="field-label">Titre</span>
@@ -206,24 +205,22 @@ function AdminAnnouncementForm({ onPublished }: { onPublished: (message: string)
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ModerationPage() {
+  const { toast } = useToast();
   const [reports,      setReports]      = useState<ReportItem[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [filterType,   setFilterType]   = useState<"ALL" | "POST" | "COMMENT">("ALL");
   const [filterUrgent, setFilterUrgent] = useState(false);
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [busyId,       setBusyId]       = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReportItem | null>(null);
 
   const load = useCallback(async () => {
-    setError("");
     setLoading(true);
     try {
       const { data } = await moderationApi.reports();
       setReports(asList(data));
     } catch (e) {
       setReports([]);
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setLoading(false);
     }
@@ -232,24 +229,24 @@ export default function ModerationPage() {
   useEffect(() => { load(); }, [load]);
 
   const ignore = async (r: ReportItem) => {
-    setBusyId(r.id); setError(""); setInfo("");
+    setBusyId(r.id);
     try {
       await moderationApi.handle(r.id);
-      setInfo(`Signalement #${r.id} ignoré.`);
+      toast(`Signalement #${r.id} ignoré.`, "success");
       await load();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setBusyId(null); }
   };
 
   const doDelete = async (r: ReportItem, reason: string) => {
-    setBusyId(r.id); setError(""); setInfo("");
+    setBusyId(r.id);
     try {
       if (r.target_type === "POST") await moderationApi.deletePost(r.target_id, reason);
       else                          await moderationApi.deleteComment(r.target_id, reason);
       await moderationApi.handle(r.id);
-      setInfo(`Contenu supprimé et signalement #${r.id} clôturé.`);
+      toast(`Contenu supprimé et signalement #${r.id} clôturé.`, "success");
       await load();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setBusyId(null); }
   };
 
@@ -279,9 +276,6 @@ export default function ModerationPage() {
         <h1>Modération</h1>
         <p>Signalements communautaires en attente de traitement.</p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* Stats rapides */}
       <div style={{ display: "flex", gap: "0.65rem", marginBottom: "1.4rem", flexWrap: "wrap" }}>
@@ -360,7 +354,7 @@ export default function ModerationPage() {
       )}
       
       <div style={{ marginTop: "1.4rem" }}>
-      <AdminAnnouncementForm onPublished={setInfo} />
+      <AdminAnnouncementForm onPublished={(msg) => toast(msg, "success")} />
       </div>
 
       {/* Confirmation suppression */}

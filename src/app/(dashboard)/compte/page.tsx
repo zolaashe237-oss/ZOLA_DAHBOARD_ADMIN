@@ -5,8 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { adminAccountApi, socialLinksApi } from "@/lib/endpoints";
 import type { Paginated, SocialLinksConfig, User } from "@/lib/types";
-import { Alert, Badge, Button, Card, Input, errorMessage } from "@/components/ui";
+import { Badge, Button, Card, Input, errorMessage } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Helpers visuels ───────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ type Tab = "profil" | "equipe" | "reseaux";
 
 export default function ComptePage() {
   const { user, refreshUser } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profil");
 
   // ── État onglet Profil ─────────────────────────────────────────────────────
@@ -64,10 +66,6 @@ export default function ComptePage() {
     confirm_password: "",
   });
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [profileError, setProfileError] = useState("");
-  const [profileInfo,  setProfileInfo]  = useState("");
-  const [pwdError,     setPwdError]     = useState("");
-  const [pwdInfo,      setPwdInfo]      = useState("");
   const avatarRef = useRef<HTMLInputElement>(null);
 
   // Sync quand user change (après refreshUser)
@@ -85,8 +83,6 @@ export default function ComptePage() {
   });
   const [editingAdmin, setEditingAdmin] = useState<User | null>(null);
   const [editForm,     setEditForm]     = useState({ full_name: "", email: "" });
-  const [teamError,    setTeamError]    = useState("");
-  const [teamInfo,     setTeamInfo]     = useState("");
   const [tempPwd,         setTempPwd]         = useState<{ id: number; pwd: string } | null>(null);
   const [tempPwdVisible,  setTempPwdVisible]  = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
@@ -99,15 +95,13 @@ export default function ComptePage() {
   });
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialSaving,  setSocialSaving]  = useState(false);
-  const [socialError,   setSocialError]   = useState("");
-  const [socialInfo,    setSocialInfo]    = useState("");
 
   const loadAdmins = useCallback(async () => {
     try {
       const { data } = await adminAccountApi.listAdmins();
       setAdmins(Array.isArray(data) ? data : (data as Paginated<User>).results);
-    } catch (e) { setTeamError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   useEffect(() => {
     if (activeTab === "equipe") loadAdmins();
@@ -115,7 +109,7 @@ export default function ComptePage() {
 
   useEffect(() => {
     if (activeTab !== "reseaux") return;
-    setSocialError(""); setSocialInfo(""); setSocialLoading(true);
+    setSocialLoading(true);
     socialLinksApi.get()
       .then((r) => setSocialForm(r.data))
       .catch((e) => {})
@@ -126,23 +120,21 @@ export default function ComptePage() {
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileError(""); setProfileInfo("");
     try {
       await adminAccountApi.updateMe(profileForm);
       await refreshUser();
-      setProfileInfo("Profil mis à jour.");
-    } catch (e) { setProfileError(errorMessage(e)); }
+      toast("Profil mis à jour.", "success");
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPwdError(""); setPwdInfo("");
     if (pwdForm.new_password !== pwdForm.confirm_password) {
-      setPwdError("Les mots de passe ne correspondent pas.");
+      toast("Les mots de passe ne correspondent pas.", "error");
       return;
     }
     if (pwdForm.new_password.length < 8) {
-      setPwdError("Le mot de passe doit contenir au moins 8 caractères.");
+      toast("Le mot de passe doit contenir au moins 8 caractères.", "error");
       return;
     }
     try {
@@ -151,18 +143,17 @@ export default function ComptePage() {
         new_password:     pwdForm.new_password,
       });
       setPwdForm({ current_password: "", new_password: "", confirm_password: "" });
-      setPwdInfo("Mot de passe mis à jour.");
-    } catch (e) { setPwdError(errorMessage(e)); }
+      toast("Mot de passe mis à jour.", "success");
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const uploadAvatar = async (file: File) => {
     setAvatarUploading(true);
-    setProfileError("");
     try {
       await adminAccountApi.uploadAvatar(file);
       await refreshUser();
-      setProfileInfo("Photo mise à jour.");
-    } catch (e) { setProfileError(errorMessage(e)); }
+      toast("Photo mise à jour.", "success");
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setAvatarUploading(false); }
   };
 
@@ -170,58 +161,55 @@ export default function ComptePage() {
 
   const createAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTeamError(""); setTeamInfo(""); setTempPwd(null);
+    setTempPwd(null);
     try {
       await adminAccountApi.createAdmin(createForm);
-      setTeamInfo(`Compte admin créé pour ${createForm.email}.`);
+      toast(`Compte admin créé pour ${createForm.email}.`, "success");
       setCreateForm({ email: "", full_name: "", password: "", is_super_admin: false });
       await loadAdmins();
-    } catch (e) { setTeamError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const saveEditAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAdmin) return;
-    setTeamError(""); setTeamInfo("");
     try {
       await adminAccountApi.updateAdmin(editingAdmin.id, editForm);
-      setTeamInfo("Admin mis à jour.");
+      toast("Admin mis à jour.", "success");
       setEditingAdmin(null);
       await loadAdmins();
-    } catch (e) { setTeamError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const toggleAdmin = async (admin: User) => {
     if (admin.status === "ACTIF") {
       setDeactivateTarget(admin);
     } else {
-      setTeamError(""); setTeamInfo("");
       try {
         await adminAccountApi.activateAdmin(admin.id);
-        setTeamInfo(`${admin.full_name} réactivé.`);
+        toast(`${admin.full_name} réactivé.`, "success");
         await loadAdmins();
-      } catch (e) { setTeamError(errorMessage(e)); }
+      } catch (e) { toast(errorMessage(e), "error"); }
     }
   };
 
 
   const saveSocialLinks = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSocialError(""); setSocialInfo("");
     const invalid = Object.values(socialForm)
       .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
       .some((v) => !v.startsWith("http://") && !v.startsWith("https://"));
     if (invalid) {
-      setSocialError("Chaque lien renseigné doit commencer par http:// ou https://.");
+      toast("Chaque lien renseigné doit commencer par http:// ou https://.", "error");
       return;
     }
     setSocialSaving(true);
     try {
       const { data } = await socialLinksApi.update(socialForm);
       setSocialForm(data);
-      setSocialInfo("Liens de réseaux sociaux mis à jour.");
+      toast("Liens de réseaux sociaux mis à jour.", "success");
     } catch (e) {
-      setSocialError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setSocialSaving(false);
     }
@@ -321,8 +309,6 @@ export default function ComptePage() {
             <h2 style={{ fontFamily: "var(--serif)", fontSize: "1.1rem", marginBottom: "1rem" }}>
               Informations générales
             </h2>
-            <Alert>{profileError}</Alert>
-            <Alert kind="success">{profileInfo}</Alert>
             <form onSubmit={saveProfile}>
               <Input
                 label="Nom complet"
@@ -370,8 +356,6 @@ export default function ComptePage() {
             <h2 style={{ fontFamily: "var(--serif)", fontSize: "1.1rem", marginBottom: "1rem" }}>
               Changer le mot de passe
             </h2>
-            <Alert>{pwdError}</Alert>
-            <Alert kind="success">{pwdInfo}</Alert>
             <form onSubmit={changePassword}>
               <Input
                 label="Mot de passe actuel"
@@ -416,8 +400,6 @@ export default function ComptePage() {
       ════════════════════════════════════════════════════════════════════ */}
       {activeTab === "equipe" && (
         <>
-          <Alert>{teamError}</Alert>
-          <Alert kind="success">{teamInfo}</Alert>
 
           {/* Mot de passe temporaire généré */}
           {tempPwd && (
@@ -623,8 +605,6 @@ export default function ComptePage() {
           <h2 style={{ fontFamily: "var(--serif)", fontSize: "1.1rem", marginBottom: "1rem" }}>
             Liens de réseaux sociaux
           </h2>
-          <Alert>{socialError}</Alert>
-          <Alert kind="success">{socialInfo}</Alert>
           {socialLoading ? (
             <div style={{ color: "var(--muted)", fontSize: "0.88rem" }}>Chargement des liens…</div>
           ) : (

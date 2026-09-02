@@ -7,6 +7,7 @@ import type { AIQuizHistoryEntry } from "@/lib/types";
 import { Alert, Card, Pagination, usePagination } from "@/components/ui";
 import { NiveauBadge, SourceIcon } from "@/components/ai/AIBadges";
 import { BrandLoader } from "@/components/BrandLoader";
+import { useToast } from "@/components/Toast";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -17,23 +18,23 @@ function fmtDate(s: string) {
 type Filter = "ALL" | "AI" | "MANUAL";
 
 export default function HistoriqueIAPage() {
+  const { toast } = useToast();
   const [items,     setItems]     = useState<AIQuizHistoryEntry[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState("");
   const [filter,    setFilter]    = useState<Filter>("ALL");
 
   const load = useCallback(async () => {
-    setLoading(true); setError("");
+    setLoading(true);
     try {
       const data = await quizHistoryApi.list();
       setItems([...data].sort((a, b) => b.created_at.localeCompare(a.created_at)));
     } catch {
       setItems([]);
-      setError("Impossible de charger l'historique des générations.");
+      toast("Impossible de charger l'historique des générations.", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -55,8 +56,6 @@ export default function HistoriqueIAPage() {
         <h1>Historique des générations IA</h1>
         <p>Quiz générés par l&apos;agent IA Gemini 3.5 comparés aux quiz créés manuellement.</p>
       </div>
-
-      <Alert>{error}</Alert>
 
       {/* Filtres + demo badge */}
       <div style={{ display: "flex", gap: ".5rem", alignItems: "center", marginBottom: "1.1rem", flexWrap: "wrap" }}>

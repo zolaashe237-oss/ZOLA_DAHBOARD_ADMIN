@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { adminMemoirApi } from "@/lib/endpoints";
 import type { MemoirAnswerEntry, MemoirEditorialStatus, MemoirSubmission, MemoirSubmissionDetail } from "@/lib/types";
 import { Alert, Button, Card, errorMessage } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 // ── Données statiques ──────────────────────────────────────────────────────────
 
@@ -620,9 +621,9 @@ function DetailDrawer({
 // ── Page principale ────────────────────────────────────────────────────────────
 
 export default function MemoiresPage() {
+  const { toast } = useToast();
   const [submissions, setSubmissions] = useState<MemoirSubmission[]>([]);
   const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
 
   const [selectedId, setSelectedId]       = useState<number | null>(null);
   const [detail, setDetail]               = useState<MemoirSubmissionDetail | null>(null);
@@ -634,16 +635,15 @@ export default function MemoiresPage() {
   // Charger la liste
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const { data } = await adminMemoirApi.list();
       setSubmissions(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -706,8 +706,6 @@ export default function MemoiresPage() {
         <KpiChip label="En relecture"     value={kpiByStatus("review")}      color="var(--info)" />
         <KpiChip label="Terminés"         value={kpiByStatus("completed")}   color="var(--ok)" />
       </div>
-
-      {error && <div style={{ marginBottom: "1rem" }}><Alert kind="error">{error}</Alert></div>}
 
       {/* ── Filtres ── */}
       <Card style={{ padding: "0.85rem 1rem", marginBottom: "1rem" }}>

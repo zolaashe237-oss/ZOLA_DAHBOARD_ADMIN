@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { Alert, Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Barre de progression ──────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ function KpiTile({ label, value, sub }: { label: string; value: string; sub?: st
 import { BrandLoader } from "@/components/BrandLoader";
 
 export default function ProgressionPage() {
+  const { toast } = useToast();
   const [kpis,       setKpis]       = useState<ProgressionKPIs | null>(null);
   const [formations, setFormations] = useState<FormationProgressStat[]>([]);
   const [members,    setMembers]    = useState<MemberProgressEntry[]>([]);
@@ -71,8 +73,6 @@ export default function ProgressionPage() {
   const [filterSearch,    setFilterSearch]    = useState("");
 
   const [resetting,   setResetting]   = useState<string | null>(null);
-  const [error,       setError]       = useState("");
-  const [info,        setInfo]        = useState("");
   const [resetTarget, setResetTarget] = useState<MemberProgressEntry | null>(null);
   const [loading,     setLoading]     = useState(true);
 
@@ -81,7 +81,6 @@ export default function ProgressionPage() {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      setError("");
       try {
         const [kData, fData] = await Promise.all([
           progressionApi.kpis(),
@@ -90,7 +89,7 @@ export default function ProgressionPage() {
         setKpis(kData.data);
         setFormations(Array.isArray(fData.data) ? fData.data : (fData.data as Paginated<FormationProgressStat>).results);
       } catch (e) {
-        setError("Impossible de charger les KPIs et statistiques de progression.");
+        toast("Impossible de charger les KPIs et statistiques de progression.", "error");
       } finally {
         setLoading(false);
       }
@@ -107,9 +106,9 @@ export default function ProgressionPage() {
       const { data } = await progressionApi.memberProgress(params);
       setMembers(Array.isArray(data) ? data : (data as Paginated<MemberProgressEntry>).results);
     } catch (e) {
-      setError("Impossible de charger l'avancement des membres.");
+      toast("Impossible de charger l'avancement des membres.", "error");
     }
-  }, [filterFormation, filterCompleted, filterSearch]);
+  }, [filterFormation, filterCompleted, filterSearch, toast]);
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
@@ -118,12 +117,11 @@ export default function ProgressionPage() {
   const doResetProgress = async (entry: MemberProgressEntry, reason: string) => {
     const key = `${entry.user_id}-${entry.formation_id}`;
     setResetting(key);
-    setError(""); setInfo("");
     try {
       await progressionApi.resetProgress({ user_id: entry.user_id, formation_id: entry.formation_id, reason });
-      setInfo(`Progression de ${entry.user_name} réinitialisée.`);
+      toast(`Progression de ${entry.user_name} réinitialisée.`, "success");
       await loadMembers();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setResetting(null); }
   };
 
@@ -155,9 +153,6 @@ export default function ProgressionPage() {
       <p style={{ color: "var(--muted)", fontSize: "0.88rem", marginBottom: "1.75rem" }}>
         Vue globale de l&apos;avancement des membres dans les formations Zola Ashé.
       </p>
-
-      <Alert>{error}</Alert>
-      <Alert kind="success">{info}</Alert>
 
       {/* ── KPIs ── */}
       {kpis && (

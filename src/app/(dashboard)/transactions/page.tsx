@@ -12,6 +12,7 @@ import type {
   TransactionKPIs,
 } from "@/lib/types";
 import { Alert, Badge, Button, Card, Pagination, errorMessage } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes de présentation ────────────────────────────────────────────────
 
@@ -86,10 +87,9 @@ function KpiTile({
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function TransactionsPage() {
+  const { toast } = useToast();
   const [kpis,   setKpis]   = useState<TransactionKPIs | null>(null);
   const [items,  setItems]  = useState<Transaction[]>([]);
-  const [error,  setError]  = useState("");
-  const [info,   setInfo]   = useState("");
   const [detail, setDetail] = useState<Transaction | null>(null);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -110,8 +110,8 @@ export default function TransactionsPage() {
     try {
       const { data } = await transactionsApi.kpis();
       setKpis(data);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   const loadItems = useCallback(async () => {
     try {
@@ -134,8 +134,8 @@ export default function TransactionsPage() {
         setItems(p.results);
         setTotalCount(p.count);
       }
-    } catch (e) { setError(errorMessage(e)); }
-  }, [fStatus, fKind, fMethod, fSearch, fDateFrom, fDateTo, page, pageSize]);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [fStatus, fKind, fMethod, fSearch, fDateFrom, fDateTo, page, pageSize, toast]);
 
   useEffect(() => { loadKpis(); }, [loadKpis]);
   useEffect(() => { loadItems(); }, [loadItems]);
@@ -147,12 +147,11 @@ export default function TransactionsPage() {
   // ── Export ───────────────────────────────────────────────────────────────
 
   const exportCsv = async () => {
-    setError(""); setInfo("");
     try {
       const { data } = await transactionsApi.export();
       downloadBlob(data as Blob, "transactions.csv");
-      setInfo("Export téléchargé.");
-    } catch (e) { setError(errorMessage(e)); }
+      toast("Export téléchargé.", "success");
+    } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -177,9 +176,6 @@ export default function TransactionsPage() {
         </div>
         <Button variant="ghost" onClick={exportCsv}>⬇ Exporter CSV</Button>
       </div>
-
-      <Alert>{error}</Alert>
-      <Alert kind="success">{info}</Alert>
 
       {/* ── KPIs ── */}
       {kpis && (

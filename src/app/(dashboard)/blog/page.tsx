@@ -5,8 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { blogApi } from "@/lib/endpoints";
 import { getMediaUrl } from "@/lib/api";
 import type { Article, Paginated } from "@/lib/types";
-import { Alert, Badge, Button, Card, Input, Textarea, errorMessage } from "@/components/ui";
+import { Badge, Button, Card, Input, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 const empty = { title: "", category: "", excerpt: "", cover_url: "", body: "", published: true };
 
@@ -23,13 +24,13 @@ function ArticleFormModal({
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  const { toast } = useToast();
   const [form,    setForm]    = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError("");
+    setLoading(true);
     try {
       if (editing) {
         await blogApi.update(editing, form);
@@ -40,7 +41,7 @@ function ArticleFormModal({
       }
       onClose();
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setLoading(false);
     }
@@ -52,7 +53,6 @@ function ArticleFormModal({
       onClose={onClose}
       maxWidth={680}
     >
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0 1rem" }}>
           <Input
@@ -102,9 +102,8 @@ function ArticleFormModal({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BlogPage() {
+  const { toast } = useToast();
   const [items,      setItems]      = useState<Article[]>([]);
-  const [error,      setError]      = useState("");
-  const [info,       setInfo]       = useState("");
   const [formTarget, setFormTarget] = useState<{ article: Article | null } | null>(null);
   const [deleteId,   setDeleteId]   = useState<number | null>(null);
 
@@ -113,14 +112,14 @@ export default function BlogPage() {
       const { data } = await blogApi.list();
       const list = Array.isArray(data) ? data : (data as Paginated<Article>).results;
       setItems(list);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const togglePublish = async (a: Article) => {
     try { await blogApi.update(a.id, { published: !a.published }); await load(); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   return (
@@ -130,9 +129,6 @@ export default function BlogPage() {
         <h1>Gestion du blog</h1>
         <p>{items.filter((a) => a.published).length} article{items.filter((a) => a.published).length !== 1 ? "s" : ""} publié{items.filter((a) => a.published).length !== 1 ? "s" : ""} · {items.filter((a) => !a.published).length} brouillon{items.filter((a) => !a.published).length !== 1 ? "s" : ""}</p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1.25rem" }}>
         <Button onClick={() => setFormTarget({ article: null })}>+ Nouvel article</Button>
@@ -198,7 +194,7 @@ export default function BlogPage() {
           }
           editing={formTarget.article?.id ?? null}
           onClose={() => setFormTarget(null)}
-          onSaved={(msg) => { setInfo(msg); setFormTarget(null); load(); }}
+          onSaved={(msg) => { toast(msg, "success"); setFormTarget(null); load(); }}
         />
       )}
 
@@ -211,7 +207,7 @@ export default function BlogPage() {
           onClose={() => setDeleteId(null)}
           onConfirm={async () => {
             await blogApi.remove(deleteId);
-            setInfo("Article supprimé.");
+            toast("Article supprimé.", "success");
             setDeleteId(null);
             await load();
           }}

@@ -9,6 +9,7 @@ import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/componen
 import { ConfirmModal } from "@/components/Modal";
 import { FormationCard } from "@/components/FormationCard";
 import { YoutubeImportModal } from "@/components/YoutubeImportModal";
+import { useToast } from "@/components/Toast";
 
 // ── Groupement par branche ────────────────────────────────────────────────────
 
@@ -407,6 +408,7 @@ function FormationsTable({
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function ContenuPage() {
+  const { toast } = useToast();
   const [items,        setItems]        = useState<Formation[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [form,         setForm]         = useState({ ...EMPTY });
@@ -415,8 +417,6 @@ export default function ContenuPage() {
   const [showForm,     setShowForm]     = useState(false);
   const [showYoutubeImport, setShowYoutubeImport] = useState(false);
   const [saving,       setSaving]       = useState(false);
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [removeTarget, setRemoveTarget] = useState<Formation | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCat,    setFilterCat]    = useState("");
@@ -441,15 +441,15 @@ export default function ContenuPage() {
     setLoading(true);
     formationApi.list()
       .then((r) => setItems(asList(r.data)))
-      .catch((e) => setError(errorMessage(e)))
+      .catch((e) => toast(errorMessage(e), "error"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(""); setInfo(""); setSaving(true);
+    setSaving(true);
     try {
       const res = await formationApi.create({
         title: form.title, description: form.description, category: form.category,
@@ -465,14 +465,14 @@ export default function ContenuPage() {
           await formationApi.uploadCover(res.data.id, coverFile);
         } catch {
           // La formation est créée — l'image peut être rajoutée depuis les paramètres
-          setInfo("Formation créée (l'image de couverture n'a pas pu être envoyée).");
+          toast("Formation créée (l'image de couverture n'a pas pu être envoyée).", "info");
           resetForm(); setShowForm(false); load(); return;
         }
       }
-      setInfo("Formation créée. Ouvrez-la pour ajouter des chapitres et épisodes.");
+      toast("Formation créée. Ouvrez-la pour ajouter des chapitres et épisodes.", "success");
       resetForm(); setShowForm(false); load();
     } catch (err) {
-      setError(errorMessage(err));
+      toast(errorMessage(err), "error");
     } finally {
       setSaving(false);
     }
@@ -480,17 +480,17 @@ export default function ContenuPage() {
 
   const publish = async (f: Formation) => {
     try { await formationApi.publish(f.id); load(); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const unpublish = async (f: Formation) => {
     try { await formationApi.update(f.id, { status: "DRAFT" }); load(); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const doRemove = async (f: Formation) => {
-    try { await formationApi.hardDelete(f.id); load(); setInfo("Formation supprimée définitivement."); }
-    catch (e) { setError(errorMessage(e)); }
+    try { await formationApi.hardDelete(f.id); load(); toast("Formation supprimée définitivement.", "success"); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const handleReorder = async (branche: string, next: Formation[]) => {
@@ -537,8 +537,6 @@ export default function ContenuPage() {
         </p>
       </div>
 
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
       {reordering && (
         <div style={{ fontSize: "0.76rem", color: "var(--muted)", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "2px solid var(--muted)", borderTopColor: "transparent", animation: "spin 0.7s linear infinite" }} />
@@ -590,7 +588,7 @@ export default function ContenuPage() {
         <Button
           variant="ghost"
           style={{ marginBottom: ".85rem" }}
-          onClick={() => { setShowYoutubeImport(true); setError(""); setInfo(""); }}
+          onClick={() => { setShowYoutubeImport(true); }}
         >
           ⬇ Importer depuis YouTube
         </Button>
@@ -598,7 +596,7 @@ export default function ContenuPage() {
           style={{ marginBottom: ".85rem" }}
           onClick={() => {
             if (showForm) resetForm();
-            setShowForm(!showForm); setError("");
+            setShowForm(!showForm);
           }}
         >
           {showForm ? "✕ Annuler" : "+ Nouvelle formation"}
@@ -608,7 +606,7 @@ export default function ContenuPage() {
       {showYoutubeImport && (
         <YoutubeImportModal
           onClose={() => setShowYoutubeImport(false)}
-          onImported={(message) => { setInfo(message); setShowYoutubeImport(false); load(); }}
+          onImported={(message) => { toast(message, "success"); setShowYoutubeImport(false); load(); }}
         />
       )}
 

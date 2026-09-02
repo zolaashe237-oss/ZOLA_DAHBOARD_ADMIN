@@ -8,6 +8,7 @@ import { getMediaUrl } from "@/lib/api";
 import type { Branche, LibraryCategory, LibraryPdf, PdfAccess, QuizItem } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -473,14 +474,22 @@ function DocFormModal({ initial, editing, onClose, onSaved, onError }: {
               background: "rgba(201,162,39,0.05)", border: "1px solid rgba(201,162,39,0.22)",
             }}>
               <div style={{ width: 160, flexShrink: 0, borderRadius: 6, overflow: "hidden", border: "1px solid rgba(201,162,39,0.30)", background: "#f5f5f5", position: "relative" }}>
-                <embed
-                  src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`}
-                  type="application/pdf"
-                  style={{ width: "100%", height: 220, display: "block" }}
-                />
-                {uploading && (
+                {coverPreviewUrl ? (
+                  <img
+                    src={coverPreviewUrl}
+                    alt="Couverture"
+                    style={{ width: "100%", height: 220, objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <embed
+                    src={`${previewUrl}#toolbar=0&navpanes=0&view=FitH`}
+                    type="application/pdf"
+                    style={{ width: "100%", height: 220, display: "block" }}
+                  />
+                )}
+                {(uploading || extractingCover) && (
                   <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.80)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.78rem", color: "#8b6a3a" }}>
-                    Upload…
+                    {uploading ? "Upload…" : "Couverture…"}
                   </div>
                 )}
               </div>
@@ -891,12 +900,11 @@ function DocCompact({ pdf, onEdit, onToggle, onToggleGratuit, onDelete, onPrevie
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function BibliothequePage() {
+  const { toast } = useToast();
   const [items,        setItems]        = useState<LibraryPdf[]>([]);
   const [editTarget,   setEditTarget]   = useState<LibraryPdf | null>(null);
   const [showForm,     setShowForm]     = useState(false);
   const [preview,      setPreview]      = useState<LibraryPdf | null>(null);
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterAccess, setFilterAccess] = useState("ALL");
   const [filterCat,    setFilterCat]    = useState("ALL");
@@ -919,14 +927,14 @@ export default function BibliothequePage() {
         category: normalizeCategory(item.category) as LibraryCategory,
       }));
       setItems(normalized);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const doRemove = async (id: number) => {
-    try { await libraryApi.remove(id); setItems((prev) => prev.filter((p) => p.id !== id)); setInfo("Document supprimé."); }
-    catch (e) { setError(errorMessage(e)); }
+    try { await libraryApi.remove(id); setItems((prev) => prev.filter((p) => p.id !== id)); toast("Document supprimé.", "success"); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const toggleActive = async (p: LibraryPdf) => {
@@ -989,9 +997,6 @@ export default function BibliothequePage() {
           {" · "}{pubCount} publié{pubCount !== 1 ? "s" : ""}
         </p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── Barre filtres + action ── */}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", marginBottom: "1.4rem", flexWrap: "wrap" }}>
@@ -1163,10 +1168,10 @@ export default function BibliothequePage() {
           editing={editTarget?.id ?? null}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
           onSaved={() => {
-            setInfo(editTarget ? "Document mis à jour." : "Document ajouté.");
+            toast(editTarget ? "Document mis à jour." : "Document ajouté.", "success");
             setShowForm(false); setEditTarget(null); load();
           }}
-          onError={setError}
+          onError={(s) => toast(s, "error")}
         />
       )}
 

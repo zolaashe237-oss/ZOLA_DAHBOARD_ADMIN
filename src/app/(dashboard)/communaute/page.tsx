@@ -6,6 +6,7 @@ import { communityApi, notificationsAdminApi } from "@/lib/endpoints";
 import type { Branche, CommunityChannel, CommunityPost, Paginated, PostStatus, PostType } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 const POST_TYPE_COLOR: Record<PostType, string>   = { ANNONCE: "#c9a227", DISCUSSION: "#5fb98a", QUESTION: "#243a85" };
 const POST_TYPE_LABEL: Record<PostType, string>   = { ANNONCE: "Annonce", DISCUSSION: "Discussion", QUESTION: "Question" };
@@ -31,22 +32,21 @@ function PostFormModal({
 }) {
   const [form,    setForm]    = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       const payload = { ...form, is_admin_post: true };
       if (editing) { await communityApi.updatePost(editing, payload); onSaved("Post mis à jour."); }
       else         { await communityApi.createPost(payload);          onSaved("Annonce publiée."); }
       onClose();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title={editing ? "Modifier l'annonce" : "Nouvelle annonce / post admin"} onClose={onClose} maxWidth={620}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0 1rem" }}>
           <Input label="Titre" value={form.title} required
@@ -98,21 +98,20 @@ function ChannelFormModal({
 }) {
   const [form,    setForm]    = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       if (editing) { await communityApi.updateChannel(editing, form); onSaved("Canal mis à jour."); }
       else         { await communityApi.createChannel(form);          onSaved("Canal créé."); }
       onClose();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title={editing ? "Modifier le canal" : "Nouveau canal"} onClose={onClose} maxWidth={520}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "0 1rem" }}>
           <Input label="Nom du canal" value={form.name} required
@@ -166,11 +165,10 @@ function BroadcastPanel({ onDone }: { onDone: (msg: string) => void }) {
   const [target,     setTarget]     = useState<"all" | "one">("all");
   const [userId,     setUserId]     = useState("");
   const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState("");
-  const [lastResult, setLastResult] = useState<string>("");
+  const { toast } = useToast();
 
   const send = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(""); setLastResult(""); setLoading(true);
+    e.preventDefault(); setLoading(true);
     try {
       const payload: { title: string; body?: string; user_id?: number } = { title };
       if (body.trim())           payload.body    = body.trim();
@@ -180,10 +178,10 @@ function BroadcastPanel({ onDone }: { onDone: (msg: string) => void }) {
       const msg = n === 0
         ? "Aucun membre actif trouvé pour cette cible."
         : `${n} notification${n > 1 ? "s" : ""} envoyée${n > 1 ? "s" : ""}.`;
-      setLastResult(msg);
+      toast(msg, "success");
       onDone(msg);
       setTitle(""); setBody(""); setTarget("all"); setUserId("");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setLoading(false); }
   };
 
@@ -195,8 +193,6 @@ function BroadcastPanel({ onDone }: { onDone: (msg: string) => void }) {
       <p style={{ color: "var(--muted)", fontSize: "0.83rem", marginBottom: "1.25rem" }}>
         La notification apparaît dans la cloche de chaque membre ciblé en temps réel.
       </p>
-      <Alert>{error}</Alert>
-      {lastResult && <Alert kind="success">{lastResult}</Alert>}
       <form onSubmit={send}>
         <Input
           label="Titre *"
@@ -248,11 +244,10 @@ function BroadcastPanel({ onDone }: { onDone: (msg: string) => void }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function CommunautePage() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("annonces");
   const [posts,    setPosts]    = useState<CommunityPost[]>([]);
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
-  const [error,    setError]    = useState("");
-  const [info,     setInfo]     = useState("");
 
   // Modals
   const [postTarget,    setPostTarget]    = useState<{ post: CommunityPost | null } | null>(null);
@@ -269,21 +264,21 @@ export default function CommunautePage() {
     try {
       const { data } = await communityApi.listChannels();
       setChannels(Array.isArray(data) ? data : (data as Paginated<CommunityChannel>).results);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   const loadPosts = useCallback(async () => {
     try {
       const { data } = await communityApi.listPosts();
       setPosts(Array.isArray(data) ? data : (data as Paginated<CommunityPost>).results);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   useEffect(() => { loadChannels(); loadPosts(); }, [loadChannels, loadPosts]);
 
   const pinPost = async (p: CommunityPost) => {
     try { await communityApi.pinPost(p.id); await loadPosts(); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const filteredPosts = posts.filter(
@@ -310,9 +305,6 @@ export default function CommunautePage() {
         <p>Animez la communauté, gérez les canaux et modérez les posts des membres.</p>
       </div>
 
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
-
       {/* Onglets */}
       <div style={{ display: "flex", gap: "0.15rem", marginBottom: "1.75rem",
                     borderBottom: "1px solid var(--line-soft)" }}>
@@ -323,7 +315,7 @@ export default function CommunautePage() {
           { key: "notifications" as Tab, label: "Notifications système" },
         ]).map((t) => (
           <button key={t.key} style={tabStyle(t.key)}
-                  onClick={() => { setError(""); setInfo(""); setActiveTab(t.key); }}>
+                  onClick={() => { setActiveTab(t.key); }}>
             {t.label}
           </button>
         ))}
@@ -512,7 +504,7 @@ export default function CommunautePage() {
 
       {/* ── ONGLET 4 : NOTIFICATIONS SYSTÈME ── */}
       {activeTab === "notifications" && (
-        <BroadcastPanel onDone={(msg) => setInfo(msg)} />
+        <BroadcastPanel onDone={(msg) => toast(msg, "success")} />
       )}
 
       {/* ── Modales ── */}
@@ -526,7 +518,7 @@ export default function CommunautePage() {
           editing={postTarget.post?.id ?? null}
           channels={channels}
           onClose={() => setPostTarget(null)}
-          onSaved={(msg) => { setInfo(msg); setPostTarget(null); loadPosts(); }}
+          onSaved={(msg) => { toast(msg, "success"); setPostTarget(null); loadPosts(); }}
         />
       )}
 
@@ -538,7 +530,7 @@ export default function CommunautePage() {
             : { ...emptyChannel }}
           editing={channelTarget.chan?.id ?? null}
           onClose={() => setChannelTarget(null)}
-          onSaved={(msg) => { setInfo(msg); setChannelTarget(null); loadChannels(); }}
+          onSaved={(msg) => { toast(msg, "success"); setChannelTarget(null); loadChannels(); }}
         />
       )}
 
@@ -550,7 +542,7 @@ export default function CommunautePage() {
           onClose={() => setDeletePost(null)}
           onConfirm={async () => {
             await communityApi.removePost(deletePost);
-            setInfo("Post supprimé.");
+            toast("Post supprimé.", "success");
             setDeletePost(null);
             await loadPosts();
           }}
@@ -565,7 +557,7 @@ export default function CommunautePage() {
           onClose={() => setDeleteChan(null)}
           onConfirm={async () => {
             await communityApi.removeChannel(deleteChan);
-            setInfo("Canal supprimé.");
+            toast("Canal supprimé.", "success");
             setDeleteChan(null);
             await loadChannels();
           }}
@@ -583,7 +575,7 @@ export default function CommunautePage() {
           onClose={() => setModeratePost(null)}
           onConfirm={async (reason) => {
             await communityApi.moderatePost(moderatePost.id, reason);
-            setInfo("Post modéré.");
+            toast("Post modéré.", "success");
             setModeratePost(null);
             await loadPosts();
           }}

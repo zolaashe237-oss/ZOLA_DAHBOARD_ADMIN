@@ -7,6 +7,7 @@ import { getMediaUrl } from "@/lib/api";
 import type { AudioItem, Branche, PdfAccess } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -536,12 +537,11 @@ const VIEW_MODES: { key: ViewMode; icon: string; label: string }[] = [
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function AudioPage() {
+  const { toast } = useToast();
   const [items,        setItems]        = useState<AudioItem[]>([]);
   const [editTarget,   setEditTarget]   = useState<AudioItem | null>(null);
   const [showForm,     setShowForm]     = useState(false);
   const [preview,      setPreview]      = useState<AudioItem | null>(null);
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterAccess, setFilterAccess] = useState("ALL");
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
@@ -559,8 +559,8 @@ export default function AudioPage() {
       const { data } = await audioApi.list();
       const result = Array.isArray(data) ? data : data.results;
       setItems(result);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -581,8 +581,8 @@ export default function AudioPage() {
   };
 
   const doRemove = async (id: number) => {
-    try { await audioApi.remove(id); setItems((prev) => prev.filter((i) => i.id !== id)); setInfo("Audio supprimé."); }
-    catch (e) { setError(errorMessage(e)); }
+    try { await audioApi.remove(id); setItems((prev) => prev.filter((i) => i.id !== id)); toast("Audio supprimé.", "success"); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const filtered = items.filter((p) =>
@@ -629,9 +629,6 @@ export default function AudioPage() {
           {totalDurationSec > 0 && ` · ${totalHours > 0 ? `${totalHours}h ` : ""}${totalMin}min de contenu`}
         </p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── Barre filtres ── */}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", marginBottom: "1.4rem", flexWrap: "wrap" }}>
@@ -704,8 +701,8 @@ export default function AudioPage() {
         <AudioFormModal
           initial={initialForEdit} editing={editTarget?.id ?? null}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
-          onSaved={() => { setInfo(editTarget ? "Audio mis à jour." : "Audio ajouté."); setShowForm(false); setEditTarget(null); load(); }}
-          onError={setError}
+          onSaved={() => { toast(editTarget ? "Audio mis à jour." : "Audio ajouté.", "success"); setShowForm(false); setEditTarget(null); load(); }}
+          onError={(s) => toast(s, "error")}
         />
       )}
       {preview && (

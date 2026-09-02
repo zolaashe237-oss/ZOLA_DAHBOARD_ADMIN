@@ -7,6 +7,7 @@ import type { Branche, Formation, QuizItem } from "@/lib/types";
 import { Alert, Card } from "@/components/ui";
 import { NiveauBadge } from "@/components/ai/AIBadges";
 import { BrandLoader } from "@/components/BrandLoader";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -96,12 +97,11 @@ function ParcoursCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ParcoursIAPage() {
+  const { toast } = useToast();
   const [branche,    setBranche]    = useState<Branche>("MEMBRE");
   const [items,       setItems]      = useState<QuizItem[]>([]);
   const [formations,  setFormations] = useState<Formation[]>([]);
   const [loading,     setLoading]    = useState(true);
-  const [error,       setError]      = useState("");
-  const [info,        setInfo]       = useState("");
 
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
@@ -111,17 +111,17 @@ export default function ParcoursIAPage() {
   }, []);
 
   const load = useCallback(async (b: Branche) => {
-    setLoading(true); setError(""); setInfo("");
+    setLoading(true);
     try {
       const data = await quizApi.listByBranch(b);
       setItems([...data].sort((a, c) => (a.rang ?? 999) - (c.rang ?? 999)));
     } catch {
       setItems([]);
-      setError("Impossible de charger le parcours de cette branche.");
+      toast("Impossible de charger le parcours de cette branche.", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(branche); }, [branche, load]);
 
@@ -144,10 +144,10 @@ export default function ParcoursIAPage() {
     try {
       const changed = withRanks.filter((q, i) => previous[i]?.id !== q.id);
       await Promise.all(changed.map((q) => quizApi.update(q.id, { rang: q.rang })));
-      setInfo("Ordre du parcours mis à jour.");
+      toast("Ordre du parcours mis à jour.", "success");
     } catch {
       setItems(previous);
-      setError("Impossible d'enregistrer le nouvel ordre. Réessayez.");
+      toast("Impossible d'enregistrer le nouvel ordre. Réessayez.", "error");
     }
   };
 
@@ -158,9 +158,6 @@ export default function ParcoursIAPage() {
         <h1>Parcours progressif par branche</h1>
         <p>Ordre des quiz proposé par l&apos;IA pour chaque branche - glissez pour réorganiser.</p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* Sélecteur de branche */}
       <div style={{ display: "flex", gap: ".5rem", marginBottom: "1.2rem", flexWrap: "wrap" }}>

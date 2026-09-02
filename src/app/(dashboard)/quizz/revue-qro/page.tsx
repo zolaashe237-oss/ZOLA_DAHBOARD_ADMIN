@@ -6,6 +6,7 @@ import { qroReviewApi } from "@/lib/endpoints";
 import type { AIQROReviewItem } from "@/lib/types";
 import { Alert, Card, Pagination, usePagination } from "@/components/ui";
 import { BrandLoader } from "@/components/BrandLoader";
+import { useToast } from "@/components/Toast";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -127,38 +128,37 @@ function QROCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function RevueQROPage() {
+  const { toast } = useToast();
   const [items,     setItems]     = useState<AIQROReviewItem[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState("");
-  const [info,      setInfo]      = useState("");
   const [busyId,    setBusyId]    = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError("");
+    setLoading(true);
     try {
       const data = await qroReviewApi.list();
       setItems(data);
     } catch {
       setItems([]);
-      setError("Impossible de charger la file de revue QRO.");
+      toast("Impossible de charger la file de revue QRO.", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const decide = async (item: AIQROReviewItem, decision: "VALIDER" | "INVALIDER") => {
-    setBusyId(item.id); setError(""); setInfo("");
+    setBusyId(item.id);
     try {
       await qroReviewApi.decide(item.id, decision);
       setItems((prev) => prev.filter((i) => i.id !== item.id));
 
-      setInfo(decision === "VALIDER"
+      toast(decision === "VALIDER"
         ? `Réponse de ${item.member_name} validée.`
-        : `Réponse de ${item.member_name} invalidée.`);
+        : `Réponse de ${item.member_name} invalidée.`, "success");
     } catch {
-      setError("Impossible d'enregistrer la décision. Réessayez.");
+      toast("Impossible d'enregistrer la décision. Réessayez.", "error");
     } finally {
       setBusyId(null);
     }
@@ -177,9 +177,6 @@ export default function RevueQROPage() {
         <h1>Revue des réponses QRO</h1>
         <p>Réponses ouvertes que Gemini n&apos;a pas pu trancher automatiquement - décision humaine requise.</p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       <div style={{ display: "flex", gap: ".65rem", marginBottom: "1.3rem", flexWrap: "wrap", alignItems: "center" }}>
         <StatTile label="En attente" value={items.length} color="var(--warn)" />

@@ -9,15 +9,15 @@ import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage, us
 import { ConfirmModal, Modal } from "@/components/Modal";
 
 import { BrandLoader } from "@/components/BrandLoader";
+import { useToast } from "@/components/Toast";
 
 export default function QuizResultsPage() {
+  const { toast } = useToast();
   const [results,      setResults]      = useState<QuizResult[]>([]);
   const [quizzes,      setQuizzes]      = useState<QuizItem[]>([]);
   const [filterQuiz,   setFilterQuiz]   = useState("");
   const [filterSearch, setFilterSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [resetting,    setResetting]    = useState<number | null>(null);
   const [resetTarget,  setResetTarget]  = useState<QuizResult | null>(null);
   const [scoreTarget,  setScoreTarget]  = useState<QuizResult | null>(null);
@@ -25,7 +25,6 @@ export default function QuizResultsPage() {
   const [loading,      setLoading]      = useState(true);
 
   const load = useCallback(async () => {
-    setError("");
     try {
       const [resData, qData] = await Promise.all([
         quizResultsApi.list({
@@ -37,21 +36,21 @@ export default function QuizResultsPage() {
       setResults(asList(resData.data));
       setQuizzes(asList(qData.data));
     } catch (e) {
-      setError("Impossible de charger les résultats des quiz.");
+      toast("Impossible de charger les résultats des quiz.", "error");
     } finally {
       setLoading(false);
     }
-  }, [filterQuiz, filterSearch]);
+  }, [filterQuiz, filterSearch, toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const doReset = async (r: QuizResult, reason: string) => {
-    setResetting(r.id); setError(""); setInfo("");
+    setResetting(r.id);
     try {
       await resetQuizApi({ user_id: r.user_id, quiz_id: r.quiz_id, reason });
-      setInfo(`Quiz réinitialisé pour ${r.user_name}.`);
+      toast(`Quiz réinitialisé pour ${r.user_name}.`, "success");
       await load();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setResetting(null); }
   };
 
@@ -88,9 +87,6 @@ export default function QuizResultsPage() {
           {results.filter((r) => r.validated).length} validé{results.filter((r) => r.validated).length !== 1 ? "s" : ""}
         </p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* Filtres */}
       <div style={{ display: "flex", gap: ".75rem", alignItems: "flex-end", marginBottom: "1.1rem", flexWrap: "wrap" }}>
@@ -256,14 +252,14 @@ function QuizAnswersModal({
 }) {
   const [data, setData]     = useState<QuizResultAnswers | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
     quizResultsApi.answers(result.id)
       .then((r) => setData(r.data))
-      .catch(() => setError("Impossible de charger les réponses."))
+      .catch(() => toast("Impossible de charger les réponses.", "error"))
       .finally(() => setLoading(false));
-  }, [result.id]);
+  }, [result.id, toast]);
 
   const scoreColor = (score: number, max: number) => {
     const pct = (score / max) * 100;
@@ -283,8 +279,6 @@ function QuizAnswersModal({
           Chargement…
         </p>
       )}
-      {error && <Alert>{error}</Alert>}
-
       {data && !loading && (
         <>
           {/* En-tête résumé */}
@@ -451,17 +445,16 @@ function ManualScoreModal({
 }) {
   const [score, setScore] = useState(String(result.score));
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = Number(score);
     if (isNaN(val) || val < 0 || val > 20) {
-      setError("Le score doit être un nombre entre 0 et 20.");
+      toast("Le score doit être un nombre entre 0 et 20.", "error");
       return;
     }
     setLoading(true);
-    setError("");
     try {
       await setQuizScoreApi({
         user_id: result.user_id,
@@ -471,7 +464,7 @@ function ManualScoreModal({
       onSaved();
       onClose();
     } catch (err) {
-      setError(errorMessage(err));
+      toast(errorMessage(err), "error");
     } finally {
       setLoading(false);
     }
@@ -479,7 +472,6 @@ function ManualScoreModal({
 
   return (
     <Modal title="Saisir un score" onClose={onClose} maxWidth={400}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div style={{ marginBottom: "1rem", fontSize: ".85rem", color: "var(--muted)" }}>
           Membre : <strong>{result.user_name}</strong>

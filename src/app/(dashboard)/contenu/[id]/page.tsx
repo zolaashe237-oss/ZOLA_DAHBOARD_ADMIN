@@ -18,6 +18,7 @@ import { FormationCard, COVER_GRAD } from "@/components/FormationCard";
 import { AIGenerateModal, AIGenerateResult, AIGenerateTarget } from "@/components/ai/AIGenerateModal";
 import { AIReviewPanel } from "@/components/ai/AIReviewPanel";
 import { YoutubeChapterImportModal } from "@/components/YoutubeChapterImportModal";
+import { useToast } from "@/components/Toast";
 
 type QuizTarget = { quiz: QuizItem | null; course?: number; formation?: number };
 
@@ -55,6 +56,7 @@ type PendingEpisode = { moduleId: number; title: string; youtube: string; kind: 
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function FormationBuilderPage() {
+  const { toast } = useToast();
   const { id } = useParams<{ id: string }>();
   const fid = Number(id);
   const router = useRouter();
@@ -65,8 +67,6 @@ export default function FormationBuilderPage() {
   const [resourcesByCourse, setResourcesByCourse] = useState<Record<number, ResourceItem[]>>({});
   const [quizByCourse,      setQuizByCourse]      = useState<Record<number, QuizItem>>({});
   const [finalExam,         setFinalExam]         = useState<QuizItem | null>(null);
-  const [error,             setError]             = useState("");
-  const [info,              setInfo]              = useState("");
   const [quizTarget,        setQuizTarget]        = useState<QuizTarget | null>(null);
   const [aiTarget,          setAiTarget]          = useState<AIGenerateTarget | null>(null);
   const [aiResult,          setAiResult]          = useState<AIGenerateResult | null>(null);
@@ -97,25 +97,25 @@ export default function FormationBuilderPage() {
   const [pendingChapterTitle, setPendingChapterTitle] = useState("");
   const [pendingEpisode,      setPendingEpisode]      = useState<PendingEpisode | null>(null);
 
-  const flash = (m: string) => { setError(""); setInfo(m); };
+  const flash = (m: string) => { toast(m, "success"); };
 
   const publishFormation = async () => {
-    setPublishing(true); setError("");
+    setPublishing(true);
     try {
       await formationApi.publish(fid);
       flash("Formation publiée avec succès.");
       reload();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setPublishing(false); setShowPublishConfirm(false); }
   };
 
   const deleteFormation = async () => {
-    setDeletingFormation(true); setError("");
+    setDeletingFormation(true);
     try {
       await formationApi.hardDelete(fid);
       router.push("/contenu");
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
       setDeletingFormation(false);
       setShowDeleteFormationConfirm(false);
     }
@@ -123,12 +123,12 @@ export default function FormationBuilderPage() {
 
   const deleteExam = async () => {
     if (!finalExam) return;
-    setDeletingExam(true); setError("");
+    setDeletingExam(true);
     try {
       await quizApi.remove(finalExam.id);
       setFinalExam(null);
       flash("Examen final supprimé.");
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setDeletingExam(false); setShowDeleteExamConfirm(false); }
   };
 
@@ -160,14 +160,14 @@ export default function FormationBuilderPage() {
       setQuizByCourse(
         Object.fromEntries(quizzes.filter((q) => q.course).map((q) => [q.course as number, q])));
       setFinalExam(quizzes.find((q) => q.formation) ?? null);
-    } catch (e) { setError(errorMessage(e)); }
-  }, [fid]);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [fid, toast]);
 
   useEffect(() => { reload(); }, [reload]);
 
   const saveMeta = async () => {
     if (!formation) return;
-    setSavingMeta(true); setError(""); setInfo("");
+    setSavingMeta(true);
     try {
       await formationApi.update(fid, {
         title: meta.title, description: meta.description, category: meta.category,
@@ -185,13 +185,13 @@ export default function FormationBuilderPage() {
         await formationApi.uploadCover(fid, coverFile);
         setCoverFile(null);
       }
-      setInfo("Modifications de la formation enregistrées.");
+      toast("Modifications de la formation enregistrées.", "success");
       reload();
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setSavingMeta(false); }
   };
 
-  if (!formation) return <p style={{ color: "var(--muted)" }}>{error || "Chargement…"}</p>;
+  if (!formation) return <p style={{ color: "var(--muted)" }}>Chargement…</p>;
 
   const hasChanges = formation.title !== meta.title ||
     formation.description !== meta.description ||
@@ -224,7 +224,7 @@ export default function FormationBuilderPage() {
     });
     try {
       await Promise.all(reordered.map((m, idx) => moduleApi.update(m.id, { order: idx + 1 })));
-    } catch (e) { setError(errorMessage(e)); reload(); }
+    } catch (e) { toast(errorMessage(e), "error"); reload(); }
   };
 
   return (
@@ -333,15 +333,12 @@ export default function FormationBuilderPage() {
               coverFile={coverFile}
               setCoverFile={setCoverFile}
               onSaved={reload}
-              onError={setError}
+              onError={(s) => toast(s, "error")}
               onInfo={flash}
             />
           </div>
         )}
       </div>
-
-      <Alert>{error}</Alert>
-      <Alert kind="success">{info}</Alert>
 
       {/* ── Builder + Aperçu Playlist ── */}
       <div style={{
@@ -372,7 +369,7 @@ export default function FormationBuilderPage() {
             <AddChapterForm
               formationId={fid} modules={modules}
               onSaved={() => { setPendingChapterTitle(""); reload(); }}
-              onError={setError} onInfo={flash}
+              onError={(s) => toast(s, "error")} onInfo={flash}
               onTitleChange={setPendingChapterTitle}
               onYoutubeImport={() => setShowYtImport(true)}
             />
@@ -418,7 +415,7 @@ export default function FormationBuilderPage() {
                     chapterQuiz={chapterQuiz}
                     resourcesByCourse={resourcesByCourse}
                     onReload={reload}
-                    onError={setError}
+                    onError={(s) => toast(s, "error")}
                     onInfo={flash}
                     onQuiz={setQuizTarget}
                     onAiGenerate={setAiTarget}

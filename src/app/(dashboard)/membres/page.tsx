@@ -11,6 +11,7 @@ import {
 } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes branches ───────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ function CreateMemberModal({ onClose, onCreated }: {
     access_levels: ["MEMBRE"] as string[],
   });
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const toggle = (l: string) =>
     setForm((prev) => ({
@@ -98,17 +99,16 @@ function CreateMemberModal({ onClose, onCreated }: {
     }));
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       await membersApi.create(form);
       onCreated(); onClose();
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title="Créer un membre" onClose={onClose} maxWidth={460}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <Input label="Nom complet" value={form.full_name} required
           placeholder="Marie-Claire Ahouandjinou"
@@ -160,10 +160,10 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
     reason:  "",
   });
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       await (financeApi as any).manual({
         user_id: Number(form.user_id),
@@ -172,13 +172,12 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
         reason:  form.reason,
       });
       onDone(); onClose();
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={440}>
-      <Alert>{error}</Alert>
       {userName && (
         <div style={{ marginBottom: "0.85rem", padding: "0.6rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: "0.84rem", color: "var(--muted)" }}>
           Membre : <strong style={{ color: "var(--ink)" }}>{userName}</strong>
@@ -215,12 +214,11 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MembresPage() {
+  const { toast } = useToast();
   const [members,     setMembers]     = useState<User[]>([]);
   const [filterSearch, setFilterSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterBranch, setFilterBranch] = useState("");
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [showCreate,   setShowCreate]   = useState(false);
   const [payTarget,    setPayTarget]    = useState<User | null>(null);
   const [exporting,    setExporting]    = useState(false);
@@ -230,26 +228,25 @@ export default function MembresPage() {
   const debouncedSearch = useDebounce(filterSearch, 350);
 
   const load = useCallback(async () => {
-    setError("");
     try {
       const { data } = await membersApi.list({
         search: debouncedSearch || undefined,
         status: filterStatus || undefined,
       });
       setMembers(data.results);
-    } catch (e) { setError(errorMessage(e)); }
-  }, [debouncedSearch, filterStatus]);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [debouncedSearch, filterStatus, toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const act = async (fn: () => Promise<unknown>, ok: string) => {
-    try { await fn(); await load(); setInfo(ok); } catch (e) { setError(errorMessage(e)); }
+    try { await fn(); await load(); toast(ok, "success"); } catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const exportCsv = async () => {
     setExporting(true);
     try { const { data } = await financeApi.exportMembers(); downloadBlob(data as Blob, "membres.csv"); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
     finally { setExporting(false); }
   };
 
@@ -281,9 +278,6 @@ export default function MembresPage() {
           {bloqueCount > 0 && <> · <span style={{ color: "var(--bad)" }}>{bloqueCount} bloqué{bloqueCount !== 1 ? "s" : ""}</span></>}
         </p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* Filtres + actions */}
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", marginBottom: "1.1rem", flexWrap: "wrap" }}>
@@ -422,14 +416,14 @@ export default function MembresPage() {
       {showCreate && (
         <CreateMemberModal
           onClose={() => setShowCreate(false)}
-          onCreated={() => { setInfo("Membre créé avec succès."); load(); }}
+          onCreated={() => { toast("Membre créé avec succès.", "success"); load(); }}
         />
       )}
       {payTarget && (
         <ManualPaymentModal
           userId={payTarget.id} userName={payTarget.full_name}
           onClose={() => setPayTarget(null)}
-          onDone={() => { setInfo("Paiement enregistré."); setPayTarget(null); }}
+          onDone={() => { toast("Paiement enregistré.", "success"); setPayTarget(null); }}
         />
       )}
       {blockTarget && (
@@ -440,7 +434,7 @@ export default function MembresPage() {
           onClose={() => setBlockTarget(null)}
           onConfirm={async (reason) => {
             await membersApi.block(blockTarget.id, reason);
-            setInfo(`${blockTarget.full_name} bloqué.`);
+            toast(`${blockTarget.full_name} bloqué.`, "success");
             setBlockTarget(null);
             await load();
           }}
@@ -455,7 +449,7 @@ export default function MembresPage() {
           onClose={() => setWarnTarget(null)}
           onConfirm={async (reason) => {
             await membersApi.warn(warnTarget.id, reason);
-            setInfo(`Avertissement envoyé à ${warnTarget.full_name}.`);
+            toast(`Avertissement envoyé à ${warnTarget.full_name}.`, "success");
             setWarnTarget(null);
             await load();
           }}

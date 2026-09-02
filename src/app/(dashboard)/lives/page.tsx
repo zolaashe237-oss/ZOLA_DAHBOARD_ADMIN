@@ -6,6 +6,7 @@ import { livesApi } from "@/lib/endpoints";
 import type { Branche, LivePlatform, LiveSession, LiveStatus, Paginated } from "@/lib/types";
 import { Alert, Button, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -104,21 +105,20 @@ function LiveFormModal({ initial, editing, onClose, onSaved }: {
 }) {
   const [form,    setForm]    = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       const payload = { ...form, replay_url: form.replay_url || null };
       if (editing) { await livesApi.update(editing, payload); onSaved("Session mise à jour."); }
       else          { await livesApi.create(payload);          onSaved("Session créée."); }
       onClose();
-    } catch (err) { setError(errorMessage(err)); } finally { setLoading(false); }
+    } catch (err) { toast(errorMessage(err), "error"); } finally { setLoading(false); }
   };
 
   return (
     <Modal title={editing ? "Modifier la session" : "Nouvelle session live"} onClose={onClose} maxWidth={640}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:"0 1rem" }}>
           <Input label="Titre de la session" value={form.title} required
@@ -629,13 +629,12 @@ function SessionDetailModal({ session: s, onClose, onEdit, onDelete }: {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function LivesPage() {
+  const { toast } = useToast();
   const [items,   setItems]   = useState<LiveSession[]>([]);
   const [view,    setView]    = useState<LiveView>(() =>
     (typeof window !== "undefined" ? (localStorage.getItem("lives_view") as LiveView) : null) ?? "month"
   );
   const [current, setCurrent] = useState(new Date());
-  const [error,   setError]   = useState("");
-  const [info,    setInfo]    = useState("");
 
   // Filtres
   const [search,        setSearch]        = useState("");
@@ -655,11 +654,11 @@ export default function LivesPage() {
       const { data } = await livesApi.list();
       setItems(Array.isArray(data) ? data : (data as Paginated<LiveSession>).results);
     } catch {
-      setError("Impossible de charger les sessions. Vérifiez votre connexion.");
+      toast("Impossible de charger les sessions. Vérifiez votre connexion.", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -727,9 +726,6 @@ export default function LivesPage() {
         </div>
         <Button onClick={() => setFormTarget({ session:null })}>+ Nouveau live</Button>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── Barre de contrôle ── */}
       <div style={{ display:"flex", alignItems:"flex-end", gap:"0.65rem", marginBottom:"1rem", flexWrap:"wrap" }}>
@@ -861,7 +857,7 @@ export default function LivesPage() {
           }
           editing={formTarget.session?.id ?? null}
           onClose={() => setFormTarget(null)}
-          onSaved={(msg) => { setInfo(msg); setFormTarget(null); load(); }}
+          onSaved={(msg) => { toast(msg, "success"); setFormTarget(null); load(); }}
         />
       )}
       {deleteId !== null && (
@@ -872,7 +868,7 @@ export default function LivesPage() {
           onClose={() => setDeleteId(null)}
           onConfirm={async () => {
             await livesApi.remove(deleteId);
-            setInfo("Session supprimée.");
+            toast("Session supprimée.", "success");
             setDeleteId(null);
             await load();
           }}

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { auditApi } from "@/lib/endpoints";
 import type { AuditEntry } from "@/lib/types";
-import { Alert, Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
+import { Badge, Button, Card, Pagination, errorMessage, usePagination } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -52,15 +53,14 @@ const KNOWN_ACTIONS = Object.keys(ACTION_LABEL);
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AuditPage() {
+  const { toast } = useToast();
   const [entries,    setEntries]    = useState<AuditEntry[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [filterAction, setFilterAction] = useState("");
   const [filterFrom,   setFilterFrom]   = useState("");
   const [filterTo,     setFilterTo]     = useState("");
-  const [error,        setError]        = useState("");
 
   const load = useCallback(async () => {
-    setError("");
     setLoading(true);
     try {
       const { data } = await auditApi.list({
@@ -71,7 +71,7 @@ export default function AuditPage() {
       });
       const list = Array.isArray(data) ? data : (data as { results: AuditEntry[] }).results ?? [];
       setEntries(list);
-    } catch (e) { setError(errorMessage(e)); }
+    } catch (e) { toast(errorMessage(e), "error"); }
     finally { setLoading(false); }
   }, [filterAction, filterFrom, filterTo]);
 
@@ -101,8 +101,6 @@ export default function AuditPage() {
           {hasFilters && <span style={{ color: "var(--muted)" }}> (filtrées)</span>}.
         </p>
       </div>
-
-      <Alert>{error}</Alert>
 
       {/* Filtres */}
       <Card style={{ padding: "0.85rem 1.1rem", marginBottom: "1.25rem" }}>

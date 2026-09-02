@@ -7,6 +7,7 @@ import { financeApi, membersApi } from "@/lib/endpoints";
 import type { MemberDetail } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -88,10 +89,10 @@ function EditProfileModal({ member, onClose, onSaved }: {
     country:   member.country ?? "",
   });
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       await membersApi.update(member.id, {
         full_name: form.full_name,
@@ -100,13 +101,12 @@ function EditProfileModal({ member, onClose, onSaved }: {
         country:   form.country || null,
       });
       onSaved(); onClose();
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title="Modifier le profil" onClose={onClose} maxWidth={440}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         <Input label="Nom complet" value={form.full_name} required
           onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
@@ -132,7 +132,7 @@ function EditBranchesModal({ member, onClose, onSaved }: {
 }) {
   const [levels,  setLevels]  = useState<string[]>(member.access_levels ?? []);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const toggle = (l: string) =>
     setLevels((prev) =>
@@ -140,17 +140,16 @@ function EditBranchesModal({ member, onClose, onSaved }: {
     );
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       await membersApi.update(member.id, { access_levels: levels });
       onSaved(); onClose();
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title="Modifier les accès" onClose={onClose} maxWidth={420}>
-      <Alert>{error}</Alert>
       <p style={{ fontSize: ".85rem", color: "var(--muted)", marginBottom: "1.2rem" }}>
         Cochez les branches auxquelles ce membre doit avoir accès.
       </p>
@@ -193,10 +192,10 @@ function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
 }) {
   const [form, setForm] = useState({ kind: "COTISATION", amount: "", reason: "" });
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault(); setLoading(true);
     try {
       await (financeApi as any).manual({
         user_id: memberId,
@@ -205,13 +204,12 @@ function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
         reason:  form.reason,
       });
       onDone(); onClose();
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
 
   return (
     <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={430}>
-      <Alert>{error}</Alert>
       <div style={{ marginBottom: "0.85rem", padding: "0.55rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: ".84rem", color: "var(--muted)" }}>
         Membre : <strong style={{ color: "var(--ink)" }}>{memberName}</strong>
       </div>
@@ -240,14 +238,13 @@ function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function MemberDetailPage() {
+  const { toast } = useToast();
   const params = useParams();
   const router = useRouter();
   const userId = Number(params.id);
 
   const [member,       setMember]       = useState<MemberDetail | null>(null);
   const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState("");
-  const [info,         setInfo]         = useState("");
   const [busy,         setBusy]         = useState("");
   const [tempPwd,      setTempPwd]      = useState<string | null>(null);
   const [pwdVisible,   setPwdVisible]   = useState(false);
@@ -266,16 +263,16 @@ export default function MemberDetailPage() {
       const { data } = await membersApi.detail(userId);
       setMember(data);
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally { setLoading(false); }
-  }, [userId]);
+  }, [userId, toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const unblock = async () => {
-    setBusy("unblock"); setError(""); setInfo("");
-    try { await membersApi.unblock(userId); setInfo("Membre débloqué."); await load(); }
-    catch (e) { setError(errorMessage(e)); }
+    setBusy("unblock");
+    try { await membersApi.unblock(userId); toast("Membre débloqué.", "success"); await load(); }
+    catch (e) { toast(errorMessage(e), "error"); }
     finally { setBusy(""); }
   };
 
@@ -297,9 +294,6 @@ export default function MemberDetailPage() {
       }}>
         ← Retour aux membres
       </button>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── Mot de passe temporaire ── */}
       {tempPwd && (
@@ -660,19 +654,19 @@ export default function MemberDetailPage() {
       {showEditProfile && (
         <EditProfileModal member={member}
           onClose={() => setShowEditProfile(false)}
-          onSaved={() => { setInfo("Profil mis à jour."); load(); }} />
+          onSaved={() => { toast("Profil mis à jour.", "success"); load(); }} />
       )}
 
       {showEditBranch && (
         <EditBranchesModal member={member}
           onClose={() => setShowEditBranch(false)}
-          onSaved={() => { setInfo("Accès branches mis à jour."); load(); }} />
+          onSaved={() => { toast("Accès branches mis à jour.", "success"); load(); }} />
       )}
 
       {showPayment && (
         <ManualPaymentModal memberId={userId} memberName={member.full_name}
           onClose={() => setShowPayment(false)}
-          onDone={() => { setInfo("Paiement enregistré."); load(); }} />
+          onDone={() => { toast("Paiement enregistré.", "success"); load(); }} />
       )}
 
       {showBlockDlg && (
@@ -683,7 +677,7 @@ export default function MemberDetailPage() {
           onClose={() => setShowBlockDlg(false)}
           onConfirm={async (reason) => {
             await membersApi.block(userId, reason);
-            setInfo("Membre bloqué."); setShowBlockDlg(false); await load();
+            toast("Membre bloqué.", "success"); setShowBlockDlg(false); await load();
           }}
         />
       )}
@@ -701,7 +695,7 @@ export default function MemberDetailPage() {
             if (data.recidive_alert) {
               msg += " ⚠ Alerte récidive : ce membre a atteint 3 avertissements ou plus.";
             }
-            setInfo(msg);
+            toast(msg, "success");
             setShowWarnDlg(false); await load();
           }}
         />

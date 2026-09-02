@@ -11,7 +11,8 @@ import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 import type {
   DashboardKPIs, LateMember, MonthlyRevenue, Paginated, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, TransactionKPIs, User,
 } from "@/lib/types";
-import { Alert, Badge, Button, Card, Input, Pagination, Select, errorMessage } from "@/components/ui";
+import { Badge, Button, Card, Input, Pagination, Select, errorMessage } from "@/components/ui";
+import { useToast } from "@/components/Toast";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -478,8 +479,7 @@ function LateCotisations({ items, onReminder, onReminderOne }: {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function FinancePage() {
-  const [error,     setError]     = useState("");
-  const [info,      setInfo]      = useState("");
+  const { toast } = useToast();
   const [revenue,   setRevenue]   = useState<MonthlyRevenue[]>([]);
   const [late,      setLate]      = useState<LateMember[]>([]);
   const [breakdown, setBreakdown] = useState<PaymentBreakdown[]>([]);
@@ -562,35 +562,34 @@ export default function FinancePage() {
         setPaymentsTotal(paginated.count);
       }
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     }
   }, [paymentFilters, paymentsPage, paymentsPageSize]);
 
   const wrap = async (fn: () => Promise<unknown>, ok: string) => {
-    setError(""); setInfo("");
     try {
       await fn();
-      setInfo(ok);
+      toast(ok, "success");
       load();
       loadPayments();
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     }
   };
 
   const sendReminders = async (userId?: number) => {
-    setError(""); setInfo("");
     try {
       const { data } = await financeApi.sendReminders(userId ? { user_id: userId } : undefined);
       const n = data.reminded ?? 0;
-      setInfo(
+      toast(
         n === 0
           ? "Aucun membre en retard à relancer."
-          : `${n} relance${n > 1 ? "s" : ""} envoyée${n > 1 ? "s" : ""} avec succès.`
+          : `${n} relance${n > 1 ? "s" : ""} envoyée${n > 1 ? "s" : ""} avec succès.`,
+        "success"
       );
       load();
     } catch (e) {
-      setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     }
   };
 
@@ -626,9 +625,6 @@ export default function FinancePage() {
         </div>
         <DateRangePicker value={period} onChange={(newRange) => setPeriod(newRange)} />
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       {/* ── KPIs ─────────────────────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>

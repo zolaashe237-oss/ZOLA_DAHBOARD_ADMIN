@@ -6,6 +6,7 @@ import { plansApi } from "@/lib/endpoints";
 import type { PlanBilling, PlanKind, Paginated, SubscriptionPlan } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, Textarea, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
+import { useToast } from "@/components/Toast";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ function PlanFormModal({
 }) {
   const [form,    setForm]    = useState(initial);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const { toast } = useToast();
 
   const toggleAccess = (level: string) =>
     setForm((prev) => ({
@@ -73,13 +74,13 @@ function PlanFormModal({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true); setError("");
+    setLoading(true);
     try {
       if (editing) { await plansApi.update(editing, form); onSaved("Plan mis à jour."); }
       else         { await plansApi.create(form);          onSaved("Plan créé."); }
       onClose();
     } catch (err) {
-      setError(errorMessage(err));
+      toast(errorMessage(err), "error");
     } finally {
       setLoading(false);
     }
@@ -89,7 +90,6 @@ function PlanFormModal({
 
   return (
     <Modal title={editing ? "Modifier le plan" : "Nouveau plan"} onClose={onClose} maxWidth={620}>
-      <Alert>{error}</Alert>
       <form onSubmit={submit}>
         {/* Type de plan */}
         <div style={{ marginBottom: "1rem" }}>
@@ -348,9 +348,8 @@ const GROUPS: { key: PlanBilling; label: string; desc: string }[] = [
 ];
 
 export default function AbonnementsPage() {
+  const { toast } = useToast();
   const [items,      setItems]      = useState<SubscriptionPlan[]>([]);
-  const [error,      setError]      = useState("");
-  const [info,       setInfo]       = useState("");
   const [formTarget, setFormTarget] = useState<{ plan: SubscriptionPlan | null } | null>(null);
   const [deleteId,   setDeleteId]   = useState<number | null>(null);
 
@@ -358,14 +357,14 @@ export default function AbonnementsPage() {
     try {
       const { data } = await plansApi.list();
       setItems(Array.isArray(data) ? data : (data as Paginated<SubscriptionPlan>).results);
-    } catch (e) { setError(errorMessage(e)); }
-  }, []);
+    } catch (e) { toast(errorMessage(e), "error"); }
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
   const toggle = async (p: SubscriptionPlan) => {
     try { await plansApi.toggle(p.id); await load(); }
-    catch (e) { setError(errorMessage(e)); }
+    catch (e) { toast(errorMessage(e), "error"); }
   };
 
   const activeCount = items.filter((p) => p.is_active).length;
@@ -377,9 +376,6 @@ export default function AbonnementsPage() {
         <h1>Plans d&apos;abonnement</h1>
         <p>{items.length} plan{items.length !== 1 ? "s" : ""} · {activeCount} actif{activeCount !== 1 ? "s" : ""}</p>
       </div>
-
-      <Alert>{error}</Alert>
-      {info && <Alert kind="success">{info}</Alert>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1.5rem" }}>
         <Button onClick={() => setFormTarget({ plan: null })}>+ Nouveau plan</Button>
@@ -458,7 +454,7 @@ export default function AbonnementsPage() {
           }
           editing={formTarget.plan?.id ?? null}
           onClose={() => setFormTarget(null)}
-          onSaved={(msg) => { setInfo(msg); setFormTarget(null); load(); }}
+          onSaved={(msg) => { toast(msg, "success"); setFormTarget(null); load(); }}
         />
       )}
 
@@ -471,7 +467,7 @@ export default function AbonnementsPage() {
           onClose={() => setDeleteId(null)}
           onConfirm={async () => {
             await plansApi.remove(deleteId);
-            setInfo("Plan supprimé.");
+            toast("Plan supprimé.", "success");
             setDeleteId(null);
             await load();
           }}
