@@ -630,7 +630,7 @@ export default function ComptePage() {
           onClose={() => setDeactivateTarget(null)}
           onConfirm={async (reason) => {
             await adminAccountApi.deactivateAdmin(deactivateTarget.id, reason);
-            setTeamInfo(`${deactivateTarget.full_name} désactivé.`);
+            toast(`${deactivateTarget.full_name} désactivé.`, "success");
             setDeactivateTarget(null);
             await loadAdmins();
           }}
@@ -662,7 +662,7 @@ export default function ComptePage() {
           onClose={() => setDeleteTarget(null)}
           onConfirm={async () => {
             await adminAccountApi.removeAdmin(deleteTarget.id);
-            setTeamInfo("Compte supprimé.");
+            toast("Compte supprimé.", "success");
             setDeleteTarget(null);
             await loadAdmins();
           }}
