@@ -11,7 +11,7 @@ import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 import type {
   DashboardKPIs, LateMember, MonthlyRevenue, Paginated, PaymentBreakdown, PaymentKind, PaymentStatus, Transaction, TransactionKPIs, User,
 } from "@/lib/types";
-import { Badge, Button, Card, Input, Pagination, Select, errorMessage } from "@/components/ui";
+import { Badge, Button, Card, Input, Pagination, Select, STATUS_COLOR, errorMessage } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -388,76 +388,108 @@ function BarCompareChart({ data }: { data: MonthlyRevenue[] }) {
 
 // ── Cotisations en retard ─────────────────────────────────────────────────────
 
+const STATUS_LABEL_FIN: Record<string, string> = {
+  ACTIF: "Actif", RESTREINT: "Restreint", BLOQUE: "Bloqué",
+};
+
 function LateCotisations({ items, onReminder, onReminderOne }: {
   items: LateMember[]; onReminder: () => void; onReminderOne: (id: number) => void;
 }) {
   const totalDue = items.reduce((s, m) => s + m.amount_due, 0);
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.85rem" }}>
-        <h2 style={{ fontSize: "1rem" }}>
-          Cotisations en retard
-          {items.length > 0 && (
-            <span style={{ marginLeft: "0.5rem", fontSize: "0.65rem", fontWeight: 700, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid rgba(154,110,16,0.25)", padding: "0.06rem 0.45rem", borderRadius: 99 }}>
-              {items.length}
-            </span>
-          )}
-        </h2>
-        <Button variant="ghost" onClick={onReminder} style={{ fontSize: "0.78rem", padding: "0.32rem 0.7rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+        <div>
+          <h2 style={{ fontSize: "1rem", marginBottom: "0.1rem" }}>
+            Cotisations en retard
+            {items.length > 0 && (
+              <span style={{ marginLeft: "0.5rem", fontSize: "0.65rem", fontWeight: 700, color: "var(--warn)", background: "var(--warn-bg)", border: "1px solid rgba(154,110,16,0.25)", padding: "0.06rem 0.45rem", borderRadius: 99 }}>
+                {items.length}
+              </span>
+            )}
+          </h2>
+          <p style={{ fontSize: "0.76rem", color: "var(--muted-2)", margin: 0 }}>
+            Cotisation mensuelle : <strong style={{ color: "var(--warn)" }}>10 000 FCFA / mois</strong>
+            {" · "}Un compte actif peut avoir des cotisations impayées.
+          </p>
+        </div>
+        <Button variant="ghost" onClick={onReminder} style={{ fontSize: "0.78rem", padding: "0.32rem 0.7rem", flexShrink: 0, marginLeft: "1rem" }}>
           Envoyer relances
         </Button>
       </div>
 
       {items.length === 0 ? (
-        <p style={{ color: "var(--muted)", fontSize: "0.88rem", padding: "0.5rem 0" }}>
+        <p style={{ color: "var(--muted)", fontSize: "0.88rem", padding: "0.5rem 0", marginTop: "0.75rem" }}>
           ✓ Aucun retard — tout est à jour !
         </p>
       ) : (
         <>
-          <table className="tbl">
+          <table className="tbl" style={{ marginTop: "0.75rem" }}>
             <thead>
               <tr>
                 <th>Membre</th>
+                <th style={{ textAlign: "center" }}>Statut compte</th>
                 <th style={{ textAlign: "center" }}>Retard</th>
                 <th style={{ textAlign: "right" }}>Montant dû</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {items.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <div style={{ fontWeight: 600, fontSize: "0.855rem", color: "var(--gold-2)" }}>{m.full_name}</div>
-                    <div style={{ color: "var(--muted-2)", fontSize: "0.76rem" }}>{m.email}</div>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <span style={{
-                      fontSize: "0.68rem", fontWeight: 700, borderRadius: 99,
-                      color: m.months_late >= 3 ? "var(--bad)" : "var(--warn)",
-                      background: m.months_late >= 3 ? "var(--bad-bg)" : "var(--warn-bg)",
-                      border: `1px solid ${m.months_late >= 3 ? "rgba(192,64,44,0.28)" : "rgba(154,110,16,0.25)"}`,
-                      padding: "0.05rem 0.45rem",
-                    }}>
-                      {m.months_late} mois
-                    </span>
-                  </td>
-                  <td style={{ textAlign: "right", fontWeight: 700, fontSize: "0.875rem", color: "var(--cream)" }}>
-                    {m.amount_due.toLocaleString("fr-FR")} F
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <Button variant="ghost" onClick={() => onReminderOne(m.id)} style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
-                        Relancer
-                      </Button>
-                      <Link href={`/membres/${m.id}`}>
-                        <Button variant="ghost" style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
-                          Fiche
+              {items.map((m) => {
+                const unitPrice = m.months_late > 0 ? Math.round(m.amount_due / m.months_late) : m.amount_due;
+                const statusColor = STATUS_COLOR[m.status] ?? "var(--muted)";
+                return (
+                  <tr key={m.id}>
+                    <td>
+                      <div style={{ fontWeight: 600, fontSize: "0.855rem", color: "var(--gold-2)" }}>{m.full_name}</div>
+                      <div style={{ color: "var(--muted-2)", fontSize: "0.76rem" }}>{m.email}</div>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <span style={{
+                        fontSize: "0.64rem", fontWeight: 700, borderRadius: 99,
+                        color: statusColor, background: `${statusColor}12`,
+                        border: `1px solid ${statusColor}28`,
+                        padding: "0.05rem 0.42rem", whiteSpace: "nowrap",
+                      }}>
+                        {m.status === "ACTIF" ? "●" : "○"} {STATUS_LABEL_FIN[m.status] ?? m.status}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <span style={{
+                        fontSize: "0.68rem", fontWeight: 700, borderRadius: 99,
+                        color: m.months_late >= 3 ? "var(--bad)" : "var(--warn)",
+                        background: m.months_late >= 3 ? "var(--bad-bg)" : "var(--warn-bg)",
+                        border: `1px solid ${m.months_late >= 3 ? "rgba(192,64,44,0.28)" : "rgba(154,110,16,0.25)"}`,
+                        padding: "0.05rem 0.45rem",
+                      }}>
+                        {m.months_late} mois
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--cream)" }}>
+                        {m.amount_due.toLocaleString("fr-FR")} F
+                      </div>
+                      {m.months_late > 0 && (
+                        <div style={{ fontSize: "0.70rem", color: "var(--muted-2)", marginTop: "0.1rem" }}>
+                          {m.months_late} × {unitPrice.toLocaleString("fr-FR")} F
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <Button variant="ghost" onClick={() => onReminderOne(m.id)} style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
+                          Relancer
                         </Button>
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <Link href={`/membres/${m.id}`}>
+                          <Button variant="ghost" style={{ fontSize: "0.74rem", padding: "0.26rem 0.58rem" }}>
+                            Fiche
+                          </Button>
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div style={{

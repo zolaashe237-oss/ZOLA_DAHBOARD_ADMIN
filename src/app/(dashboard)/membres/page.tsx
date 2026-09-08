@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { downloadBlob, financeApi, membersApi } from "@/lib/endpoints";
-import type { User } from "@/lib/types";
+import { downloadBlob, financeApi, membersApi, plansApi } from "@/lib/endpoints";
+import type { PlanKind, SubscriptionPlan, User } from "@/lib/types";
 import {
   Alert, Button, Card, Input, Pagination, Select,
   STATUS_COLOR, errorMessage, usePagination,
@@ -149,27 +149,132 @@ function CreateMemberModal({ onClose, onCreated }: {
 
 // ── Modal — Paiement manuel ───────────────────────────────────────────────────
 
+const KIND_LABELS: Record<PlanKind, string> = {
+  COTISATION:     "Cotisation mensuelle",
+  INSCRIPTION:    "Droit d'inscription",
+  BRANCHE_FEMME:  "Accès Branche Femme",
+  BRANCHE_ENFANT: "Accès Branche Enfant",
+  DON:            "Don volontaire",
+};
+
 function ManualPaymentModal({ userId, userName, onClose, onDone }: {
   userId?: number; userName?: string;
   onClose: () => void; onDone: () => void;
 }) {
-  const [form, setForm] = useState({
-    user_id: String(userId ?? ""),
-    kind:    "COTISATION",
-    amount:  "",
-    reason:  "",
-  });
+  const [kind,    setKind]    = useState<PlanKind>("COTISATION");
+  const [amount,  setAmount]  = useState("");
+  const [plans,   setPlans]   = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    plansApi.list().then(({ data }) => {
+      const list = Array.isArray(data) ? data : (data as any).results ?? [];
+      setPlans(list.filter((p: SubscriptionPlan) => p.is_active));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const plan = plans.find((p) => p.kind === kind);
+    setAmount(plan ? String(plan.price_total) : "");
+  }, [kind, plans]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      await (financeApi as any).manual({
-        user_id: Number(form.user_id),
-        kind:    form.kind,
-        amount:  form.amount ? Number(form.amount) : undefined,
-        reason:  form.reason,
+      await financeApi.manual({
+        user_id: Number(userId),
+        kind,
+        amount:  amount ? Number(amount) : undefined,
+        reason:  `Paiement manuel — ${KIND_LABELS[kind]}`,
+      });
+      onDone(); onClose();
+    } catch (err) { toast(errorMessage(err), "error"); }
+    finally { setLoading(false); }
+  };
+
+  const activePlan = plans.find((p) => p.kind === kind);
+
+  return (
+    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={460}>
+      {userName && (
+        <div style={{ marginBottom: "1rem", padding: "0.6rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: "0.84rem", color: "var(--muted)" }}>
+          Membre : <strong style={{ color: "var(--ink)" }}>{userName}</strong>
+        </div>
+      )}
+      <form onSubmit={submit}>
+        {/* Type de paiement */}
+        <div style={{ marginBottom: "1rem" }}>
+          <span className="field-label">Type de paiement</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.4rem" }}>
+            {(["COTISATION", "INSCRIPTION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
+              const p = plans.find((pl) => pl.kind === k);
+              const active = kind === k;
+              return (
+                <label key={k} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: "0.6rem", padding: "0.5rem 0.75rem",
+                  borderRadius: "var(--radius-sm)",
+                  border: `1px solid ${active ? "rgba(201,162,39,0.5)" : "var(--line-soft)"}`,
+                  background: active ? "rgba(201,162,39,0.07)" : "var(--bg)",
+                  cursor: "pointer",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input type="radio" name="kind" value={k} checked={active}
+                      onChange={() => setKind(k)}
+                      style={{ accentColor: "var(--gold-2)" }} />
+                    <span style={{ fontSize: "0.84rem", fontWeight: active ? 700 : 400, color: active ? "var(--gold-2)" : "var(--ink)" }}>
+                      {KIND_LABELS[k]}
+                    </span>
+                  </div>
+                  {p && (
+                    <span style={{ fontSize: "0.78rem", color: "var(--muted-2)", whiteSpace: "nowrap" }}>
+                      {p.price_total.toLocaleString("fr-FR")} FCFA
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Montant pré-rempli, modifiable */}
+        <Input
+          label={activePlan ? "Montant (FCFA) — pré-rempli depuis le plan" : "Montant (FCFA)"}
+          type="number" min={0}
+          value={amount}
+          placeholder="Montant en FCFA"
+          onChange={(e) => setAmount(e.target.value)}
+        />
+
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+          <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
+          <Button type="submit" loading={loading}>Confirmer le paiement</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Modal — Remboursement ─────────────────────────────────────────────────────
+
+function RefundModal({ user, onClose, onDone }: {
+  user: User; onClose: () => void; onDone: () => void;
+}) {
+  const [amount,  setAmount]  = useState("");
+  const [reason,  setReason]  = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amount || Number(amount) <= 0) { toast("Montant invalide.", "error"); return; }
+    setLoading(true);
+    try {
+      await financeApi.refund({
+        user_id: user.id,
+        amount:  Number(amount),
+        reason:  reason.trim() || `Remboursement — ${user.full_name}`,
       });
       onDone(); onClose();
     } catch (err) { toast(errorMessage(err), "error"); }
@@ -177,34 +282,23 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
   };
 
   return (
-    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={440}>
-      {userName && (
-        <div style={{ marginBottom: "0.85rem", padding: "0.6rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: "0.84rem", color: "var(--muted)" }}>
-          Membre : <strong style={{ color: "var(--ink)" }}>{userName}</strong>
-        </div>
-      )}
+    <Modal title="Rembourser / annuler un paiement" onClose={onClose} maxWidth={440}>
+      <div style={{ marginBottom: "1rem", padding: "0.6rem 0.75rem", background: "rgba(185,28,28,0.06)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(185,28,28,0.18)", fontSize: "0.83rem", color: "var(--bad)" }}>
+        ⚠ Un remboursement crée une écriture négative dans l&apos;historique financier.
+      </div>
+      <div style={{ marginBottom: "1rem", padding: "0.6rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: "0.84rem", color: "var(--muted)" }}>
+        Membre : <strong style={{ color: "var(--ink)" }}>{user.full_name}</strong>
+      </div>
       <form onSubmit={submit}>
-        {!userId && (
-          <Input label="ID membre" value={form.user_id} required type="number"
-            placeholder="123"
-            onChange={(e) => setForm({ ...form, user_id: e.target.value })} />
-        )}
-        <Select label="Type de paiement" value={form.kind}
-          onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-          <option value="COTISATION">Cotisation mensuelle</option>
-          <option value="INSCRIPTION">Droit d&apos;inscription</option>
-          <option value="DON">Don volontaire</option>
-        </Select>
-        <Input label="Montant (FCFA)" type="number" min={0} value={form.amount}
-          placeholder="ex : 2000"
-          onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-        <Input label="Motif" value={form.reason} required
-          placeholder="Paiement espèces — juin 2026"
-          onChange={(e) => setForm({ ...form, reason: e.target.value })} />
-
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.4rem" }}>
+        <Input label="Montant à rembourser (FCFA)" type="number" min={1}
+          value={amount} placeholder="Ex : 5000"
+          onChange={(e) => setAmount(e.target.value)} required />
+        <Input label="Motif (optionnel)" value={reason}
+          placeholder="Ex : doublon, erreur de saisie…"
+          onChange={(e) => setReason(e.target.value)} />
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
           <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
-          <Button type="submit" loading={loading}>Confirmer le paiement</Button>
+          <Button type="submit" variant="danger" loading={loading}>Confirmer le remboursement</Button>
         </div>
       </form>
     </Modal>
@@ -215,12 +309,13 @@ function ManualPaymentModal({ userId, userName, onClose, onDone }: {
 
 export default function MembresPage() {
   const { toast } = useToast();
-  const [members,     setMembers]     = useState<User[]>([]);
+  const [members,      setMembers]      = useState<User[]>([]);
   const [filterSearch, setFilterSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterBranch, setFilterBranch] = useState("");
   const [showCreate,   setShowCreate]   = useState(false);
   const [payTarget,    setPayTarget]    = useState<User | null>(null);
+  const [refundTarget, setRefundTarget] = useState<User | null>(null);
   const [exporting,    setExporting]    = useState(false);
   const [blockTarget,  setBlockTarget]  = useState<User | null>(null);
   const [warnTarget,   setWarnTarget]   = useState<User | null>(null);
@@ -232,6 +327,7 @@ export default function MembresPage() {
       const { data } = await membersApi.list({
         search: debouncedSearch || undefined,
         status: filterStatus || undefined,
+        page_size: 500,
       });
       setMembers(data.results);
     } catch (e) { toast(errorMessage(e), "error"); }
@@ -380,6 +476,10 @@ export default function MembresPage() {
                       + Paiement
                     </Button>
                     <Button style={{ fontSize: "0.76rem", padding: "0.30rem 0.6rem" }} variant="ghost"
+                      onClick={() => setRefundTarget(m)}>
+                      − Rembourser
+                    </Button>
+                    <Button style={{ fontSize: "0.76rem", padding: "0.30rem 0.6rem" }} variant="ghost"
                       onClick={() => setWarnTarget(m)}>
                       Avertir
                     </Button>
@@ -424,6 +524,13 @@ export default function MembresPage() {
           userId={payTarget.id} userName={payTarget.full_name}
           onClose={() => setPayTarget(null)}
           onDone={() => { toast("Paiement enregistré.", "success"); setPayTarget(null); }}
+        />
+      )}
+      {refundTarget && (
+        <RefundModal
+          user={refundTarget}
+          onClose={() => setRefundTarget(null)}
+          onDone={() => { toast("Remboursement enregistré.", "success"); setRefundTarget(null); }}
         />
       )}
       {blockTarget && (

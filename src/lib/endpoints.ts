@@ -98,7 +98,7 @@ export const dashboardApi = {
 };
 
 export const membersApi = {
-  list: (params?: { status?: string; search?: string }) =>
+  list: (params?: { status?: string; search?: string; page_size?: number }) =>
     api.get<Paginated<User>>("/admin/members/", { params }),
   detail: (id: number) => api.get<MemberDetail>(`/admin/members/${id}/`),
   create: (data: { email: string; full_name: string; password: string; access_levels?: string[] }) =>
@@ -368,7 +368,7 @@ export function asList<T>(data: T[] | Paginated<T>): T[] {
 }
 
 export const financeApi = {
-  manual: (data: { user_id: number; kind: string; amount?: number; reason: string }) =>
+  manual: (data: { user_id: number; kind: string; amount?: number; reason?: string }) =>
     api.post("/admin/payments/manual/", data),
   refund: (data: { user_id: number; amount: number; reason: string }) =>
     api.post("/admin/payments/refund/", data),

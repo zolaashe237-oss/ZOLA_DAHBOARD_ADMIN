@@ -3,8 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { financeApi, membersApi } from "@/lib/endpoints";
-import type { MemberDetail } from "@/lib/types";
+import { financeApi, membersApi, plansApi } from "@/lib/endpoints";
+import type { MemberDetail, PlanKind, SubscriptionPlan } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
@@ -185,23 +185,122 @@ function EditBranchesModal({ member, onClose, onSaved }: {
   );
 }
 
+// ── Constantes paiement ───────────────────────────────────────────────────────
+
+const KIND_LABELS: Record<PlanKind, string> = {
+  COTISATION:     "Cotisation mensuelle",
+  INSCRIPTION:    "Droit d'inscription",
+  BRANCHE_FEMME:  "Accès Branche Femme",
+  BRANCHE_ENFANT: "Accès Branche Enfant",
+  DON:            "Don volontaire",
+};
+
 // ── Modal — Paiement manuel ───────────────────────────────────────────────────
 
 function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
   memberId: number; memberName: string; onClose: () => void; onDone: () => void;
 }) {
-  const [form, setForm] = useState({ kind: "COTISATION", amount: "", reason: "" });
+  const [kind,    setKind]    = useState<PlanKind>("COTISATION");
+  const [amount,  setAmount]  = useState("");
+  const [plans,   setPlans]   = useState<SubscriptionPlan[]>([]);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    plansApi.list().then(({ data }) => {
+      const list = Array.isArray(data) ? data : (data as any).results ?? [];
+      setPlans(list.filter((p: SubscriptionPlan) => p.is_active));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const plan = plans.find((p) => p.kind === kind);
+    setAmount(plan ? String(plan.price_total) : "");
+  }, [kind, plans]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true);
+    try {
+      await financeApi.manual({
+        user_id: memberId,
+        kind,
+        amount:  amount ? Number(amount) : undefined,
+        reason:  `Paiement manuel — ${KIND_LABELS[kind]}`,
+      });
+      onDone(); onClose();
+    } catch (err) { toast(errorMessage(err), "error"); }
+    finally { setLoading(false); }
+  };
+
+  const activePlan = plans.find((p) => p.kind === kind);
+
+  return (
+    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={460}>
+      <div style={{ marginBottom: "1rem", padding: "0.55rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: ".84rem", color: "var(--muted)" }}>
+        Membre : <strong style={{ color: "var(--ink)" }}>{memberName}</strong>
+      </div>
+      <form onSubmit={submit}>
+        <div style={{ marginBottom: "1rem" }}>
+          <span className="field-label">Type de paiement</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.4rem" }}>
+            {(["COTISATION", "INSCRIPTION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
+              const p = plans.find((pl) => pl.kind === k);
+              const active = kind === k;
+              return (
+                <label key={k} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: "0.6rem", padding: "0.45rem 0.75rem",
+                  borderRadius: "var(--radius-sm)",
+                  border: `1px solid ${active ? "rgba(201,162,39,0.5)" : "var(--line-soft)"}`,
+                  background: active ? "rgba(201,162,39,0.07)" : "var(--bg)",
+                  cursor: "pointer",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input type="radio" name="kind" value={k} checked={active}
+                      onChange={() => setKind(k)} style={{ accentColor: "var(--gold-2)" }} />
+                    <span style={{ fontSize: "0.84rem", fontWeight: active ? 700 : 400, color: active ? "var(--gold-2)" : "var(--ink)" }}>
+                      {KIND_LABELS[k]}
+                    </span>
+                  </div>
+                  {p && <span style={{ fontSize: "0.78rem", color: "var(--muted-2)", whiteSpace: "nowrap" }}>{p.price_total.toLocaleString("fr-FR")} FCFA</span>}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <Input
+          label={activePlan ? "Montant (FCFA) — pré-rempli depuis le plan" : "Montant (FCFA)"}
+          type="number" min={0} value={amount} placeholder="Montant en FCFA"
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
+          <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
+          <Button type="submit" loading={loading}>Confirmer le paiement</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ── Modal — Annuler / Rembourser un paiement ──────────────────────────────────
+
+function RefundPaymentModal({ memberId, payment, onClose, onDone }: {
+  memberId: number;
+  payment: { id: number; type: string; amount: number; paid_at: string | null };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [amount,  setAmount]  = useState(String(payment.amount));
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      await (financeApi as any).manual({
+      await financeApi.refund({
         user_id: memberId,
-        kind:    form.kind,
-        amount:  form.amount ? Number(form.amount) : undefined,
-        reason:  form.reason,
+        amount:  Number(amount),
+        reason:  `Annulation / remboursement — paiement #${payment.id}`,
       });
       onDone(); onClose();
     } catch (err) { toast(errorMessage(err), "error"); }
@@ -209,26 +308,29 @@ function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
   };
 
   return (
-    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={430}>
-      <div style={{ marginBottom: "0.85rem", padding: "0.55rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: ".84rem", color: "var(--muted)" }}>
-        Membre : <strong style={{ color: "var(--ink)" }}>{memberName}</strong>
+    <Modal title="Annuler / Rembourser un paiement" onClose={onClose} maxWidth={420}>
+      <div style={{ marginBottom: "1rem", padding: "0.65rem 0.85rem", background: "rgba(192,64,44,0.07)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(192,64,44,0.25)", fontSize: ".84rem" }}>
+        <div style={{ fontWeight: 700, color: "var(--bad)", marginBottom: ".3rem" }}>⚠ Attention</div>
+        <div style={{ color: "var(--muted)" }}>
+          Cette opération crée un remboursement enregistré dans l&apos;historique. Elle n&apos;affecte pas les accès branches du membre.
+        </div>
+      </div>
+      <div style={{ marginBottom: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem .75rem", fontSize: ".83rem" }}>
+        <div><span style={{ color: "var(--muted-2)" }}>Référence</span><div style={{ fontWeight: 600 }}>#{payment.id}</div></div>
+        <div><span style={{ color: "var(--muted-2)" }}>Type</span><div style={{ fontWeight: 600 }}>{payment.type}</div></div>
+        <div><span style={{ color: "var(--muted-2)" }}>Montant initial</span><div style={{ fontWeight: 600 }}>{payment.amount.toLocaleString("fr-FR")} FCFA</div></div>
+        <div><span style={{ color: "var(--muted-2)" }}>Date</span><div style={{ fontWeight: 600 }}>{payment.paid_at ? new Date(payment.paid_at).toLocaleDateString("fr-FR") : "—"}</div></div>
       </div>
       <form onSubmit={submit}>
-        <Select label="Type de paiement" value={form.kind}
-          onChange={(e) => setForm({ ...form, kind: e.target.value })}>
-          <option value="COTISATION">Cotisation mensuelle</option>
-          <option value="INSCRIPTION">Droit d&apos;inscription</option>
-          <option value="DON">Don volontaire</option>
-        </Select>
-        <Input label="Montant (FCFA)" type="number" min={0} value={form.amount}
-          placeholder="ex : 2000"
-          onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-        <Input label="Motif" value={form.reason} required
-          placeholder="Paiement espèces — juin 2026"
-          onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+        <Input
+          label="Montant à rembourser (FCFA)"
+          type="number" min={1} value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+        />
         <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
           <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
-          <Button type="submit" loading={loading}>Confirmer</Button>
+          <Button type="submit" variant="danger" loading={loading}>Confirmer le remboursement</Button>
         </div>
       </form>
     </Modal>
@@ -255,6 +357,7 @@ export default function MemberDetailPage() {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showEditBranch,  setShowEditBranch]  = useState(false);
   const [showPayment,     setShowPayment]     = useState(false);
+  const [refundTarget,    setRefundTarget]    = useState<MemberDetail["payments"][number] | null>(null);
   const [showDeleteDlg,   setShowDeleteDlg]   = useState(false);
 
   const load = useCallback(async () => {
@@ -587,24 +690,37 @@ export default function MemberDetailPage() {
                 <th>Statut</th>
                 <th style={{ textAlign: "right" }}>Montant</th>
                 <th>Date</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {member.payments.map((p) => (
-                <tr key={p.id}>
-                  <td style={{ color: "var(--muted-2)", fontSize: ".78rem" }}>#{p.id}</td>
-                  <td style={{ fontSize: ".83rem" }}>{p.type}</td>
-                  <td>
-                    <Badge color={PAY_COLOR[p.status] ?? "var(--muted)"}>
-                      {PAY_LABEL[p.status] ?? p.status}
-                    </Badge>
-                  </td>
-                  <td style={{ textAlign: "right", fontWeight: 700, fontSize: ".88rem" }}>
-                    {p.amount === 0 ? <span style={{ color: "var(--muted)" }}>—</span> : fmtAmt(p.amount)}
-                  </td>
-                  <td style={{ color: "var(--muted)", fontSize: ".83rem" }}>{fmt(p.paid_at)}</td>
-                </tr>
-              ))}
+              {member.payments.map((p) => {
+                const canRefund = p.status === "REUSSI" && p.type !== "REMBOURSEMENT" && p.amount > 0;
+                return (
+                  <tr key={p.id}>
+                    <td style={{ color: "var(--muted-2)", fontSize: ".78rem" }}>#{p.id}</td>
+                    <td style={{ fontSize: ".83rem" }}>{p.type}</td>
+                    <td>
+                      <Badge color={PAY_COLOR[p.status] ?? "var(--muted)"}>
+                        {PAY_LABEL[p.status] ?? p.status}
+                      </Badge>
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 700, fontSize: ".88rem" }}>
+                      {p.amount === 0 ? <span style={{ color: "var(--muted)" }}>—</span> : fmtAmt(p.amount)}
+                    </td>
+                    <td style={{ color: "var(--muted)", fontSize: ".83rem" }}>{fmt(p.paid_at)}</td>
+                    <td>
+                      {canRefund && (
+                        <Button className="btn-sm" variant="ghost"
+                          style={{ color: "var(--bad)", fontSize: ".72rem", padding: ".2rem .5rem" }}
+                          onClick={() => setRefundTarget(p)}>
+                          Rembourser
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -667,6 +783,12 @@ export default function MemberDetailPage() {
         <ManualPaymentModal memberId={userId} memberName={member.full_name}
           onClose={() => setShowPayment(false)}
           onDone={() => { toast("Paiement enregistré.", "success"); load(); }} />
+      )}
+
+      {refundTarget && (
+        <RefundPaymentModal memberId={userId} payment={refundTarget}
+          onClose={() => setRefundTarget(null)}
+          onDone={() => { toast("Remboursement enregistré.", "success"); load(); }} />
       )}
 
       {showBlockDlg && (
