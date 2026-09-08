@@ -188,8 +188,8 @@ function EditBranchesModal({ member, onClose, onSaved }: {
 // ── Constantes paiement ───────────────────────────────────────────────────────
 
 const KIND_LABELS: Record<PlanKind, string> = {
-  COTISATION:     "Cotisation mensuelle",
-  INSCRIPTION:    "Droit d'inscription",
+  INSCRIPTION:    "Inscription annuelle",
+  COTISATION:     "Inscription mensuelle",
   BRANCHE_FEMME:  "Accès Branche Femme",
   BRANCHE_ENFANT: "Accès Branche Enfant",
   DON:            "Don volontaire",
@@ -200,7 +200,7 @@ const KIND_LABELS: Record<PlanKind, string> = {
 function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
   memberId: number; memberName: string; onClose: () => void; onDone: () => void;
 }) {
-  const [kind,    setKind]    = useState<PlanKind>("COTISATION");
+  const [kind,    setKind]    = useState<PlanKind>("INSCRIPTION");
   const [amount,  setAmount]  = useState("");
   const [plans,   setPlans]   = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(false);
@@ -243,7 +243,7 @@ function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
         <div style={{ marginBottom: "1rem" }}>
           <span className="field-label">Type de paiement</span>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.4rem" }}>
-            {(["COTISATION", "INSCRIPTION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
+            {(["INSCRIPTION", "COTISATION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
               const p = plans.find((pl) => pl.kind === k);
               const active = kind === k;
               return (
