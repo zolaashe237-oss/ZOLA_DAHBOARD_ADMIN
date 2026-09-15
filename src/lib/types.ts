@@ -246,6 +246,7 @@ export interface YoutubeImportPreviewModule {
 export interface YoutubeImportPreview {
   formation_title: string;
   playlist_url: string;
+  cover_url?: string;
   modules: YoutubeImportPreviewModule[];
   total_videos: number;
   preview_count?: number;   // vidéos affichées (≤ total_videos quand truncated)

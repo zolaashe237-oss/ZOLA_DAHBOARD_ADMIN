@@ -56,20 +56,30 @@ export function YoutubeImportModal({ onClose, onImported }: { onClose: () => voi
       </div>
       {preview && (
         <div style={{ border: "1px solid var(--line-soft)", borderRadius: "var(--radius)", padding: "1rem", background: "var(--bg-2)", marginBottom: "1rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", marginBottom: "0.75rem" }}>
-            <div>
-              <div className="field-label">Formation proposée</div>
-              <strong style={{ color: "var(--cream)" }}>{preview.formation_title}</strong>
-              <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.2rem" }}>
-                {preview.total_videos} vidéo{preview.total_videos !== 1 ? "s" : ""}
-                {preview.truncated && preview.preview_count != null && (
-                  <span style={{ marginLeft: "0.4rem", color: "var(--warn)" }}>
-                    — aperçu des {preview.preview_count} premières
-                  </span>
-                )}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+            <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flex: 1, minWidth: 0 }}>
+              {preview.cover_url && (
+                <img
+                  src={preview.cover_url}
+                  alt="miniature"
+                  style={{ width: 96, height: 54, objectFit: "cover", borderRadius: 4, flexShrink: 0, border: "1px solid var(--line-soft)" }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                />
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div className="field-label">Formation proposée</div>
+                <strong style={{ color: "var(--cream)" }}>{preview.formation_title}</strong>
+                <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginTop: "0.2rem" }}>
+                  {preview.total_videos} vidéo{preview.total_videos !== 1 ? "s" : ""}
+                  {preview.truncated && preview.preview_count != null && (
+                    <span style={{ marginLeft: "0.4rem", color: "var(--warn)" }}>
+                      — aperçu des {preview.preview_count} premières
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", flexShrink: 0 }}>
               {preview.truncated && <Badge color="#c87c00">Aperçu limité</Badge>}
               {simulated && <Badge color="#d9a441">Aperçu simulé</Badge>}
             </div>
