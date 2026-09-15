@@ -54,12 +54,14 @@ export function FormationCard({
   onUnpublish,
   onRemove,
   preview = false,
+  publishingId,
 }: {
   formation:    Formation;
   onPublish:    (f: Formation) => void;
   onUnpublish?: (f: Formation) => void;
   onRemove:     (f: Formation) => void;
   preview?:     boolean;
+  publishingId?: number | null;
 }) {
   const modules       = f.modules_preview ?? [];
   const totalEpisodes = f.courses_count ?? f.nb_episodes ?? f.total_courses ?? 0;
@@ -375,17 +377,19 @@ export function FormationCard({
               ) : (
                 <button
                   onClick={() => onPublish(f)}
+                  disabled={publishingId === f.id}
                   style={{
                     background: "rgba(46,148,96,0.08)", color: "#2b8a5e",
                     border: "1px solid rgba(46,148,96,0.25)", borderRadius: "var(--radius-sm)",
                     fontSize: "0.73rem", fontWeight: 600,
-                    padding: "0.22rem 0.62rem", cursor: "pointer",
+                    padding: "0.22rem 0.62rem", cursor: publishingId === f.id ? "default" : "pointer",
                     transition: "background .15s",
+                    opacity: publishingId === f.id ? 0.65 : 1,
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(46,148,96,0.16)"; }}
+                  onMouseEnter={(e) => { if (publishingId !== f.id) (e.currentTarget as HTMLButtonElement).style.background = "rgba(46,148,96,0.16)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(46,148,96,0.08)"; }}
                 >
-                  Publier
+                  {publishingId === f.id ? "…" : "Publier"}
                 </button>
               )}
               <button

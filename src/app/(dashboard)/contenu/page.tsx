@@ -201,6 +201,7 @@ function DraggableBranchList({
   onPublish,
   onUnpublish,
   onRemove,
+  publishingId,
 }: {
   items: Formation[];
   colColor: string;
@@ -208,6 +209,7 @@ function DraggableBranchList({
   onPublish: (f: Formation) => void;
   onUnpublish: (f: Formation) => void;
   onRemove: (f: Formation) => void;
+  publishingId?: number | null;
 }) {
   const [dragId,    setDragId]    = useState<number | null>(null);
   const [overId,    setOverId]    = useState<number | null>(null);
@@ -317,7 +319,7 @@ function DraggableBranchList({
                   Dépublier
                 </Button>
               ) : (
-                <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onPublish(f)}>
+                <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} loading={publishingId === f.id} onClick={() => onPublish(f)}>
                   Publier
                 </Button>
               )}
@@ -335,13 +337,14 @@ function DraggableBranchList({
 // ── Vue tableau ──────────────────────────────────────────────────────────────
 
 function FormationsTable({
-  items, colColor, onPublish, onUnpublish, onRemove,
+  items, colColor, onPublish, onUnpublish, onRemove, publishingId,
 }: {
   items: Formation[];
   colColor: string;
   onPublish: (f: Formation) => void;
   onUnpublish: (f: Formation) => void;
   onRemove: (f: Formation) => void;
+  publishingId?: number | null;
 }) {
   return (
     <div style={{ overflowX: "auto" }}>
@@ -391,7 +394,7 @@ function FormationsTable({
                     {f.status === "PUBLISHED" ? (
                       <Button variant="ghost" style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onUnpublish(f)}>Dépublier</Button>
                     ) : (
-                      <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} onClick={() => onPublish(f)}>Publier</Button>
+                      <Button style={{ fontSize: "0.70rem", padding: "0.22rem 0.6rem" }} loading={publishingId === f.id} onClick={() => onPublish(f)}>Publier</Button>
                     )}
                     <Button variant="danger" style={{ fontSize: "0.70rem", padding: "0.22rem 0.45rem" }} onClick={() => onRemove(f)}>✕</Button>
                   </div>
@@ -422,6 +425,7 @@ export default function ContenuPage() {
   const [filterCat,    setFilterCat]    = useState("");
   const [reordering,   setReordering]   = useState(false);
   const [viewMode,     setViewMode]     = useState<"list" | "grid" | "table">("list");
+  const [publishingId, setPublishingId] = useState<number | null>(null);
 
   // Libérer l'URL objet quand on change d'image ou qu'on ferme le formulaire
   const setCover = (file: File, url: string) => {
@@ -479,8 +483,10 @@ export default function ContenuPage() {
   };
 
   const publish = async (f: Formation) => {
+    setPublishingId(f.id);
     try { await formationApi.publish(f.id); load(); }
     catch (e) { toast(errorMessage(e), "error"); }
+    finally { setPublishingId(null); }
   };
 
   const unpublish = async (f: Formation) => {
@@ -773,15 +779,16 @@ export default function ContenuPage() {
                     onPublish={publish}
                     onUnpublish={unpublish}
                     onRemove={setRemoveTarget}
+                    publishingId={publishingId}
                   />
                 ) : viewMode === "grid" ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1rem" }}>
                     {colItems.map((f) => (
-                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} publishingId={publishingId} />
                     ))}
                   </div>
                 ) : (
-                  <FormationsTable items={colItems} colColor={col.color} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                  <FormationsTable items={colItems} colColor={col.color} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} publishingId={publishingId} />
                 )}
               </section>
             );
@@ -831,11 +838,11 @@ export default function ContenuPage() {
                 ) : viewMode === "grid" ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "1rem" }}>
                     {publicItems.map((f) => (
-                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                      <FormationCard key={f.id} formation={f} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} publishingId={publishingId} />
                     ))}
                   </div>
                 ) : viewMode === "table" ? (
-                  <FormationsTable items={publicItems} colColor={publicColor} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} />
+                  <FormationsTable items={publicItems} colColor={publicColor} onPublish={publish} onUnpublish={unpublish} onRemove={setRemoveTarget} publishingId={publishingId} />
                 ) : (
                   <DraggableBranchList
                     items={publicItems}
@@ -844,6 +851,7 @@ export default function ContenuPage() {
                     onPublish={publish}
                     onUnpublish={unpublish}
                     onRemove={setRemoveTarget}
+                    publishingId={publishingId}
                   />
                 )}
               </section>
