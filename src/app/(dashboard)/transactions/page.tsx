@@ -35,6 +35,7 @@ const KIND_LABEL: Record<PaymentKind, string> = {
   COTISATION:   "Cotisation",
   INSCRIPTION:  "Inscription",
   DON:          "Don",
+  FORMATION:    "Formation",
   CADEAU:       "Cadeau",
   REMBOURSEMENT:"Remboursement",
   EXONERATION:  "Exonération",
@@ -43,6 +44,7 @@ const KIND_COLOR: Record<PaymentKind, string> = {
   COTISATION:   "#c9a227",
   INSCRIPTION:  "#5fb98a",
   DON:          "#b5532a",
+  FORMATION:    "#5b8fd4",
   CADEAU:       "#d9a441",
   REMBOURSEMENT:"#7d7264",
   EXONERATION:  "#243a85",
@@ -245,6 +247,7 @@ export default function TransactionsPage() {
               <option value="COTISATION">Cotisation</option>
               <option value="INSCRIPTION">Inscription</option>
               <option value="DON">Don</option>
+              <option value="FORMATION">Formation</option>
               <option value="CADEAU">Cadeau</option>
               <option value="REMBOURSEMENT">Remboursement</option>
               <option value="EXONERATION">Exonération</option>
@@ -411,7 +414,9 @@ export default function TransactionsPage() {
             {[
               { label: "Référence",   value: detail.reference ?? `#${detail.id}` },
               { label: "Membre",      value: `${detail.user_name} (${detail.user_email})` },
-              { label: "Type",        value: KIND_LABEL[detail.kind] },
+              { label: "Type",        value: detail.formation_title
+                                              ? `${KIND_LABEL[detail.kind]} · ${detail.formation_title}`
+                                              : KIND_LABEL[detail.kind] },
               { label: "Méthode",     value: detail.payment_method
                                               ? (METHOD_LABEL[detail.payment_method] ?? detail.payment_method)
                                               : "—" },

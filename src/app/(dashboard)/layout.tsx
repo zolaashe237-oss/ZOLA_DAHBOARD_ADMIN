@@ -66,6 +66,12 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/audit",        label: "Audit",         icon: "⊕" },
     ],
   },
+  {
+    label: "Plateforme",
+    items: [
+      { href: "/fonctionnalites", label: "Fonctionnalités", icon: "⏻" },
+    ],
+  },
 ];
 
 // ── Initiales ─────────────────────────────────────────────────────────────────

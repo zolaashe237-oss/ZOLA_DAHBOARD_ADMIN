@@ -84,7 +84,7 @@ export default function FormationBuilderPage() {
     title: "", description: "", category: "FORMATION" as Formation["category"],
     niveau: "" as FormationNiveau | "", branche: "" as Branche | "",
     acces: "MEMBRES" as FormationAcces, status: "DRAFT" as FormationStatus,
-    publish_at: "",
+    publish_at: "", price: "",
   });
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [savingMeta, setSavingMeta] = useState(false);
@@ -145,6 +145,7 @@ export default function FormationBuilderPage() {
         acces: f.is_public ? "PUBLIC" : f.access_subscription_types.length > 0 ? "PAYANTE" : "MEMBRES",
         status: f.status,
         publish_at: f.publish_at ? f.publish_at.slice(0, 16) : "",
+        price: f.price ? String(f.price) : "",
       });
       const mods = asList((await moduleApi.list(fid)).data);
       setModules(mods);
@@ -172,6 +173,7 @@ export default function FormationBuilderPage() {
       await formationApi.update(fid, {
         title: meta.title, description: meta.description, category: meta.category,
         ...accesToApi(meta.acces),
+        price: meta.acces === "PAYANTE" && Number(meta.price) > 0 ? Number(meta.price) : null,
         status: meta.status,
         publish_at: (() => {
           if (meta.status !== "SCHEDULED" || !meta.publish_at) return null;
@@ -200,6 +202,7 @@ export default function FormationBuilderPage() {
     (formation.branche ?? "") !== meta.branche ||
     (formation.is_public ? "PUBLIC" : formation.access_subscription_types.length > 0 ? "PAYANTE" : "MEMBRES") !== meta.acces ||
     formation.status !== meta.status ||
+    (formation.price ? String(formation.price) : "") !== (meta.acces === "PAYANTE" ? meta.price : "") ||
     !!coverFile;
 
   const rootModules = modules
@@ -823,6 +826,21 @@ function FormationMeta({
           )}
         </div>
         <AccesSelector value={meta.acces} onChange={(v) => setMeta({ ...meta, acces: v })} />
+        {meta.acces === "PAYANTE" && (
+          <div style={{ marginBottom: "1rem" }}>
+            <Input
+              label="Prix à l'unité (FCFA)"
+              type="number" min={0} step={500} placeholder="Ex. 15000 — vide = non vendue seule"
+              value={meta.price}
+              onChange={(e) => setMeta({ ...meta, price: e.target.value })}
+              style={{ marginBottom: 0 }}
+            />
+            <p style={{ margin: "-0.5rem 0 0", fontSize: "0.72rem", color: "var(--muted-2)", lineHeight: 1.5 }}>
+              Les membres sans abonnement peuvent acheter cette formation seule et la suivre sans limite de durée.
+              Laissez vide pour la réserver aux abonnés.
+            </p>
+          </div>
+        )}
         <div style={{ display: "flex", gap: ".5rem" }}>
           {formation.status !== "PUBLISHED" && (
             <Button variant="ghost" onClick={publish} style={{ fontSize: "0.78rem" }}>Publier maintenant</Button>

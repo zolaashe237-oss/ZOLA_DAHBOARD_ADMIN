@@ -42,6 +42,7 @@ import type {
   YoutubeImportResult,
   AffiliateConfig,
   AffiliateStats,
+  FeatureSettings,
   Referral as AffiliateReferral,
 } from "./types";
 
@@ -566,6 +567,12 @@ export const socialLinksApi = {
   update: (data: Partial<SocialLinksConfig>) =>
     api.patch<SocialLinksConfig>("/config/social-links/", data),
 };
+export const featureSettingsApi = {
+  get: () => api.get<FeatureSettings>("/admin/settings/features/"),
+  update: (data: Partial<Pick<FeatureSettings, "quiz_enabled" | "monthly_subscription_enabled" | "hidden_sections">>) =>
+    api.patch<FeatureSettings>("/admin/settings/features/", data),
+};
+
 // ── Mémoires admin ────────────────────────────────────────────────────────────
 import type { MemoirEditorialStatus, MemoirSubmission, MemoirSubmissionDetail } from "./types";
 

@@ -54,7 +54,7 @@ export type UserStatus = "ACTIF" | "RESTREINT" | "BLOQUE";
 // ── Transactions / Historique des paiements ───────────────────────────────────
 
 export type PaymentStatus = "REUSSI" | "EN_ATTENTE" | "ECHOUE" | "REMBOURSE" | "EXONERE";
-export type PaymentKind   = "COTISATION" | "INSCRIPTION" | "DON" | "CADEAU" | "REMBOURSEMENT" | "EXONERATION";
+export type PaymentKind   = "COTISATION" | "INSCRIPTION" | "DON" | "FORMATION" | "CADEAU" | "REMBOURSEMENT" | "EXONERATION";
 export type PaymentMethod = "MTN_MOBILE_MONEY" | "ORANGE_MONEY" | "MANUEL" | "VIREMENT";
 
 export interface Transaction {
@@ -69,6 +69,8 @@ export interface Transaction {
   payment_method: PaymentMethod | null;
   reference: string | null;
   reason: string | null;
+  /** Formation achetée (kind = FORMATION) */
+  formation_title?: string | null;
   paid_at: string | null;
   created_at: string;
 }
@@ -212,6 +214,8 @@ export interface Formation {
   access_subscription_types: SubscriptionType[];
   /** Visible par les visiteurs non connectés (landing, SEO) */
   is_public?: boolean;
+  /** Prix d'achat à l'unité (FCFA), sans abonnement — formations payantes uniquement */
+  price?: number | null;
   cover_url: string;
   cover_key: string;
   status: FormationStatus;
@@ -658,6 +662,30 @@ export interface SocialLinksConfig {
   tiktok_url: string;
   updated_at?: string;
 }
+// ── Interrupteurs de fonctionnalités (quiz, cotisation, sections membre) ──────
+
+export interface FeatureSettings {
+  quiz_enabled: boolean;
+  monthly_subscription_enabled: boolean;
+  hidden_sections: string[];
+  available_sections: { key: string; label: string }[];
+  /** Fournisseur IA des quiz (génération + correction des QRO) et crédits épuisés détectés */
+  ai_credits: {
+    provider: string;
+    provider_label: string;
+    billing_url: string | null;
+    enabled: boolean;
+    /** Date du dernier échec de génération pour quota/crédits, non suivi d'une réussite */
+    quota_error_at: string | null;
+    quota_error: string;
+  };
+  updated_at?: string;
+  /** Renvoyé après désactivation de la cotisation mensuelle */
+  members_reactivated?: number;
+  /** Renvoyé après réactivation de la cotisation mensuelle */
+  subscriptions_extended?: number;
+}
+
 // ── Mémoires — demandes de rédaction autobiographique ─────────────────────────
 
 export type MemoirEditorialStatus =
