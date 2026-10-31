@@ -369,10 +369,10 @@ export function asList<T>(data: T[] | Paginated<T>): T[] {
 }
 
 export const financeApi = {
-  manual: (data: { user_id: number; kind: string; amount?: number; reason?: string }) =>
+  manual: (data: { user_id: number; kind: string; amount?: number; reason?: string; formation_id?: number }) =>
     api.post("/admin/payments/manual/", data),
-  refund: (data: { user_id: number; amount: number; reason: string }) =>
-    api.post("/admin/payments/refund/", data),
+  refund: (data: { user_id: number; amount: number; reason: string; payment_id?: number; revoke_access?: boolean }) =>
+    api.post<{ payment_id: number; access_revoked: boolean }>("/admin/payments/refund/", data),
   exonerate: (data: { user_id: number; reason: string }) =>
     api.post("/admin/payments/exonerate/", data),
   sendReminders: (data?: { user_id?: number }) =>

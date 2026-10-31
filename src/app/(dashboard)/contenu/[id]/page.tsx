@@ -172,8 +172,9 @@ export default function FormationBuilderPage() {
     try {
       await formationApi.update(fid, {
         title: meta.title, description: meta.description, category: meta.category,
-        ...accesToApi(meta.acces),
-        price: meta.acces === "PAYANTE" && Number(meta.price) > 0 ? Number(meta.price) : null,
+        // Un prix rend la formation payante (le backend applique la même règle).
+        ...accesToApi(isPriced(meta) ? "PAYANTE" : meta.acces),
+        price: isPriced(meta) ? Number(meta.price) : null,
         status: meta.status,
         publish_at: (() => {
           if (meta.status !== "SCHEDULED" || !meta.publish_at) return null;
@@ -202,7 +203,7 @@ export default function FormationBuilderPage() {
     (formation.branche ?? "") !== meta.branche ||
     (formation.is_public ? "PUBLIC" : formation.access_subscription_types.length > 0 ? "PAYANTE" : "MEMBRES") !== meta.acces ||
     formation.status !== meta.status ||
-    (formation.price ? String(formation.price) : "") !== (meta.acces === "PAYANTE" ? meta.price : "") ||
+    (formation.price ? String(formation.price) : "") !== (meta.acces !== "PUBLIC" ? meta.price : "") ||
     !!coverFile;
 
   const rootModules = modules
@@ -616,6 +617,11 @@ export default function FormationBuilderPage() {
 
 // ── Helpers accès ─────────────────────────────────────────────────────────────
 
+/** Prix à l'unité saisi (formation non publique) : la formation sera payante. */
+function isPriced(m: { acces: FormationAcces; price: string }) {
+  return m.acces !== "PUBLIC" && Number(m.price) > 0;
+}
+
 function accesToApi(acces: FormationAcces) {
   return {
     access_subscription_types: (acces === "PAYANTE" ? ["MEMBRE"] : []) as ("MEMBRE")[],
@@ -700,6 +706,8 @@ function FormationMeta({
     category:    meta.category,
     access_subscription_types: accesToApi(meta.acces).access_subscription_types as ("MEMBRE")[],
     is_public:   accesToApi(meta.acces).is_public,
+    ...(isPriced(meta) ? accesToApi("PAYANTE") : {}),
+    price:       isPriced(meta) ? Number(meta.price) : null,
     cover_url:   displayCoverUrl,
     status:      meta.status,
     publish_at: (() => {
@@ -826,7 +834,7 @@ function FormationMeta({
           )}
         </div>
         <AccesSelector value={meta.acces} onChange={(v) => setMeta({ ...meta, acces: v })} />
-        {meta.acces === "PAYANTE" && (
+        {meta.acces !== "PUBLIC" && (
           <div style={{ marginBottom: "1rem" }}>
             <Input
               label="Prix à l'unité (FCFA)"
@@ -836,8 +844,13 @@ function FormationMeta({
               style={{ marginBottom: 0 }}
             />
             <p style={{ margin: "-0.5rem 0 0", fontSize: "0.72rem", color: "var(--muted-2)", lineHeight: 1.5 }}>
-              Les membres sans abonnement peuvent acheter cette formation seule et la suivre sans limite de durée.
-              Laissez vide pour la réserver aux abonnés.
+              {meta.acces === "MEMBRES" && Number(meta.price) > 0 ? (
+                <>Mettre un prix passe cette formation en accès <strong>Payant</strong> : les abonnés y gardent
+                accès, les autres membres peuvent l&apos;acheter seule.</>
+              ) : (
+                <>Les membres sans abonnement peuvent acheter cette formation seule et la suivre sans limite de durée.
+                Laissez vide pour la réserver aux abonnés.</>
+              )}
             </p>
           </div>
         )}

@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { downloadBlob, financeApi, membersApi, plansApi } from "@/lib/endpoints";
-import type { PlanKind, SubscriptionPlan, User } from "@/lib/types";
+import { downloadBlob, financeApi, membersApi } from "@/lib/endpoints";
+import type { User } from "@/lib/types";
 import {
   Alert, Button, Card, Input, Pagination, Select,
   STATUS_COLOR, errorMessage, usePagination,
@@ -12,6 +12,7 @@ import {
 import { ConfirmModal, Modal } from "@/components/Modal";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/components/Toast";
+import ManualPaymentModal from "@/components/ManualPaymentModal";
 
 // ── Constantes branches ───────────────────────────────────────────────────────
 
@@ -149,112 +150,7 @@ function CreateMemberModal({ onClose, onCreated }: {
 
 // ── Modal — Paiement manuel ───────────────────────────────────────────────────
 
-const KIND_LABELS: Record<PlanKind, string> = {
-  INSCRIPTION:    "Inscription annuelle",
-  COTISATION:     "Inscription mensuelle",
-  BRANCHE_FEMME:  "Accès Branche Femme",
-  BRANCHE_ENFANT: "Accès Branche Enfant",
-  DON:            "Don volontaire",
-};
 
-function ManualPaymentModal({ userId, userName, onClose, onDone }: {
-  userId?: number; userName?: string;
-  onClose: () => void; onDone: () => void;
-}) {
-  const [kind,    setKind]    = useState<PlanKind>("INSCRIPTION");
-  const [amount,  setAmount]  = useState("");
-  const [plans,   setPlans]   = useState<SubscriptionPlan[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    plansApi.list().then(({ data }) => {
-      const list = Array.isArray(data) ? data : (data as any).results ?? [];
-      setPlans(list.filter((p: SubscriptionPlan) => p.is_active));
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const plan = plans.find((p) => p.kind === kind);
-    setAmount(plan ? String(plan.price_total) : "");
-  }, [kind, plans]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
-    try {
-      await financeApi.manual({
-        user_id: Number(userId),
-        kind,
-        amount:  amount ? Number(amount) : undefined,
-        reason:  `Paiement manuel — ${KIND_LABELS[kind]}`,
-      });
-      onDone(); onClose();
-    } catch (err) { toast(errorMessage(err), "error"); }
-    finally { setLoading(false); }
-  };
-
-  const activePlan = plans.find((p) => p.kind === kind);
-
-  return (
-    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={460}>
-      {userName && (
-        <div style={{ marginBottom: "1rem", padding: "0.6rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: "0.84rem", color: "var(--muted)" }}>
-          Membre : <strong style={{ color: "var(--ink)" }}>{userName}</strong>
-        </div>
-      )}
-      <form onSubmit={submit}>
-        {/* Type de paiement */}
-        <div style={{ marginBottom: "1rem" }}>
-          <span className="field-label">Type de paiement</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.4rem" }}>
-            {(["INSCRIPTION", "COTISATION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
-              const p = plans.find((pl) => pl.kind === k);
-              const active = kind === k;
-              return (
-                <label key={k} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  gap: "0.6rem", padding: "0.5rem 0.75rem",
-                  borderRadius: "var(--radius-sm)",
-                  border: `1px solid ${active ? "rgba(201,162,39,0.5)" : "var(--line-soft)"}`,
-                  background: active ? "rgba(201,162,39,0.07)" : "var(--bg)",
-                  cursor: "pointer",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <input type="radio" name="kind" value={k} checked={active}
-                      onChange={() => setKind(k)}
-                      style={{ accentColor: "var(--gold-2)" }} />
-                    <span style={{ fontSize: "0.84rem", fontWeight: active ? 700 : 400, color: active ? "var(--gold-2)" : "var(--ink)" }}>
-                      {KIND_LABELS[k]}
-                    </span>
-                  </div>
-                  {p && (
-                    <span style={{ fontSize: "0.78rem", color: "var(--muted-2)", whiteSpace: "nowrap" }}>
-                      {p.price_total.toLocaleString("fr-FR")} FCFA
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Montant pré-rempli, modifiable */}
-        <Input
-          label={activePlan ? "Montant (FCFA) — pré-rempli depuis le plan" : "Montant (FCFA)"}
-          type="number" min={0}
-          value={amount}
-          placeholder="Montant en FCFA"
-          onChange={(e) => setAmount(e.target.value)}
-        />
-
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-          <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
-          <Button type="submit" loading={loading}>Confirmer le paiement</Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
 
 // ── Modal — Remboursement ─────────────────────────────────────────────────────
 

@@ -212,6 +212,7 @@ export function FormationCard({
                   letterSpacing: "0.05em", textTransform: "uppercase",
                 }}>
                   {ACCES_LABEL[acces]}
+                  {acces === "PAYANTE" && f.price ? ` · ${f.price.toLocaleString("fr-FR")} F` : ""}
                 </span>
               );
             })()}

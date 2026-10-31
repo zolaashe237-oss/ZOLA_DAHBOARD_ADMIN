@@ -27,9 +27,20 @@ const EMPTY = {
   acces: "MEMBRES" as FormationAcces,
   status: "DRAFT" as FormationStatus,
   publish_at: "",
+  price: "",
 };
 
 type FormState = typeof EMPTY;
+
+/** Prix à l'unité envoyé à l'API (formation non publique). Un prix rend la formation payante. */
+function priceToApi(f: FormState): number | null {
+  return f.acces !== "PUBLIC" && Number(f.price) > 0 ? Number(f.price) : null;
+}
+
+/** Accès effectif : « Membres » + prix → « Payant » (même règle que le backend). */
+function effectiveAcces(f: FormState): FormationAcces {
+  return priceToApi(f) !== null ? "PAYANTE" : f.acces;
+}
 
 function accesToApi(acces: FormationAcces) {
   return {
@@ -44,7 +55,8 @@ function buildPreview(f: FormState, coverUrl: string): Formation {
     title:       f.title.trim() || "Titre de la formation",
     description: f.description.trim(),
     category:    f.category,
-    ...accesToApi(f.acces),
+    ...accesToApi(effectiveAcces(f)),
+    price: priceToApi(f),
     cover_url: coverUrl, cover_key: "",
     status: f.status,
     publish_at: f.status === "SCHEDULED" && f.publish_at
@@ -457,7 +469,8 @@ export default function ContenuPage() {
     try {
       const res = await formationApi.create({
         title: form.title, description: form.description, category: form.category,
-        ...accesToApi(form.acces),
+        ...accesToApi(effectiveAcces(form)),
+        price: priceToApi(form),
         status: form.status,
         publish_at: form.status === "SCHEDULED" && form.publish_at
           ? new Date(form.publish_at).toISOString() : null,
@@ -688,6 +701,23 @@ export default function ContenuPage() {
                 value={form.acces}
                 onChange={(v) => setForm({ ...form, acces: v })}
               />
+              {form.acces !== "PUBLIC" && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <Input
+                    label="Prix à l'unité (FCFA) — optionnel"
+                    type="number" min={0} step={500} placeholder="Ex. 15000 — vide = réservée aux abonnés"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                    style={{ marginBottom: 0 }}
+                  />
+                  <p style={{ margin: "-0.5rem 0 0", fontSize: "0.72rem", color: "var(--muted-2)", lineHeight: 1.5 }}>
+                    {form.acces === "MEMBRES" && Number(form.price) > 0 ? (
+                      <>Mettre un prix passe cette formation en accès <strong>Payant</strong> : les abonnés y gardent
+                accès, les autres membres peuvent l&apos;acheter seule.</>
+                    ) : "Les membres sans abonnement pourront acheter cette formation seule."}
+                  </p>
+                </div>
+              )}
               <Button type="submit" loading={saving}>Créer la formation</Button>
             </form>
           </div>

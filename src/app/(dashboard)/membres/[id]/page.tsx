@@ -3,11 +3,12 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { financeApi, membersApi, plansApi } from "@/lib/endpoints";
-import type { MemberDetail, PlanKind, SubscriptionPlan } from "@/lib/types";
+import { financeApi, membersApi } from "@/lib/endpoints";
+import type { MemberDetail } from "@/lib/types";
 import { Alert, Badge, Button, Card, Input, Select, errorMessage } from "@/components/ui";
 import { ConfirmModal, Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import ManualPaymentModal from "@/components/ManualPaymentModal";
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -25,13 +26,20 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const PAY_COLOR: Record<string, string> = {
-  REUSSI: "var(--ok)", EN_ATTENTE: "var(--warn)", ECHOUE: "var(--danger)",
+  VALIDE: "var(--ok)", REUSSI: "var(--ok)", EN_ATTENTE: "var(--warn)", ECHOUE: "var(--danger)",
   REMBOURSE: "var(--muted)", EXONERE: "var(--muted-2)",
 };
 const PAY_LABEL: Record<string, string> = {
-  REUSSI: "Réussi", EN_ATTENTE: "En attente", ECHOUE: "Échoué",
+  VALIDE: "Réussi", REUSSI: "Réussi", EN_ATTENTE: "En attente", ECHOUE: "Échoué",
   REMBOURSE: "Remboursé", EXONERE: "Exonéré",
 };
+const PAY_TYPE_LABEL: Record<string, string> = {
+  INSCRIPTION: "Inscription", COTISATION: "Cotisation mensuelle", ANNUEL: "Cotisation annuelle",
+  BRANCHE_FEMME: "Branche Femme", BRANCHE_ENFANT: "Branche Enfant", DON: "Don",
+  FORMATION: "Formation", REMBOURSEMENT: "Remboursement",
+};
+const payTypeLabel = (p: { type: string; formation_title?: string | null }) =>
+  p.formation_title ? `${PAY_TYPE_LABEL[p.type] ?? p.type} · ${p.formation_title}` : (PAY_TYPE_LABEL[p.type] ?? p.type);
 
 const BILLING_LABEL: Record<string, string> = {
   ANNUEL: "Annuel", TRANCHES: "Par tranches", MENSUEL: "Mensuel",
@@ -187,122 +195,35 @@ function EditBranchesModal({ member, onClose, onSaved }: {
 
 // ── Constantes paiement ───────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<PlanKind, string> = {
-  INSCRIPTION:    "Inscription annuelle",
-  COTISATION:     "Inscription mensuelle",
-  BRANCHE_FEMME:  "Accès Branche Femme",
-  BRANCHE_ENFANT: "Accès Branche Enfant",
-  DON:            "Don volontaire",
-};
 
 // ── Modal — Paiement manuel ───────────────────────────────────────────────────
 
-function ManualPaymentModal({ memberId, memberName, onClose, onDone }: {
-  memberId: number; memberName: string; onClose: () => void; onDone: () => void;
-}) {
-  const [kind,    setKind]    = useState<PlanKind>("INSCRIPTION");
-  const [amount,  setAmount]  = useState("");
-  const [plans,   setPlans]   = useState<SubscriptionPlan[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    plansApi.list().then(({ data }) => {
-      const list = Array.isArray(data) ? data : (data as any).results ?? [];
-      setPlans(list.filter((p: SubscriptionPlan) => p.is_active));
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const plan = plans.find((p) => p.kind === kind);
-    setAmount(plan ? String(plan.price_total) : "");
-  }, [kind, plans]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
-    try {
-      await financeApi.manual({
-        user_id: memberId,
-        kind,
-        amount:  amount ? Number(amount) : undefined,
-        reason:  `Paiement manuel — ${KIND_LABELS[kind]}`,
-      });
-      onDone(); onClose();
-    } catch (err) { toast(errorMessage(err), "error"); }
-    finally { setLoading(false); }
-  };
-
-  const activePlan = plans.find((p) => p.kind === kind);
-
-  return (
-    <Modal title="Valider un paiement manuel" onClose={onClose} maxWidth={460}>
-      <div style={{ marginBottom: "1rem", padding: "0.55rem 0.75rem", background: "var(--bg-2)", borderRadius: "var(--radius-sm)", border: "1px solid var(--line-soft)", fontSize: ".84rem", color: "var(--muted)" }}>
-        Membre : <strong style={{ color: "var(--ink)" }}>{memberName}</strong>
-      </div>
-      <form onSubmit={submit}>
-        <div style={{ marginBottom: "1rem" }}>
-          <span className="field-label">Type de paiement</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.4rem" }}>
-            {(["INSCRIPTION", "COTISATION", "BRANCHE_FEMME", "BRANCHE_ENFANT", "DON"] as PlanKind[]).map((k) => {
-              const p = plans.find((pl) => pl.kind === k);
-              const active = kind === k;
-              return (
-                <label key={k} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  gap: "0.6rem", padding: "0.45rem 0.75rem",
-                  borderRadius: "var(--radius-sm)",
-                  border: `1px solid ${active ? "rgba(201,162,39,0.5)" : "var(--line-soft)"}`,
-                  background: active ? "rgba(201,162,39,0.07)" : "var(--bg)",
-                  cursor: "pointer",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <input type="radio" name="kind" value={k} checked={active}
-                      onChange={() => setKind(k)} style={{ accentColor: "var(--gold-2)" }} />
-                    <span style={{ fontSize: "0.84rem", fontWeight: active ? 700 : 400, color: active ? "var(--gold-2)" : "var(--ink)" }}>
-                      {KIND_LABELS[k]}
-                    </span>
-                  </div>
-                  {p && <span style={{ fontSize: "0.78rem", color: "var(--muted-2)", whiteSpace: "nowrap" }}>{p.price_total.toLocaleString("fr-FR")} FCFA</span>}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-        <Input
-          label={activePlan ? "Montant (FCFA) — pré-rempli depuis le plan" : "Montant (FCFA)"}
-          type="number" min={0} value={amount} placeholder="Montant en FCFA"
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
-          <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
-          <Button type="submit" loading={loading}>Confirmer le paiement</Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
 
 // ── Modal — Annuler / Rembourser un paiement ──────────────────────────────────
 
 function RefundPaymentModal({ memberId, payment, onClose, onDone }: {
   memberId: number;
-  payment: { id: number; type: string; amount: number; paid_at: string | null };
+  payment: { id: number; type: string; amount: number; paid_at: string | null; formation_title?: string | null };
   onClose: () => void;
-  onDone: () => void;
+  onDone: (accessRevoked: boolean) => void;
 }) {
+  const isFormation = payment.type === "FORMATION";
   const [amount,  setAmount]  = useState(String(payment.amount));
+  const [revoke,  setRevoke]  = useState(true);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      await financeApi.refund({
-        user_id: memberId,
-        amount:  Number(amount),
-        reason:  `Annulation / remboursement — paiement #${payment.id}`,
+      const { data } = await financeApi.refund({
+        user_id:    memberId,
+        amount:     Number(amount),
+        payment_id: payment.id,
+        ...(isFormation ? { revoke_access: revoke } : {}),
+        reason:     `Annulation / remboursement — paiement #${payment.id}`,
       });
-      onDone(); onClose();
+      onDone(data.access_revoked); onClose();
     } catch (err) { toast(errorMessage(err), "error"); }
     finally { setLoading(false); }
   };
@@ -312,12 +233,15 @@ function RefundPaymentModal({ memberId, payment, onClose, onDone }: {
       <div style={{ marginBottom: "1rem", padding: "0.65rem 0.85rem", background: "rgba(192,64,44,0.07)", borderRadius: "var(--radius-sm)", border: "1px solid rgba(192,64,44,0.25)", fontSize: ".84rem" }}>
         <div style={{ fontWeight: 700, color: "var(--bad)", marginBottom: ".3rem" }}>⚠ Attention</div>
         <div style={{ color: "var(--muted)" }}>
-          Cette opération crée un remboursement enregistré dans l&apos;historique. Elle n&apos;affecte pas les accès branches du membre.
+          Cette opération crée un remboursement enregistré dans l&apos;historique.{" "}
+          {isFormation
+            ? "Pour un achat de formation, vous pouvez retirer l'accès ci-dessous."
+            : "Elle n'affecte pas les accès branches du membre."}
         </div>
       </div>
       <div style={{ marginBottom: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem .75rem", fontSize: ".83rem" }}>
         <div><span style={{ color: "var(--muted-2)" }}>Référence</span><div style={{ fontWeight: 600 }}>#{payment.id}</div></div>
-        <div><span style={{ color: "var(--muted-2)" }}>Type</span><div style={{ fontWeight: 600 }}>{payment.type}</div></div>
+        <div><span style={{ color: "var(--muted-2)" }}>Type</span><div style={{ fontWeight: 600 }}>{payTypeLabel(payment)}</div></div>
         <div><span style={{ color: "var(--muted-2)" }}>Montant initial</span><div style={{ fontWeight: 600 }}>{payment.amount.toLocaleString("fr-FR")} FCFA</div></div>
         <div><span style={{ color: "var(--muted-2)" }}>Date</span><div style={{ fontWeight: 600 }}>{payment.paid_at ? new Date(payment.paid_at).toLocaleDateString("fr-FR") : "—"}</div></div>
       </div>
@@ -328,6 +252,18 @@ function RefundPaymentModal({ memberId, payment, onClose, onDone }: {
           onChange={(e) => setAmount(e.target.value)}
           required
         />
+        {isFormation && (
+          <label style={{ display: "flex", alignItems: "flex-start", gap: ".5rem", marginBottom: "1rem", fontSize: ".84rem", cursor: "pointer" }}>
+            <input type="checkbox" checked={revoke} onChange={(e) => setRevoke(e.target.checked)}
+                   style={{ accentColor: "var(--bad)", marginTop: ".15rem" }} />
+            <span>
+              Retirer l&apos;accès à la formation{payment.formation_title ? ` « ${payment.formation_title} »` : ""}
+              <span style={{ display: "block", fontSize: ".74rem", color: "var(--muted-2)" }}>
+                Décochez pour un geste commercial : le membre garde la formation.
+              </span>
+            </span>
+          </label>
+        )}
         <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
           <Button variant="ghost" type="button" onClick={onClose}>Annuler</Button>
           <Button type="submit" variant="danger" loading={loading}>Confirmer le remboursement</Button>
@@ -665,6 +601,51 @@ export default function MemberDetailPage() {
         </Card>
       )}
 
+      {/* ── Formations achetées à l'unité ── */}
+      {(member.formation_purchases ?? []).length > 0 && (
+        <Card style={{ marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "1rem", marginBottom: ".9rem" }}>
+            Formations achetées
+            <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: ".82rem", marginLeft: ".5rem" }}>
+              (accès sans abonnement)
+            </span>
+          </h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Formation</th>
+                <th style={{ textAlign: "right" }}>Montant</th>
+                <th>Date</th>
+                <th>Paiement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {member.formation_purchases!.map((fp) => (
+                <tr key={fp.formation_id}>
+                  <td style={{ fontWeight: 600, fontSize: ".86rem" }}>
+                    <a href={`/contenu/${fp.formation_id}`}>{fp.formation_title}</a>
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: 700, fontSize: ".86rem" }}>
+                    {fp.amount != null ? fmtAmt(fp.amount) : "—"}
+                  </td>
+                  <td style={{ color: "var(--muted)", fontSize: ".83rem" }}>{fmt(fp.purchased_at)}</td>
+                  <td>
+                    {fp.payment_id
+                      ? <Badge color={fp.manual ? "var(--warn)" : "var(--ok)"}>
+                          {fp.manual ? "Validé manuellement" : "En ligne"} · #{fp.payment_id}
+                        </Badge>
+                      : <span style={{ color: "var(--muted-2)", fontSize: ".8rem" }}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ margin: ".75rem 0 0", fontSize: ".76rem", color: "var(--muted-2)" }}>
+            Pour retirer un accès, remboursez le paiement correspondant dans l&apos;historique ci-dessous.
+          </p>
+        </Card>
+      )}
+
       {/* ── Historique des paiements ── */}
       <Card style={{ marginBottom: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ".9rem" }}>
@@ -695,11 +676,11 @@ export default function MemberDetailPage() {
             </thead>
             <tbody>
               {member.payments.map((p) => {
-                const canRefund = p.status === "REUSSI" && p.type !== "REMBOURSEMENT" && p.amount > 0;
+                const canRefund = (p.status === "VALIDE" || p.status === "REUSSI") && p.type !== "REMBOURSEMENT" && p.amount > 0;
                 return (
                   <tr key={p.id}>
                     <td style={{ color: "var(--muted-2)", fontSize: ".78rem" }}>#{p.id}</td>
-                    <td style={{ fontSize: ".83rem" }}>{p.type}</td>
+                    <td style={{ fontSize: ".83rem" }}>{payTypeLabel(p)}</td>
                     <td>
                       <Badge color={PAY_COLOR[p.status] ?? "var(--muted)"}>
                         {PAY_LABEL[p.status] ?? p.status}
@@ -780,7 +761,7 @@ export default function MemberDetailPage() {
       )}
 
       {showPayment && (
-        <ManualPaymentModal memberId={userId} memberName={member.full_name}
+        <ManualPaymentModal userId={userId} userName={member.full_name}
           onClose={() => setShowPayment(false)}
           onDone={() => { toast("Paiement enregistré.", "success"); load(); }} />
       )}
@@ -788,7 +769,10 @@ export default function MemberDetailPage() {
       {refundTarget && (
         <RefundPaymentModal memberId={userId} payment={refundTarget}
           onClose={() => setRefundTarget(null)}
-          onDone={() => { toast("Remboursement enregistré.", "success"); load(); }} />
+          onDone={(revoked) => {
+            toast(revoked ? "Remboursement enregistré · accès à la formation retiré." : "Remboursement enregistré.", "success");
+            load();
+          }} />
       )}
 
       {showBlockDlg && (

@@ -110,12 +110,18 @@ export interface MemberDetail extends User {
     id: number; type: string; start: string; end: string | null; active: boolean;
     billing?: string; tranches_paid?: number; tranches_total?: number;
   }[];
-  payments: { id: number; type: string; status: string; amount: number; paid_at: string | null }[];
+  payments: { id: number; type: string; status: string; amount: number; paid_at: string | null;
+              formation_title?: string | null }[];
   quiz_results: { quiz: number; title: string; score: number; validated: boolean }[];
   formations_progress?: {
     formation_id: number; formation_title: string;
     progress_pct: number; modules_completed: number; modules_total: number;
     quiz_score: number | null; completed: boolean;
+  }[];
+  /** Formations achetées à l'unité (accès actif) */
+  formation_purchases?: {
+    formation_id: number; formation_title: string; purchased_at: string;
+    payment_id: number | null; amount: number | null; manual: boolean;
   }[];
 }
 
